@@ -38,7 +38,7 @@ function AthleteDrawer({ athleteId, snap, onClose, pushToast }) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 22 }}>
-          <Avatar name={a.display_name} initials={a.initials} color={a.photo_color} size={72}/>
+          <Avatar name={a.display_name} initials={a.initials} color={a.photo_color} src={a.photo_url} size={72}/>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="hz-display" style={{ fontSize: 36, lineHeight: 1 }}>{a.display_name}</div>
             <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 6, textTransform: 'capitalize', letterSpacing: '0.04em' }}>

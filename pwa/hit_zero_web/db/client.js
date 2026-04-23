@@ -102,7 +102,7 @@
       ],
       athletes: roster.map(a => ({
         id: a.id, team_id: team.id, profile_id: a.id === 'a01' ? 'u_athlete' : null, display_name: a.name, initials: a.initials, age: a.age,
-        role: a.role, photo_color: a.photo, joined_at: a.joined + '-15',
+        role: a.role, photo_color: a.photo, photo_url: a.id === 'a01' ? '/profiles/arlowe-emmel.jpg' : null, joined_at: a.joined + '-15',
       })),
       parent_links: [
         { parent_id: 'u_parent', athlete_id: 'a01' },

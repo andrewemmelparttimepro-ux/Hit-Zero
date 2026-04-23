@@ -93,7 +93,7 @@ function SkillMatrix({ snap, openAthlete, pushToast }) {
                 <tr key={a.id}>
                   <td style={{ position: 'sticky', left: 0, zIndex: 1, background: 'var(--hz-ink-2)', padding: '8px 16px', borderBottom: '1px solid var(--hz-line)', borderRight: '1px solid var(--hz-line)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => openAthlete(a.id)}>
-                      <Avatar name={a.display_name} initials={a.initials} color={a.photo_color} size={28}/>
+                      <Avatar name={a.display_name} initials={a.initials} color={a.photo_color} src={a.photo_url} size={28}/>
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 600 }}>{a.display_name}</div>
                         <div style={{ fontSize: 10, color: 'var(--hz-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700 }}>{a.role}</div>

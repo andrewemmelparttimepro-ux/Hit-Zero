@@ -69,14 +69,29 @@ const HZIcon = ({ name, size = 18, color = 'currentColor', stroke = 1.75, fill }
 window.HZIcon = HZIcon;
 
 // ─── Avatar tile ───
-const Avatar = ({ name, initials, color = '#27CFD7', size = 32, onClick }) => (
+const Avatar = ({ name, initials, color = '#27CFD7', size = 32, onClick, src }) => (
   <div
     className="avatar hz-nosel"
     onClick={onClick}
     title={name}
-    style={{ width: size, height: size, fontSize: size * 0.42, background: color, cursor: onClick ? 'pointer' : 'default' }}
+    style={{
+      width: size,
+      height: size,
+      fontSize: size * 0.42,
+      background: src ? 'rgba(255,255,255,0.05)' : color,
+      cursor: onClick ? 'pointer' : 'default',
+      overflow: 'hidden',
+    }}
   >
-    {initials || (name || '').split(' ').map(s => s[0]).slice(0,2).join('')}
+    {src ? (
+      <img
+        src={src}
+        alt={name ? `${name} profile` : 'Profile'}
+        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+      />
+    ) : (
+      initials || (name || '').split(' ').map(s => s[0]).slice(0,2).join('')
+    )}
   </div>
 );
 window.Avatar = Avatar;

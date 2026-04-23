@@ -169,7 +169,7 @@ function CoachToday({ snap, openAthlete, navigate, pushToast, session }) {
               const label = mins < 60 ? `${mins}m` : mins < 60*24 ? `${Math.round(mins/60)}h` : `${Math.round(mins/(60*24))}d`;
               return (
                 <div key={c.id} className="celebration" onClick={() => athlete && openAthlete(athlete.id)} style={{ cursor: athlete ? 'pointer' : 'default' }}>
-                  {athlete && <Avatar name={athlete.display_name} initials={athlete.initials} color={athlete.photo_color} size={36}/>}
+                  {athlete && <Avatar name={athlete.display_name} initials={athlete.initials} color={athlete.photo_color} src={athlete.photo_url} size={36}/>}
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 13.5, fontWeight: 600 }}>{c.headline}</div>
                     <div style={{ fontSize: 10, color: 'var(--hz-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700, marginTop: 3 }}>
@@ -214,7 +214,7 @@ function CoachToday({ snap, openAthlete, navigate, pushToast, session }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {mostImproved.map(({ a, r }) => (
               <div key={a.id} onClick={() => openAthlete(a.id)} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
-                <Avatar name={a.display_name} initials={a.initials} color={a.photo_color} size={32}/>
+                <Avatar name={a.display_name} initials={a.initials} color={a.photo_color} src={a.photo_url} size={32}/>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{a.display_name}</div>
                   <div style={{ fontSize: 10, color: 'var(--hz-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700 }}>{a.role}</div>
@@ -230,7 +230,7 @@ function CoachToday({ snap, openAthlete, navigate, pushToast, session }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {needsAttention.map(({ a, r, att }) => (
               <div key={a.id} onClick={() => openAthlete(a.id)} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
-                <Avatar name={a.display_name} initials={a.initials} color={a.photo_color} size={32}/>
+                <Avatar name={a.display_name} initials={a.initials} color={a.photo_color} src={a.photo_url} size={32}/>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{a.display_name}</div>
                   <div style={{ fontSize: 10, color: 'var(--hz-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700 }}>

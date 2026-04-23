@@ -13,6 +13,7 @@ const BOOTSTRAP_USERS: Record<string, {
     display_name: string;
     initials: string;
     photo_color: string;
+    photo_url?: string;
   };
 }> = {
   'andrew@ndai.pro': {
@@ -28,6 +29,7 @@ const BOOTSTRAP_USERS: Record<string, {
       display_name: 'Arlowe Emmel',
       initials: 'AE',
       photo_color: '#F97FAC',
+      photo_url: '/profiles/arlowe-emmel.jpg',
     },
   },
 };
@@ -87,7 +89,19 @@ async function ensureAthleteProfile(profile: any, seed: typeof BOOTSTRAP_USERS[s
     .eq('profile_id', profile.id)
     .maybeSingle();
   if (existingError) throw existingError;
-  if (existing) return;
+  if (existing) {
+    const { error: updateError } = await supa
+      .from('athletes')
+      .update({
+        display_name: seed.athlete.display_name,
+        initials: seed.athlete.initials,
+        photo_color: seed.athlete.photo_color,
+        photo_url: seed.athlete.photo_url ?? null,
+      })
+      .eq('id', existing.id);
+    if (updateError) throw updateError;
+    return;
+  }
 
   const { data: team, error: teamError } = await supa
     .from('teams')
@@ -108,6 +122,7 @@ async function ensureAthleteProfile(profile: any, seed: typeof BOOTSTRAP_USERS[s
       display_name: seed.athlete.display_name,
       initials: seed.athlete.initials,
       photo_color: seed.athlete.photo_color,
+      photo_url: seed.athlete.photo_url ?? null,
       joined_at: new Date().toISOString().slice(0, 10),
     });
   if (athleteError) throw athleteError;

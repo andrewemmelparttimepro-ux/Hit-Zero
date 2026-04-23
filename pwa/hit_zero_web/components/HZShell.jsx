@@ -264,6 +264,7 @@ function App() {
     <div className="app-shell">
       <Sidebar
         nav={nav} active={screenId} session={session}
+        snap={snap}
         open={sidebarOpen}
         onNav={(id) => { location.hash = '#' + id; setSidebarOpen(false); }}
       />
@@ -328,8 +329,13 @@ class ScreenErrorBoundary extends React.Component {
 window.ScreenErrorBoundary = ScreenErrorBoundary;
 
 // ─── Sidebar ───
-function Sidebar({ nav, active, session, onNav, open }) {
+function profileAvatarSource(snap, profileId) {
+  return (snap?.athletes || []).find(a => a.profile_id === profileId)?.photo_url || null;
+}
+
+function Sidebar({ nav, active, session, onNav, open, snap }) {
   const role = session.profile.role;
+  const src = profileAvatarSource(snap, session.profile.id);
   return (
     <aside className={'sidebar hz-nosel' + (open ? ' open' : '')}>
       <div style={{ padding: '4px 10px 20px', borderBottom: '1px solid var(--hz-line)', marginBottom: 14 }}>
@@ -353,7 +359,7 @@ function Sidebar({ nav, active, session, onNav, open }) {
       </nav>
       <div style={{ borderTop: '1px solid var(--hz-line)', paddingTop: 14, marginTop: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 10px' }}>
-          <Avatar name={session.profile.display_name} color={role === 'coach' || role === 'owner' ? '#27CFD7' : '#F97FAC'} size={32}/>
+          <Avatar name={session.profile.display_name} src={src} color={role === 'coach' || role === 'owner' ? '#27CFD7' : '#F97FAC'} size={32}/>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{session.profile.display_name}</div>
             <div style={{ fontSize: 10, color: 'var(--hz-dim)', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 600 }}>{role}</div>
@@ -403,7 +409,7 @@ function Topbar({ session, onOpenCmdk, onSignOut, onHamburger, snap }) {
         )}
         <div style={{ width: 1, height: 24, background: 'var(--hz-line)' }} />
         {session.canViewAs || session.mode === 'prototype'
-          ? <RoleSwitcher session={session} />
+          ? <RoleSwitcher session={session} snap={snap} />
           : <AccountBadge session={session} />}
         <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={onSignOut} title="Sign out">
           <HZIcon name="logout" size={14} />
@@ -425,7 +431,7 @@ function AccountBadge({ session }) {
   );
 }
 
-function RoleSwitcher({ session }) {
+function RoleSwitcher({ session, snap }) {
   const [open, setOpen] = useState(false);
   const roles = ['coach','parent','athlete','owner'];
   const profiles = window.HZdb._raw().profiles;
@@ -476,7 +482,7 @@ function RoleSwitcher({ session }) {
                   onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
                   onMouseLeave={e => e.currentTarget.style.background = r === currentRole ? 'rgba(255,255,255,0.06)' : 'transparent'}
                 >
-                  <Avatar name={p.display_name} color={r === 'coach' || r === 'owner' ? '#27CFD7' : '#F97FAC'} size={28}/>
+                  <Avatar name={p.display_name} src={profileAvatarSource(snap, p.id)} color={r === 'coach' || r === 'owner' ? '#27CFD7' : '#F97FAC'} size={28}/>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 13, fontWeight: 600 }}>{p.display_name}</div>
                     <div style={{ fontSize: 10, color: 'var(--hz-dim)', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 700 }}>{ROLE_LABELS[r] || r}</div>

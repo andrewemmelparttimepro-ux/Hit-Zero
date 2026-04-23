@@ -67,7 +67,7 @@ function Roster({ snap, openAthlete, navigate }) {
                 <tr key={r.id} onClick={() => openAthlete(r.id)} style={{ cursor: 'pointer' }}>
                   <td style={{ paddingLeft: 20 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <Avatar name={r.display_name} initials={r.initials} color={r.photo_color} size={32}/>
+                      <Avatar name={r.display_name} initials={r.initials} color={r.photo_color} src={r.photo_url} size={32}/>
                       <div>
                         <div style={{ fontWeight: 600 }}>{r.display_name}</div>
                       </div>
@@ -97,7 +97,7 @@ function Roster({ snap, openAthlete, navigate }) {
           {sorted.map(r => (
             <div key={r.id} className="hz-card" onClick={() => openAthlete(r.id)} style={{ cursor: 'pointer', padding: 20 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-                <Avatar name={r.display_name} initials={r.initials} color={r.photo_color} size={44}/>
+                <Avatar name={r.display_name} initials={r.initials} color={r.photo_color} src={r.photo_url} size={44}/>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 14 }}>{r.display_name}</div>
                   <div style={{ fontSize: 10, color: 'var(--hz-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700 }}>{r.role}</div>

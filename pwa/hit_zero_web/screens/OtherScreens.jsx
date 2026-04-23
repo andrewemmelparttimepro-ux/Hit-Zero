@@ -34,7 +34,7 @@ function AthleteReel({ snap, session, navigate }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: 24, marginBottom: 24 }}>
         <div className="hz-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 32 }}>
-          <Avatar name={myAthlete.display_name} initials={myAthlete.initials} color={myAthlete.photo_color} size={96}/>
+          <Avatar name={myAthlete.display_name} initials={myAthlete.initials} color={myAthlete.photo_color} src={myAthlete.photo_url} size={96}/>
           <div className="hz-display" style={{ fontSize: 32, marginTop: 18 }}>{myAthlete.display_name}</div>
           <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 6, textTransform: 'capitalize' }}>{myAthlete.role} · Age {myAthlete.age}</div>
           <Dial value={readiness} size={180} label="My Readiness"/>
@@ -329,7 +329,7 @@ function ParentDashboard({ snap, session, navigate }) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
               <div className="hz-card">
                 <div style={{ display: 'flex', gap: 18, marginBottom: 20 }}>
-                  <Avatar name={kid.display_name} initials={kid.initials} color={kid.photo_color} size={64}/>
+                  <Avatar name={kid.display_name} initials={kid.initials} color={kid.photo_color} src={kid.photo_url} size={64}/>
                   <div>
                     <div className="hz-display" style={{ fontSize: 30 }}>{kid.display_name}</div>
                     <div style={{ fontSize: 12, color: 'var(--hz-dim)', textTransform: 'capitalize', marginTop: 2 }}>{kid.role} · Age {kid.age}</div>
@@ -621,7 +621,7 @@ function Billing({ snap, session, openAthlete }) {
                 <td style={{ paddingLeft: 20 }}>
                   {a.athlete && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <Avatar name={a.athlete.display_name} initials={a.athlete.initials} color={a.athlete.photo_color} size={28}/>
+                      <Avatar name={a.athlete.display_name} initials={a.athlete.initials} color={a.athlete.photo_color} src={a.athlete.photo_url} size={28}/>
                       <span style={{ fontWeight: 600 }}>{a.athlete.display_name}</span>
                     </div>
                   )}
