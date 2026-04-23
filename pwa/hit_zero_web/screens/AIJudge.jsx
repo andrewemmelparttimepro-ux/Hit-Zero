@@ -11,6 +11,45 @@
 
 const { useState: _aiUS, useEffect: _aiUE, useMemo: _aiUM, useRef: _aiUR } = React;
 
+const SCORE_CALIBRATION_ANCHORS = [{
+  label: 'Magic City comp day anchor',
+  model_pct: 90.3,
+  official_pct: 93.65,
+  note: 'Single known day-of-competition score supplied by Andrew on 2026-04-23.',
+}];
+
+function clampProjectedScore(v) {
+  return Math.max(0, Math.min(99.5, Number.isFinite(v) ? v : 0));
+}
+
+function calibrateScorecard(sc) {
+  if (!sc || sc.calibration) return sc;
+  const rawPct = Number(sc.pct ?? sc.total ?? 0);
+  const possible = Number(sc.possible ?? 100) || 100;
+  const anchor = SCORE_CALIBRATION_ANCHORS[0];
+  const delta = anchor.official_pct - anchor.model_pct;
+  const influence = Math.exp(-Math.abs(rawPct - anchor.model_pct) / 16);
+  const adjustment = Number((delta * influence).toFixed(2));
+  const pct = clampProjectedScore(rawPct + adjustment);
+  return {
+    ...sc,
+    raw_pct: Number(rawPct.toFixed(2)),
+    raw_total: Number((Number(sc.total ?? rawPct) || rawPct).toFixed(2)),
+    pct: Number(pct.toFixed(2)),
+    total: Number((pct / 100 * possible).toFixed(2)),
+    calibration: {
+      applied: Math.abs(adjustment) >= 0.05,
+      basis: 'single_anchor_soft_offset',
+      adjustment,
+      raw_pct: Number(rawPct.toFixed(2)),
+      raw_total: Number((Number(sc.total ?? rawPct) || rawPct).toFixed(2)),
+      pct: Number(pct.toFixed(2)),
+      total: Number((pct / 100 * possible).toFixed(2)),
+      anchors: SCORE_CALIBRATION_ANCHORS,
+    },
+  };
+}
+
 function AIJudge({ snap, session, navigate }) {
   const me = session?.profile || { id: 'u_coach', role: 'coach' };
   const [, _bump] = _aiUS(0);
@@ -98,7 +137,7 @@ function AIJudge({ snap, session, navigate }) {
           {analyses.length === 0 && <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>No analyses yet. Upload your first full-out.</div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {analyses.map(a => {
-              const pct = Number(a.scorecard?.pct ?? 0).toFixed(0);
+              const pct = Number(calibrateScorecard(a.scorecard)?.pct ?? 0).toFixed(0);
               const isActive = a.id === (active?.id);
               const degraded = String(a.engine_version || '').startsWith('heuristic') && analysisUsesStoredVideo(a);
               const retryNeeded = degraded || (a.status === 'failed' && analysisUsesStoredVideo(a));
@@ -889,7 +928,7 @@ function PreflightChecklist({ pf, onChange }) {
 // ─── Scorecard (results) ──────────────────────────────────────────────────
 function Scorecard({ analysis, me, snap, onReevaluate, reevaluating }) {
   const a = analysis;
-  const sc = a.scorecard || { categories: [], total: 0, possible: 100, pct: 0, deductions: { total: 0, count: 0 } };
+  const sc = calibrateScorecard(a.scorecard || { categories: [], total: 0, possible: 100, pct: 0, deductions: { total: 0, count: 0 } });
   const elements = window.HZsel.elementsFor(a.id);
   const dedns = window.HZsel.deductionsFor(a.id);
   const audience = me.role === 'athlete' ? 'athlete' : me.role === 'parent' ? 'parent' : 'coach';
@@ -951,6 +990,7 @@ function Scorecard({ analysis, me, snap, onReevaluate, reevaluating }) {
   }
 
   const durationSec = (a.duration_ms || 0) / 1000;
+  const calibration = sc.calibration;
   return (
     <div style={{ display: 'grid', gap: 18 }}>
       {geminiFallback && (
@@ -986,6 +1026,14 @@ function Scorecard({ analysis, me, snap, onReevaluate, reevaluating }) {
             <div style={{ color: 'var(--hz-dim)', fontSize: 13, marginTop: 6 }}>
               {(a.division || '—')} · L{a.level ?? '—'} · engine {a.engine_version} · ran in {durationSec.toFixed(1)}s
             </div>
+            {calibration?.applied && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10, color: 'var(--hz-dim)', fontSize: 12 }}>
+                <span className="hz-pill hz-pill-teal">Calibrated</span>
+                <span>
+                  Raw model {Number(calibration.raw_pct ?? sc.raw_pct ?? 0).toFixed(1)} · official anchor 90.3 → 93.65 · adjustment {Number(calibration.adjustment || 0) >= 0 ? '+' : ''}{Number(calibration.adjustment || 0).toFixed(1)}
+                </span>
+              </div>
+            )}
             {onReevaluate && (
               <div style={{ marginTop: 14 }}>
                 <button className="hz-btn hz-btn--ghost" disabled={!!reevaluating} onClick={onReevaluate}>
@@ -1141,7 +1189,11 @@ function ElementsTable({ elements, snap }) {
 
 // ─── Trend view ───────────────────────────────────────────────────────────
 function TrendView({ snap, team }) {
-  const series = window.HZsel.scoreTrend(team?.id, 8);
+  const series = window.HZsel.scoreTrend(team?.id, 8).map(point => {
+    const analysis = window.HZsel.analysisById(point.id);
+    const sc = calibrateScorecard(analysis?.scorecard || { pct: point.pct, total: point.pct, possible: 100 });
+    return { ...point, pct: Number(sc?.pct ?? point.pct ?? 0) };
+  });
   if (series.length === 0) {
     return <div className="hz-card" style={{ padding: 40, color: 'var(--hz-dim)', textAlign: 'center' }}>No completed analyses yet.</div>;
   }

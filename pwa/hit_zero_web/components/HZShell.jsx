@@ -104,6 +104,25 @@ const SCREEN_MAP = {
   ai_judge: 'AIJudge',
 };
 
+const ROLE_LABELS = {
+  owner: 'Gym Owner',
+  coach: 'Coach',
+  parent: 'Parent',
+  athlete: 'Athlete',
+};
+
+function roleNav(role) {
+  return NAV_CONFIG[role] || NAV_CONFIG.coach;
+}
+
+function navIdsForRole(role) {
+  return new Set(roleNav(role).filter(item => item.id).map(item => item.id));
+}
+
+function firstRouteForRole(role) {
+  return roleNav(role).find(item => item.id)?.id || 'today';
+}
+
 // ─── Top-level App ───
 function App() {
   const [session, setSession] = useState(() => window.HZdb.auth._getSession());
@@ -165,6 +184,17 @@ function App() {
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
+  const effectiveRole = session?.profile?.role || 'coach';
+
+  useEffect(() => {
+    if (!session) return;
+    const allowed = navIdsForRole(effectiveRole);
+    if (allowed.has(route)) return;
+    const next = firstRouteForRole(effectiveRole);
+    if (location.hash.slice(1) !== next) location.hash = '#' + next;
+    else setRoute(next);
+  }, [session, effectiveRole, route]);
+
   // CmdK open
   useEffect(() => {
     const onKey = (e) => {
@@ -224,9 +254,9 @@ function App() {
   // Not signed in → login
   if (!session) return <Login onIn={() => {}} />;
 
-  const role = session.profile.role;
-  const nav = NAV_CONFIG[role] || NAV_CONFIG.coach;
-  const screenId = route;
+  const role = effectiveRole;
+  const nav = roleNav(role);
+  const screenId = navIdsForRole(role).has(route) ? route : firstRouteForRole(role);
   const ScreenName = SCREEN_MAP[screenId] || 'CoachToday';
   const Screen = window[ScreenName];
 
@@ -372,7 +402,7 @@ function Topbar({ session, onOpenCmdk, onSignOut, onHamburger, snap }) {
           </div>
         )}
         <div style={{ width: 1, height: 24, background: 'var(--hz-line)' }} />
-        {session.mode === 'prototype'
+        {session.canViewAs || session.mode === 'prototype'
           ? <RoleSwitcher session={session} />
           : <AccountBadge session={session} />}
         <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={onSignOut} title="Sign out">
@@ -384,11 +414,12 @@ function Topbar({ session, onOpenCmdk, onSignOut, onHamburger, snap }) {
 }
 
 function AccountBadge({ session }) {
+  const role = session.profile.role;
   return (
     <div className="hz-btn hz-btn-sm" style={{ cursor: 'default', gap: 10 }}>
-      <span style={{ textTransform: 'capitalize', fontWeight: 700 }}>{session.profile.role}</span>
-      <span style={{ color: 'var(--hz-dim)', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {session.user?.email || session.profile.email}
+      <span style={{ fontWeight: 700 }}>{session.profile.display_name || session.user?.email || session.profile.email}</span>
+      <span style={{ color: 'var(--hz-dim)', textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: 10, fontWeight: 800 }}>
+        {ROLE_LABELS[role] || role}
       </span>
     </div>
   );
@@ -396,13 +427,27 @@ function AccountBadge({ session }) {
 
 function RoleSwitcher({ session }) {
   const [open, setOpen] = useState(false);
-  const roles = ['coach','owner','athlete','parent'];
+  const roles = ['coach','parent','athlete','owner'];
   const profiles = window.HZdb._raw().profiles;
+  const liveViewAs = !!session.canViewAs;
+  const currentRole = session.profile.role;
+  const accountName = session.actualProfile?.display_name || session.profile.display_name || session.user?.email || session.profile.email;
+  const switchRole = async (role) => {
+    const action = liveViewAs ? window.HZdb.auth.viewAsRole(role) : window.HZdb.auth.signInAsRole(role);
+    const { error } = await action;
+    if (error) {
+      console.warn('[HZ] role switch failed', error);
+      return;
+    }
+    setOpen(false);
+    location.hash = '#' + firstRouteForRole(role);
+  };
   return (
     <div style={{ position: 'relative' }}>
-      <button className="hz-btn hz-btn-sm" onClick={() => setOpen(v => !v)}>
+      <button className="hz-btn hz-btn-sm" onClick={() => setOpen(v => !v)} style={{ gap: 10 }}>
+        <span style={{ fontWeight: 700, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{accountName}</span>
         <span style={{ color: 'var(--hz-dim)' }}>View as</span>
-        <span style={{ textTransform: 'capitalize', fontWeight: 700 }}>{session.profile.role}</span>
+        <span style={{ fontWeight: 800 }}>{ROLE_LABELS[currentRole] || currentRole}</span>
         <HZIcon name="chev-down" size={13} />
       </button>
       {open && (
@@ -415,29 +460,36 @@ function RoleSwitcher({ session }) {
             boxShadow: '0 20px 50px rgba(0,0,0,0.4)',
           }}>
             {roles.map(r => {
-              const p = profiles.find(x => x.role === r);
+              const p = liveViewAs
+                ? { display_name: accountName, role: r }
+                : profiles.find(x => x.role === r);
               if (!p) return null;
               return (
                 <div
                   key={r}
-                  onClick={async () => { await window.HZdb.auth.signInAsRole(r); setOpen(false); location.hash = '#'; }}
+                  onClick={() => switchRole(r)}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8,
                     cursor: 'pointer',
-                    background: r === session.profile.role ? 'rgba(255,255,255,0.06)' : 'transparent',
+                    background: r === currentRole ? 'rgba(255,255,255,0.06)' : 'transparent',
                   }}
                   onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
-                  onMouseLeave={e => e.currentTarget.style.background = r === session.profile.role ? 'rgba(255,255,255,0.06)' : 'transparent'}
+                  onMouseLeave={e => e.currentTarget.style.background = r === currentRole ? 'rgba(255,255,255,0.06)' : 'transparent'}
                 >
                   <Avatar name={p.display_name} color={r === 'coach' || r === 'owner' ? '#27CFD7' : '#F97FAC'} size={28}/>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 13, fontWeight: 600 }}>{p.display_name}</div>
-                    <div style={{ fontSize: 10, color: 'var(--hz-dim)', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 700 }}>{r}</div>
+                    <div style={{ fontSize: 10, color: 'var(--hz-dim)', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 700 }}>{ROLE_LABELS[r] || r}</div>
                   </div>
-                  {r === session.profile.role && <HZIcon name="check" size={14} color="var(--hz-teal)"/>}
+                  {r === currentRole && <HZIcon name="check" size={14} color="var(--hz-teal)"/>}
                 </div>
               );
             })}
+            {liveViewAs && (
+              <div style={{ borderTop: '1px solid var(--hz-line)', marginTop: 6, padding: '9px 10px 4px', color: 'var(--hz-dim)', fontSize: 11, lineHeight: 1.35 }}>
+                Preview only. Your real Supabase role stays {ROLE_LABELS[session.actualRole] || session.actualRole}.
+              </div>
+            )}
           </div>
         </>
       )}
@@ -455,7 +507,7 @@ function Login() {
   const [err, setErr] = useState(null);
   const roles = [
     { id: 'coach', label: 'Coach', sub: 'Run practice, track skills, build routines' },
-    { id: 'owner', label: 'Owner', sub: 'Program health, billing, all teams' },
+    { id: 'owner', label: 'Gym Owner', sub: 'Program health, billing, all teams' },
     { id: 'athlete', label: 'Athlete', sub: "My reel, my skills, what's next" },
     { id: 'parent', label: 'Parent', sub: "Kid's wins, billing, schedule" },
   ];

@@ -11,6 +11,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 (function(){
   const LS_KEY = 'hz_db_v3';  // v3: + AI Routine Judge (rubrics, analyses, elements, deductions, feedback, proposed skill updates)
+  const AUTH_VIEW_ROLE_KEY = 'hz_auth_view_role';
+  const VIEW_AS_EMAIL = 'andrew@ndai.pro';
+  const VIEW_AS_ROLES = ['owner', 'coach', 'parent', 'athlete'];
   const listeners = new Map(); // table -> Set<fn>
   const authListeners = new Set();
 
@@ -693,6 +696,28 @@
   function lastEmail() {
     try { return localStorage.getItem(AUTH_EMAIL_KEY) || ''; } catch { return ''; }
   }
+  function normalizeEmail(value) {
+    return String(value || '').trim().toLowerCase();
+  }
+  function canUseViewAs(raw, profile) {
+    const email = normalizeEmail(profile?.email || raw?.user?.email || raw?.email);
+    return email === VIEW_AS_EMAIL;
+  }
+  function readViewRole(raw, profile) {
+    if (!canUseViewAs(raw, profile)) return null;
+    try {
+      const role = localStorage.getItem(AUTH_VIEW_ROLE_KEY);
+      return VIEW_AS_ROLES.includes(role) ? role : null;
+    } catch {
+      return null;
+    }
+  }
+  function writeViewRole(role) {
+    try {
+      if (VIEW_AS_ROLES.includes(role)) localStorage.setItem(AUTH_VIEW_ROLE_KEY, role);
+      else localStorage.removeItem(AUTH_VIEW_ROLE_KEY);
+    } catch {}
+  }
   function upsertLocalProfile(profile) {
     if (!profile || !profile.id) return;
     data.profiles = data.profiles || [];
@@ -740,7 +765,28 @@
   }
   function wrapSession(raw, profile, mode = hasRealAuth() ? 'live' : 'prototype') {
     if (!raw || !profile) return null;
-    return { ...raw, user: raw.user || { id: profile.id, email: profile.email }, profile, mode };
+    const user = raw.user || { id: profile.id, email: profile.email };
+    const canViewAs = canUseViewAs({ ...raw, user }, profile);
+    const viewRole = readViewRole({ ...raw, user }, profile) || profile.role;
+    const effectiveProfile = canViewAs
+      ? {
+          ...profile,
+          role: viewRole,
+          actual_role: profile.role,
+          view_as_role: viewRole,
+          is_view_as: viewRole !== profile.role,
+        }
+      : profile;
+    return {
+      ...raw,
+      user,
+      profile: effectiveProfile,
+      actualProfile: profile,
+      actualRole: profile.role,
+      canViewAs,
+      viewAsRole: effectiveProfile.role,
+      mode,
+    };
   }
   async function syncSupabaseSession(rawSession) {
     if (!rawSession?.user) {
@@ -791,6 +837,15 @@
       const session = { user: { id: profile.id, email: profile.email }, profile, mode: 'prototype' };
       setSession(session);
       return { data: { session }, error: null };
+    },
+    async viewAsRole(role) {
+      if (!VIEW_AS_ROLES.includes(role)) return { data: null, error: new Error('Unknown role.') };
+      const current = getSession();
+      if (!current?.canViewAs) return { data: null, error: new Error('View-as is only available to the credentialed owner account.') };
+      writeViewRole(role);
+      const next = wrapSession(current, current.actualProfile || current.profile, current.mode);
+      setSession(next);
+      return { data: { session: next }, error: null };
     },
     async signInWithMagicLink(email, role) {
       if (!hasRealAuth() || !window.HZ_FN_BASE || !window.HZ_ANON_KEY) {
@@ -846,6 +901,7 @@
     _supportsMagicLink: hasRealAuth,
     _mode: () => hasRealAuth() ? 'live' : 'prototype',
     _lastEmail: lastEmail,
+    _viewRoles: () => [...VIEW_AS_ROLES],
   };
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -865,6 +921,36 @@
       h ^= h >>> 17; h >>>= 0;
       h ^= h << 5;  h >>>= 0;
       return (h & 0xffffffff) / 0xffffffff;
+    };
+  }
+
+  const SCORE_CALIBRATION_ANCHORS = [{
+    label: 'Magic City comp day anchor',
+    model_pct: 90.3,
+    official_pct: 93.65,
+    note: 'Single known day-of-competition score supplied by Andrew on 2026-04-23.',
+  }];
+
+  function clampScore(v) {
+    return Math.max(0, Math.min(99.5, Number.isFinite(v) ? v : 0));
+  }
+
+  function calibrateProjectedScore(rawPct, totalMax) {
+    const anchor = SCORE_CALIBRATION_ANCHORS[0];
+    const delta = anchor.official_pct - anchor.model_pct;
+    const distance = Math.abs(rawPct - anchor.model_pct);
+    const influence = Math.exp(-distance / 16);
+    const adjustment = Number((delta * influence).toFixed(2));
+    const calibratedPct = clampScore(rawPct + adjustment);
+    return {
+      pct: calibratedPct,
+      total: calibratedPct / 100 * totalMax,
+      adjustment,
+      raw_pct: Number(rawPct.toFixed(2)),
+      raw_total: Number((rawPct / 100 * totalMax).toFixed(2)),
+      applied: Math.abs(adjustment) >= 0.05,
+      basis: 'single_anchor_soft_offset',
+      anchors: SCORE_CALIBRATION_ANCHORS,
     };
   }
 
@@ -988,8 +1074,11 @@
     totals.forEach(c => c.pct = Number((c.awarded / c.max * 100).toFixed(1)));
     const totalA = totals.reduce((s,c) => s+c.awarded, 0);
     const totalD = deductions.reduce((s,d) => s+d.value, 0);
-    const total = Math.max(0, totalA - totalD);
-    const pct = total / totalMax * 100;
+    const rawTotal = Math.max(0, totalA - totalD);
+    const rawPct = rawTotal / totalMax * 100;
+    const calibration = calibrateProjectedScore(rawPct, totalMax);
+    const total = calibration.total;
+    const pct = calibration.pct;
     const strongest = [...totals].sort((a,b) => (b.awarded/b.max) - (a.awarded/a.max))[0];
     const weakest = [...totals].sort((a,b) => (a.awarded/a.max) - (b.awarded/b.max))[0];
 
@@ -1042,6 +1131,13 @@
       total: Number(total.toFixed(2)),
       possible: totalMax,
       pct: Number(pct.toFixed(2)),
+      raw_total: Number(rawTotal.toFixed(2)),
+      raw_pct: Number(rawPct.toFixed(2)),
+      calibration: {
+        ...calibration,
+        total: Number(calibration.total.toFixed(2)),
+        pct: Number(calibration.pct.toFixed(2)),
+      },
       categories: totals,
       deductions: { total: Number(totalD.toFixed(2)), count: deductions.length },
       strongest: strongest?.code ?? null,

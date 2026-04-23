@@ -138,6 +138,36 @@ function isTransientGeminiError(msg: string) {
   return /(429|503|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|timed? out|timeout|Unexpected end of JSON input|malformed json|no text)/i.test(msg);
 }
 
+const SCORE_CALIBRATION_ANCHORS = [{
+  label: 'Magic City comp day anchor',
+  model_pct: 90.3,
+  official_pct: 93.65,
+  note: 'Single known day-of-competition score supplied by Andrew on 2026-04-23.',
+}];
+
+function clampScore(v: number) {
+  return Math.max(0, Math.min(99.5, Number.isFinite(v) ? v : 0));
+}
+
+function calibrateProjectedScore(rawPct: number, totalMax: number) {
+  const anchor = SCORE_CALIBRATION_ANCHORS[0];
+  const delta = anchor.official_pct - anchor.model_pct;
+  const distance = Math.abs(rawPct - anchor.model_pct);
+  const influence = Math.exp(-distance / 16);
+  const adjustment = Number((delta * influence).toFixed(2));
+  const calibratedPct = clampScore(rawPct + adjustment);
+  return {
+    pct: calibratedPct,
+    total: calibratedPct / 100 * totalMax,
+    adjustment,
+    raw_pct: Number(rawPct.toFixed(2)),
+    raw_total: Number((rawPct / 100 * totalMax).toFixed(2)),
+    applied: Math.abs(adjustment) >= 0.05,
+    basis: 'single_anchor_soft_offset',
+    anchors: SCORE_CALIBRATION_ANCHORS,
+  };
+}
+
 function parseGeminiPayload(raw: string) {
   const stripped = raw
     .replace(/^```json\s*/i, '')
@@ -686,8 +716,11 @@ async function runAnalysisBackground(aid: string, body: AReq, categories: Cat[],
     });
     const tA = totals.reduce((s, c) => s + c.awarded, 0);
     const tD = out.deductions.reduce((s, d) => s + d.value, 0);
-    const total = Math.max(0, tA - tD);
-    const pct = total / totalMax * 100;
+    const rawTotal = Math.max(0, tA - tD);
+    const rawPct = rawTotal / totalMax * 100;
+    const calibration = calibrateProjectedScore(rawPct, totalMax);
+    const total = calibration.total;
+    const pct = calibration.pct;
     const strong = [...totals].sort((a, b) => (b.awarded / b.max) - (a.awarded / a.max))[0];
     const weak   = [...totals].sort((a, b) => (a.awarded / a.max) - (b.awarded / b.max))[0];
 
@@ -699,6 +732,12 @@ async function runAnalysisBackground(aid: string, body: AReq, categories: Cat[],
     const completed = Date.now();
     const scorecard = {
       total: Number(total.toFixed(2)), possible: totalMax, pct: Number(pct.toFixed(2)),
+      raw_total: Number(rawTotal.toFixed(2)), raw_pct: Number(rawPct.toFixed(2)),
+      calibration: {
+        ...calibration,
+        total: Number(calibration.total.toFixed(2)),
+        pct: Number(calibration.pct.toFixed(2)),
+      },
       categories: totals.map(c => ({ ...c, pct: Number((c.awarded / c.max * 100).toFixed(1)) })),
       deductions: { total: Number(tD.toFixed(2)), count: out.deductions.length },
       strongest: strong?.code ?? null, weakest: weak?.code ?? null
