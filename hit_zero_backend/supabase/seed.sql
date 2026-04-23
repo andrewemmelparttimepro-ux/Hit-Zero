@@ -15,7 +15,8 @@ on conflict do nothing;
 insert into auth.users (id, email, raw_user_meta_data, email_confirmed_at, created_at)
 values
   ('aaaa0000-0000-0000-0000-000000000001', 'owner@mca.test',  jsonb_build_object('role','owner','display_name','Tasha Owens','program_id','11111111-1111-1111-1111-111111111111'), now(), now()),
-  ('aaaa0000-0000-0000-0000-000000000002', 'coach@mca.test',  jsonb_build_object('role','coach','display_name','Coach Jordan','program_id','11111111-1111-1111-1111-111111111111'), now(), now()),
+  ('aaaa0000-0000-0000-0000-000000000002', 'coach@mca.test',  jsonb_build_object('role','coach','display_name','Coach Brynn','program_id','11111111-1111-1111-1111-111111111111'), now(), now()),
+  ('aaaa0000-0000-0000-0000-000000000005', 'coach2@mca.test', jsonb_build_object('role','coach','display_name','Carlie Wilson','program_id','11111111-1111-1111-1111-111111111111'), now(), now()),
   ('aaaa0000-0000-0000-0000-000000000003', 'parent@mca.test', jsonb_build_object('role','parent','display_name','Robin Parker','program_id','11111111-1111-1111-1111-111111111111'), now(), now()),
   ('aaaa0000-0000-0000-0000-000000000004', 'athlete@mca.test',jsonb_build_object('role','athlete','display_name','Ava Parker','program_id','11111111-1111-1111-1111-111111111111'), now(), now())
 on conflict do nothing;
@@ -60,6 +61,11 @@ end $$;
 insert into parent_links (parent_id, athlete_id, relation, "primary")
 select 'aaaa0000-0000-0000-0000-000000000003', id, 'parent', true
 from athletes where display_name = 'Ava Parker';
+
+insert into parent_links (parent_id, athlete_id, relation, "primary")
+select 'aaaa0000-0000-0000-0000-000000000002', id, 'parent', false
+from athletes where display_name = 'Madison Lee'
+on conflict do nothing;
 
 -- ─── Athlete skills: seed a realistic distribution ───────────────────────
 -- Every athlete on every skill. Status weighted by level gap vs team level(4).

@@ -91,7 +91,8 @@
       programs: [{ id: 'p_mca', name: 'Magic City Allstars', city: 'Minot, ND' }],
       teams: [{ id: team.id, program_id: 'p_mca', name: team.name, division: team.division, level: team.level, season_start: team.seasonStart }],
       profiles: [
-        { id: 'u_coach', program_id: 'p_mca', role: 'coach', display_name: 'Coach Jamie', email: 'jamie@magiccityallstars.com' },
+        { id: 'u_coach', program_id: 'p_mca', role: 'coach', display_name: 'Coach Brynn', email: 'brynn@magiccityallstars.com' },
+        { id: 'u_coach_2', program_id: 'p_mca', role: 'coach', display_name: 'Carlie Wilson', email: 'carlie@magiccityallstars.com' },
         { id: 'u_owner', program_id: 'p_mca', role: 'owner', display_name: 'Erin Magic', email: 'erin@magiccityallstars.com' },
         { id: 'u_athlete', program_id: 'p_mca', role: 'athlete', display_name: 'Kenzie Rhodes', email: 'kenzie@demo.com' },
         { id: 'u_parent', program_id: 'p_mca', role: 'parent', display_name: 'Sam Rhodes', email: 'sam@demo.com' },
@@ -100,7 +101,10 @@
         id: a.id, team_id: team.id, display_name: a.name, initials: a.initials, age: a.age,
         role: a.role, photo_color: a.photo, joined_at: a.joined + '-15',
       })),
-      parent_links: [{ parent_id: 'u_parent', athlete_id: 'a01' }],
+      parent_links: [
+        { parent_id: 'u_parent', athlete_id: 'a01' },
+        { parent_id: 'u_coach', athlete_id: 'a12' },
+      ],
       skills,
       athlete_skills: athleteSkills,
       routines: routine ? [routine] : [],
@@ -138,12 +142,15 @@
     const thread_members = [
       // Coach thread
       { thread_id: 't_coaches', profile_id: 'u_coach', role_in_thread: 'owner'  },
+      { thread_id: 't_coaches', profile_id: 'u_coach_2', role_in_thread: 'member' },
       { thread_id: 't_coaches', profile_id: 'u_owner', role_in_thread: 'member' },
       // Team thread — coach + all athletes (just seed the demo ones)
       { thread_id: 't_team', profile_id: 'u_coach',   role_in_thread: 'owner'  },
+      { thread_id: 't_team', profile_id: 'u_coach_2', role_in_thread: 'member' },
       { thread_id: 't_team', profile_id: 'u_athlete', role_in_thread: 'member' },
       // Parents thread — coach + parents
       { thread_id: 't_parents', profile_id: 'u_coach',  role_in_thread: 'owner'  },
+      { thread_id: 't_parents', profile_id: 'u_coach_2', role_in_thread: 'member' },
       { thread_id: 't_parents', profile_id: 'u_parent', role_in_thread: 'member' },
       // DM — coach + Kenzie
       { thread_id: 't_dm_k_c', profile_id: 'u_coach',   role_in_thread: 'member' },
@@ -151,22 +158,25 @@
     ];
     const messages = [
       // Coaches
-      { id: 'm1', thread_id: 't_coaches', author_id: 'u_owner', body: 'Hotel block expires Friday — tell me ASAP if anyone isn\u2019t going.', created_at: iso(-mins(60)) },
+      { id: 'm1', thread_id: 't_coaches', author_id: 'u_coach_2', body: 'Hotel block expires Friday — tell me ASAP if anyone isn\u2019t going.', created_at: iso(-mins(60)) },
       { id: 'm2', thread_id: 't_coaches', author_id: 'u_coach', body: 'Got 3 maybes. Will lock tomorrow after practice.', created_at: iso(-mins(12)) },
       // Team
       { id: 'm3', thread_id: 't_team', author_id: 'u_coach',   body: 'Full-out Friday. Be ready to run it 3x clean.', created_at: iso(-hours(5)) },
       { id: 'm4', thread_id: 't_team', author_id: 'u_athlete', body: 'On it \u2728', created_at: iso(-mins(45)) },
       // Parents
-      { id: 'm5', thread_id: 't_parents', author_id: 'u_owner', body: 'Reminder: choreo fee due Friday. Venmo or Square link in billing.', created_at: iso(-hours(6)) },
-      { id: 'm6', thread_id: 't_parents', author_id: 'u_parent', body: 'Paid. Thanks Erin!', created_at: iso(-hours(2)) },
+      { id: 'm5', thread_id: 't_parents', author_id: 'u_coach_2', body: 'Reminder: choreo fee due Friday. Venmo or Square link in billing.', created_at: iso(-hours(6)) },
+      { id: 'm6', thread_id: 't_parents', author_id: 'u_parent', body: 'Paid. Thanks Coach Brynn!', created_at: iso(-hours(2)) },
       // DM
       { id: 'm7', thread_id: 't_dm_k_c', author_id: 'u_coach',   body: 'Saw the clip — your full landed clean. Proud of you.', created_at: iso(-hours(1)) },
       { id: 'm8', thread_id: 't_dm_k_c', author_id: 'u_athlete', body: 'Thank you!!!', created_at: iso(-mins(6)) },
     ];
     const message_reads = [
       { thread_id: 't_coaches', profile_id: 'u_coach', last_read_at: iso(-mins(10)) },
+      { thread_id: 't_coaches', profile_id: 'u_coach_2', last_read_at: iso(-mins(11)) },
       { thread_id: 't_team',    profile_id: 'u_coach', last_read_at: iso(-mins(50)) },
+      { thread_id: 't_team',    profile_id: 'u_coach_2', last_read_at: iso(-hours(1)) },
       { thread_id: 't_parents', profile_id: 'u_coach', last_read_at: iso(-hours(6)) },
+      { thread_id: 't_parents', profile_id: 'u_coach_2', last_read_at: iso(-hours(5)) },
       { thread_id: 't_dm_k_c',  profile_id: 'u_coach', last_read_at: iso(-mins(6)) },
     ];
 
@@ -230,7 +240,7 @@
         is_active: true, created_by: 'u_coach', created_at: iso(-days(20)) },
       { id: 'ft2', program_id: 'p_mca', kind: 'evaluation', title: 'Mid-Season Progress Report',
         description: 'Fill out per athlete in Week 14. Auto-emailed to parents.',
-        is_active: true, created_by: 'u_coach', created_at: iso(-days(14)) },
+        is_active: true, created_by: 'u_coach_2', created_at: iso(-days(14)) },
     ];
     const form_fields = [
       { id: 'ff1', template_id: 'ft1', label: 'Toe Touch (height + form)',    kind: 'score',   required: true,  weight: 2, position: 0, options: { min: 1, max: 10 } },
@@ -242,7 +252,7 @@
     ];
     const form_responses = [
       { id: 'fr1', template_id: 'ft1', subject_athlete_id: 'a01', submitted_by: 'u_coach', score_total: 88.5, submitted_at: iso(-days(5)), notes: 'Clean tumbler, great flyer, super coachable.' },
-      { id: 'fr2', template_id: 'ft1', subject_athlete_id: 'a07', submitted_by: 'u_coach', score_total: 82.0, submitted_at: iso(-days(5)) },
+      { id: 'fr2', template_id: 'ft1', subject_athlete_id: 'a07', submitted_by: 'u_coach_2', score_total: 82.0, submitted_at: iso(-days(5)) },
       { id: 'fr3', template_id: 'ft1', subject_athlete_id: 'a14', submitted_by: 'u_coach', score_total: 79.5, submitted_at: iso(-days(4)) },
     ];
 

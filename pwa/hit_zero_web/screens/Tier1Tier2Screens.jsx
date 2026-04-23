@@ -28,7 +28,7 @@ function moneyFmt(n) { return '$' + (Math.round((n||0)*100)/100).toLocaleString(
 // Messages — left rail of threads, right pane of conversation
 // ═══════════════════════════════════════════════════════════════════════════
 function Messages({ snap, session }) {
-  const me = session?.profile || { id: 'u_coach', display_name: 'Coach Jamie', role: 'coach' };
+  const me = session?.profile || { id: 'u_coach', display_name: 'Coach Brynn', role: 'coach' };
   const threads = window.HZsel.inboxThreads(me.id);
   const [activeId, setActiveId] = _useState(threads[0]?.id || null);
   const [draft, setDraft] = _useState('');
@@ -746,7 +746,7 @@ function Registration({ snap }) {
       <div style={{ maxWidth: 520, margin: '80px auto', textAlign: 'center' }}>
         <div className="hz-display" style={{ fontSize: 64 }}>Thank <span className="hz-zero">you</span>.</div>
         <div style={{ color: 'var(--hz-dim)', fontSize: 16, marginTop: 18, lineHeight: 1.5 }}>
-          Your registration is in. Coach Jamie or Erin will email you within 48 hours with next steps.
+          Your registration is in. Coach Brynn or Carlie Wilson will email you within 48 hours with next steps.
         </div>
       </div>
     );
