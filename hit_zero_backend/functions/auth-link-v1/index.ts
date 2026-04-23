@@ -3,11 +3,32 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 const SB_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SB_SR = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const APP_ORIGIN = Deno.env.get('APP_ORIGIN') ?? 'https://hit-zero.vercel.app';
-const BOOTSTRAP_USERS: Record<string, { display_name: string; role: string; program_id: string }> = {
+const MAGIC_CITY_PROGRAM_ID = '11111111-1111-1111-1111-111111111111';
+
+const BOOTSTRAP_USERS: Record<string, {
+  display_name: string;
+  role: string;
+  program_id: string;
+  athlete?: {
+    display_name: string;
+    initials: string;
+    photo_color: string;
+  };
+}> = {
   'andrew@ndai.pro': {
     display_name: 'Andrew Emmel',
     role: 'owner',
-    program_id: '11111111-1111-1111-1111-111111111111',
+    program_id: MAGIC_CITY_PROGRAM_ID,
+  },
+  'arlowe@ndai.pro': {
+    display_name: 'Arlowe Emmel',
+    role: 'athlete',
+    program_id: MAGIC_CITY_PROGRAM_ID,
+    athlete: {
+      display_name: 'Arlowe Emmel',
+      initials: 'AE',
+      photo_color: '#F97FAC',
+    },
   },
 };
 const supa = createClient(SB_URL, SB_SR, {
@@ -57,11 +78,49 @@ async function loadProfile(email: string) {
   return data;
 }
 
+async function ensureAthleteProfile(profile: any, seed: typeof BOOTSTRAP_USERS[string]) {
+  if (!profile?.id || !seed?.athlete) return;
+
+  const { data: existing, error: existingError } = await supa
+    .from('athletes')
+    .select('id, profile_id, display_name')
+    .eq('profile_id', profile.id)
+    .maybeSingle();
+  if (existingError) throw existingError;
+  if (existing) return;
+
+  const { data: team, error: teamError } = await supa
+    .from('teams')
+    .select('id')
+    .eq('program_id', seed.program_id)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (teamError) throw teamError;
+  if (!team?.id) throw new Error('No active team found for athlete bootstrap.');
+
+  const { error: athleteError } = await supa
+    .from('athletes')
+    .insert({
+      profile_id: profile.id,
+      team_id: team.id,
+      display_name: seed.athlete.display_name,
+      initials: seed.athlete.initials,
+      photo_color: seed.athlete.photo_color,
+      joined_at: new Date().toISOString().slice(0, 10),
+    });
+  if (athleteError) throw athleteError;
+}
+
 async function ensureBootstrapUser(email: string, requestedRole: string | null) {
   let profile = await loadProfile(email);
-  if (profile) return profile;
-
   const seed = BOOTSTRAP_USERS[email];
+  if (profile) {
+    if (seed) await ensureAthleteProfile(profile, seed);
+    return profile;
+  }
+
   if (!seed) return null;
 
   const { error: createError } = await supa.auth.admin.createUser({
@@ -77,7 +136,10 @@ async function ensureBootstrapUser(email: string, requestedRole: string | null) 
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
     profile = await loadProfile(email);
-    if (profile) return profile;
+    if (profile) {
+      await ensureAthleteProfile(profile, seed);
+      return profile;
+    }
     await new Promise(resolve => setTimeout(resolve, 150));
   }
   throw new Error('Provisioned auth user, but profile did not materialize.');
