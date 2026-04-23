@@ -98,7 +98,7 @@
         { id: 'u_parent', program_id: 'p_mca', role: 'parent', display_name: 'Sam Rhodes', email: 'sam@demo.com' },
       ],
       athletes: roster.map(a => ({
-        id: a.id, team_id: team.id, display_name: a.name, initials: a.initials, age: a.age,
+        id: a.id, team_id: team.id, profile_id: a.id === 'a01' ? 'u_athlete' : null, display_name: a.name, initials: a.initials, age: a.age,
         role: a.role, photo_color: a.photo, joined_at: a.joined + '-15',
       })),
       parent_links: [
@@ -353,6 +353,36 @@
       { id: 'pb6', plan_id: 'pp1', drill_id: null,   custom_title: 'Huddle + notes',        duration_min: 10, position: 5 },
     ] : [];
 
+    // ─── Athlete social loop: collectible pins + drops ───
+    const pin_designs = [
+      { id: 'pin_hit_zero',          program_id: 'p_mca', name: 'Hit Zero',          emoji: '⚡', rarity: 'common',    accent_start: '#27CFD7', accent_end: '#8EE3F0', unlock_hint: 'Starter pin for every athlete.', lore: 'The first pin on the bag.' },
+      { id: 'pin_red_bow',           program_id: 'p_mca', name: 'Red Bow Energy',    emoji: '🎀', rarity: 'common',    accent_start: '#F97FAC', accent_end: '#F4B1C8', unlock_hint: 'Earned from perfect attendance weeks.', lore: 'For girls who look comp-ready before warm-ups even start.' },
+      { id: 'pin_clothespin',        program_id: 'p_mca', name: 'Lucky Clothespin',  emoji: '📍', rarity: 'rare',      accent_start: '#FFD76B', accent_end: '#FF9F6E', unlock_hint: 'Reward for dropping 3 pins at one competition.', lore: 'The digital version of the decorated clothespins girls clip on each other’s bags.' },
+      { id: 'pin_stunt_stack',       program_id: 'p_mca', name: 'Stunt Stack',       emoji: '🏆', rarity: 'rare',      accent_start: '#88F7B3', accent_end: '#27CFD7', unlock_hint: 'Unlocked after a clean stunt full-out.', lore: 'Big trust energy.' },
+      { id: 'pin_confetti_heart',    program_id: 'p_mca', name: 'Confetti Heart',    emoji: '💖', rarity: 'epic',      accent_start: '#F97FAC', accent_end: '#FFD76B', unlock_hint: 'Gifted when another athlete pins you for hype.', lore: 'You made somebody’s weekend.' },
+      { id: 'pin_country_crossover', program_id: 'p_mca', name: 'Country Crossover', emoji: '🗺️', rarity: 'legendary', accent_start: '#C8A6FF', accent_end: '#6CE5E8', unlock_hint: 'Pin an athlete from another gym at a major comp.', lore: 'The one everybody notices on the bag.' },
+    ];
+    const athlete_pins = [
+      { id: 'ap1', athlete_id: 'a01', design_id: 'pin_hit_zero',       quantity: 2, favorite: true,  unlocked_at: iso(-days(18)) },
+      { id: 'ap2', athlete_id: 'a01', design_id: 'pin_red_bow',        quantity: 1, favorite: false, unlocked_at: iso(-days(9)) },
+      { id: 'ap3', athlete_id: 'a01', design_id: 'pin_confetti_heart', quantity: 1, favorite: false, unlocked_at: iso(-hours(40)) },
+      { id: 'ap4', athlete_id: 'a07', design_id: 'pin_hit_zero',       quantity: 2, favorite: true,  unlocked_at: iso(-days(20)) },
+      { id: 'ap5', athlete_id: 'a07', design_id: 'pin_stunt_stack',    quantity: 1, favorite: false, unlocked_at: iso(-days(4)) },
+      { id: 'ap6', athlete_id: 'a03', design_id: 'pin_hit_zero',       quantity: 1, favorite: false, unlocked_at: iso(-days(16)) },
+      { id: 'ap7', athlete_id: 'a03', design_id: 'pin_clothespin',     quantity: 1, favorite: true,  unlocked_at: iso(-days(2)) },
+    ];
+    const pin_drops = [
+      { id: 'pd1', design_id: 'pin_confetti_heart', from_athlete_id: 'a07', to_athlete_id: 'a01', recipient_name: 'Kenzie Rhodes', recipient_program: 'Magic City Allstars', recipient_city: 'Minot, ND', event_name: 'Dream On warm-up', message: 'You looked unreal in warm-ups.', created_at: iso(-hours(18)), status: 'received' },
+      { id: 'pd2', design_id: 'pin_hit_zero',       from_athlete_id: 'a01', to_athlete_id: 'a03', recipient_name: 'Brooklyn Hale', recipient_program: 'Magic City Allstars', recipient_city: 'Minot, ND', event_name: 'Friday full-out',  message: 'That jump section ate.', created_at: iso(-days(2)),  status: 'sent' },
+      { id: 'pd3', design_id: 'pin_red_bow',        from_athlete_id: 'a03', to_athlete_id: 'a01', recipient_name: 'Kenzie Rhodes', recipient_program: 'Magic City Allstars', recipient_city: 'Minot, ND', event_name: 'Bus ride',         message: 'Thanks for the pep talk.', created_at: iso(-days(3)),  status: 'received' },
+      { id: 'pd4', design_id: 'pin_country_crossover', from_athlete_id: 'a01', to_athlete_id: null, recipient_name: 'Tatum Lee', recipient_program: 'Cheer Athletics', recipient_city: 'Dallas, TX', event_name: 'Next major comp', message: 'Save this one for a girl you meet out of state.', created_at: iso(days(7)), status: 'planned' },
+    ];
+    const pin_quests = [
+      { id: 'pq1', athlete_id: 'a01', title: 'Warm-up Whisperer',      body: 'Drop 2 hype pins before the team takes the floor.', progress: 1, goal: 2, reward_design_id: 'pin_clothespin', expires_at: iso(days(2)), category: 'competition' },
+      { id: 'pq2', athlete_id: 'a01', title: 'Meet somebody new',      body: 'Pin an athlete from another gym this weekend.',      progress: 0, goal: 1, reward_design_id: 'pin_country_crossover', expires_at: iso(days(10)), category: 'social' },
+      { id: 'pq3', athlete_id: 'a07', title: 'Bench energy captain',   body: 'Send 3 pins after full-out to girls who hit clean.', progress: 2, goal: 3, reward_design_id: 'pin_confetti_heart', expires_at: iso(days(1)), category: 'team' },
+    ];
+
     // ─── AI Judge: rubric + one seeded completed analysis ───
     const aiJudgeSeed = buildAiJudgeSeed(team, roster, now);
 
@@ -368,6 +398,7 @@
       leads, lead_touches,
       volunteer_roles, volunteer_assignments,
       drills, practice_plans, practice_plan_blocks,
+      pin_designs, athlete_pins, pin_drops, pin_quests,
       ...aiJudgeSeed,
     };
   }
@@ -470,10 +501,31 @@
   }
 
   // ─── Load / save ───
+  function migrateData(existing) {
+    const fresh = seed();
+    let changed = false;
+    ['pin_designs', 'athlete_pins', 'pin_drops', 'pin_quests'].forEach((table) => {
+      if (!Array.isArray(existing[table])) {
+        existing[table] = fresh[table] || [];
+        changed = true;
+      }
+    });
+    const linkedAthlete = (existing.athletes || []).find(a => a.id === 'a01');
+    if (linkedAthlete && !linkedAthlete.profile_id) {
+      linkedAthlete.profile_id = 'u_athlete';
+      changed = true;
+    }
+    return { data: existing, changed };
+  }
   function load() {
     try {
       const raw = localStorage.getItem(LS_KEY);
-      if (raw) return JSON.parse(raw);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const migrated = migrateData(parsed);
+        if (migrated.changed) save(migrated.data);
+        return migrated.data;
+      }
     } catch {}
     const fresh = seed();
     save(fresh);

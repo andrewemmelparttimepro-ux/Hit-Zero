@@ -49,6 +49,7 @@ const NAV_CONFIG = {
   athlete: [
     { group: 'My Cheer' },
     { id: 'reel',         label: 'My Reel',         icon: 'reel' },
+    { id: 'pins',         label: 'Pins',            icon: 'star' },
     { id: 'skilltree',    label: 'Skill Tree',      icon: 'skills' },
     { id: 'routine',      label: 'My Routine',      icon: 'routine' },
     { id: 'ai_judge',     label: 'AI Judge',        icon: 'bolt' },
@@ -88,6 +89,7 @@ const SCREEN_MAP = {
   admin: 'AdminConsole',
   billing: 'Billing',
   reel: 'AthleteReel',
+  pins: 'PinsHub',
   skilltree: 'SkillTree',
   parent: 'ParentDashboard',
   // Tier 1 / Tier 2 additions

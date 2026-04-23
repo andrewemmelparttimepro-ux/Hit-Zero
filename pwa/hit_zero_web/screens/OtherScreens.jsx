@@ -2,13 +2,22 @@
 // HIT ZERO WEB — Athlete Reel + Skill Tree + Parent Dashboard + rest of screens
 // ─────────────────────────────────────────────────────────────────────────────
 
+function resolveSessionAthlete(snap, session) {
+  const profileId = session?.profile?.id;
+  return (snap.athletes || []).find(a => a.profile_id === profileId)
+    || (snap.athletes || []).find(a => a.id === 'a01')
+    || (snap.athletes || [])[0]
+    || null;
+}
+
 // ─── Athlete Reel: personal wins feed, next goals ───
 function AthleteReel({ snap, session, navigate }) {
-  // For demo: use Kenzie (a01) if the current user has no linked athlete
-  const myAthlete = snap.athletes.find(a => a.id === 'a01') || snap.athletes[0];
+  const myAthlete = resolveSessionAthlete(snap, session);
+  if (!myAthlete) return null;
   const readiness = window.HZsel.athleteReadiness(myAthlete.id);
   const summary = window.HZsel.athleteSkillsSummary(myAthlete.id);
   const attendance = window.HZsel.athleteAttendance(myAthlete.id);
+  const pins = window.HZsel.pinStats(myAthlete.id);
   const myCels = (snap.celebrations || []).filter(c => c.athlete_id === myAthlete.id).slice(0, 6);
   const statusMap = {};
   (snap.athlete_skills || []).filter(r => r.athlete_id === myAthlete.id).forEach(r => { statusMap[r.skill_id] = r.status; });
@@ -52,10 +61,26 @@ function AthleteReel({ snap, session, navigate }) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
         <StatTile label="Mastered" value={summary.mastered} sub="career skills" accent="var(--hz-pink)" size="md"/>
         <StatTile label="Got It" value={summary.got} sub="solid in routine" accent="var(--hz-teal)" size="md"/>
         <StatTile label="Attendance" value={`${Math.round(attendance.pct*100)}%`} sub={`${attendance.attended} / ${attendance.total} sessions`} size="md"/>
+        <StatTile label="Pins" value={pins.unique} sub={`${pins.sent} sent · ${pins.received} received`} accent="var(--hz-amber)" size="md"/>
+      </div>
+
+      <div className="hz-card" style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div>
+          <div className="hz-eyebrow" style={{ marginBottom: 8 }}>New side game</div>
+          <div className="hz-display" style={{ fontSize: 30, marginBottom: 6 }}>
+            Your <span className="hz-zero">pin shelf</span>.
+          </div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 13, maxWidth: 560, lineHeight: 1.55 }}>
+            Collect decorated comp pins, earn rare clothespins, and drop them on girls who were cool all weekend.
+          </div>
+        </div>
+        <button className="hz-btn hz-btn-primary" onClick={() => navigate && navigate('pins')}>
+          Open pins <HZIcon name="arrow-right" size={13}/>
+        </button>
       </div>
 
       <div className="hz-card">
@@ -77,9 +102,163 @@ function AthleteReel({ snap, session, navigate }) {
 }
 window.AthleteReel = AthleteReel;
 
+function PinsHub({ snap, session }) {
+  const myAthlete = resolveSessionAthlete(snap, session);
+  if (!myAthlete) return null;
+  const inventory = window.HZsel.pinInventory(myAthlete.id);
+  const drops = window.HZsel.pinDropsForAthlete(myAthlete.id);
+  const quests = window.HZsel.pinQuests(myAthlete.id);
+  const stats = window.HZsel.pinStats(myAthlete.id);
+  const available = (snap.pin_designs || []).filter(d => !inventory.some(row => row.design_id === d.id));
+
+  const rarityTone = (rarity) => (
+    rarity === 'legendary' ? 'pink' :
+    rarity === 'epic' ? 'teal' :
+    rarity === 'rare' ? 'amber' :
+    undefined
+  );
+
+  return (
+    <div>
+      <div style={{ marginBottom: 36 }}>
+        <div className="hz-eyebrow" style={{ marginBottom: 10 }}>Pins · Athlete side quest</div>
+        <div className="hz-display" style={{ fontSize: 72, lineHeight: 0.9 }}>
+          Pin your <span className="hz-zero">people</span>.
+        </div>
+        <div style={{ color: 'var(--hz-dim)', fontSize: 15, marginTop: 16, maxWidth: 860, lineHeight: 1.6 }}>
+          This is the social layer: collect decorated comp pins, earn rare clothespins, and drop them on girls who made the weekend more fun. Start with your team. Grow it into a country-wide bag game.
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+        <StatTile label="Collected" value={stats.unique} sub={`${stats.total} total on your shelf`} accent="var(--hz-pink)" size="md"/>
+        <StatTile label="Sent" value={stats.sent} sub="pins you dropped" accent="var(--hz-teal)" size="md"/>
+        <StatTile label="Received" value={stats.received} sub="girls who pinned you" accent="var(--hz-amber)" size="md"/>
+        <StatTile label="On deck" value={available.length} sub="pins left to craft" size="md"/>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1.05fr 0.95fr', gap: 20, marginBottom: 24 }}>
+        <div className="hz-card">
+          <div className="hz-eyebrow" style={{ marginBottom: 12 }}>Active quests</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {quests.map(q => {
+              const pct = Math.max(0, Math.min(100, Math.round((q.progress / Math.max(1, q.goal)) * 100)));
+              return (
+                <div key={q.id} style={{ padding: 14, borderRadius: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--hz-line)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 8, alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 15 }}>{q.title}</div>
+                      <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>{q.body}</div>
+                    </div>
+                    {q.design && <Pill tone={rarityTone(q.design.rarity)}>{q.design.name}</Pill>}
+                  </div>
+                  <div style={{ height: 8, background: 'rgba(255,255,255,0.05)', borderRadius: 999, overflow: 'hidden', marginBottom: 8 }}>
+                    <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg, var(--hz-teal), var(--hz-pink))' }}/>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--hz-dim)' }}>
+                    <span>{q.progress} / {q.goal} complete</span>
+                    <span>ends {new Date(q.expires_at).toLocaleDateString('default', { month: 'short', day: 'numeric' })}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="hz-card">
+          <div className="hz-eyebrow" style={{ marginBottom: 12 }}>Comp trail</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {drops.slice(0, 4).map(drop => {
+              const sent = drop.from_athlete_id === myAthlete.id;
+              const otherName = sent
+                ? (drop.toAthlete?.display_name || drop.recipient_name)
+                : (drop.fromAthlete?.display_name || 'Someone');
+              return (
+                <div key={drop.id} style={{ padding: 14, borderRadius: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--hz-line)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{
+                        width: 42, height: 42, borderRadius: 12, display: 'grid', placeItems: 'center',
+                        background: `linear-gradient(135deg, ${drop.design?.accent_start || '#27CFD7'}, ${drop.design?.accent_end || '#F97FAC'})`,
+                        fontSize: 20,
+                      }}>{drop.design?.emoji || '📍'}</div>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 14 }}>{drop.design?.name || 'Pin drop'}</div>
+                        <div style={{ color: 'var(--hz-dim)', fontSize: 11 }}>{sent ? `You pinned ${otherName}` : `${otherName} pinned you`}</div>
+                      </div>
+                    </div>
+                    <Pill tone={sent ? 'teal' : 'pink'}>{sent ? 'Sent' : 'Received'}</Pill>
+                  </div>
+                  <div style={{ fontSize: 13, lineHeight: 1.5 }}>{drop.message}</div>
+                  <div style={{ color: 'var(--hz-dim)', fontSize: 11, marginTop: 8 }}>
+                    {drop.event_name} · {drop.recipient_program}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+        <div className="hz-card">
+          <div className="hz-eyebrow" style={{ marginBottom: 12 }}>Your shelf</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+            {inventory.map(row => (
+              <div key={row.id} style={{ padding: 14, borderRadius: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--hz-line)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
+                  <div style={{
+                    width: 48, height: 48, borderRadius: 14, display: 'grid', placeItems: 'center',
+                    background: `linear-gradient(135deg, ${row.design.accent_start}, ${row.design.accent_end})`,
+                    fontSize: 22,
+                  }}>{row.design.emoji}</div>
+                  <div style={{ textAlign: 'right' }}>
+                    <Pill tone={rarityTone(row.design.rarity)}>{row.design.rarity}</Pill>
+                    <div style={{ color: 'var(--hz-dim)', fontSize: 11, marginTop: 8 }}>x{row.quantity}</div>
+                  </div>
+                </div>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>{row.design.name}</div>
+                <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>{row.design.lore}</div>
+                {row.favorite && <div className="hz-eyebrow" style={{ marginTop: 10, color: 'var(--hz-teal)' }}>On your bag</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="hz-card">
+          <div className="hz-eyebrow" style={{ marginBottom: 12 }}>Create next</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {available.slice(0, 4).map(pin => (
+              <div key={pin.id} style={{ padding: 14, borderRadius: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--hz-line)', display: 'flex', gap: 14, alignItems: 'center' }}>
+                <div style={{
+                  width: 52, height: 52, borderRadius: 16, display: 'grid', placeItems: 'center',
+                  background: `linear-gradient(135deg, ${pin.accent_start}, ${pin.accent_end})`,
+                  fontSize: 24,
+                }}>{pin.emoji}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+                    <div style={{ fontWeight: 700, fontSize: 15 }}>{pin.name}</div>
+                    <Pill tone={rarityTone(pin.rarity)}>{pin.rarity}</Pill>
+                  </div>
+                  <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>{pin.unlock_hint}</div>
+                </div>
+              </div>
+            ))}
+            <div style={{ padding: 14, borderRadius: 14, border: '1px dashed var(--hz-line-2)', color: 'var(--hz-dim)', fontSize: 12.5, lineHeight: 1.6 }}>
+              Next build: let athletes decorate digital clothespins, turn them into QR-ready comp drops, and pin girls from other gyms in the wild.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+window.PinsHub = PinsHub;
+
 // ─── Skill Tree: athlete-scoped, full USASF ───
 function SkillTree({ snap, session }) {
-  const myAthlete = snap.athletes.find(a => a.id === 'a01') || snap.athletes[0];
+  const myAthlete = resolveSessionAthlete(snap, session);
+  if (!myAthlete) return null;
   const cats = ['standing_tumbling','running_tumbling','jumps','stunts','pyramids','baskets'];
   const CAT_LABEL = { standing_tumbling: 'Standing Tumbling', running_tumbling: 'Running Tumbling', jumps: 'Jumps', stunts: 'Stunts', pyramids: 'Pyramids', baskets: 'Baskets' };
   const statusMap = {};

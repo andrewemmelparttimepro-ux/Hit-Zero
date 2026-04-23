@@ -21,6 +21,7 @@
       leads, lead_touches,
       volunteer_roles, volunteer_assignments,
       drills, practice_plans, practice_plan_blocks, parent_links,
+      pin_designs, athlete_pins, pin_drops, pin_quests,
       // AI Routine Judge
       rubric_versions, rubric_categories,
       routine_analyses, analysis_elements, analysis_deductions,
@@ -39,6 +40,7 @@
       q('leads'), q('lead_touches'),
       q('volunteer_roles'), q('volunteer_assignments'),
       q('drills'), q('practice_plans'), q('practice_plan_blocks'), q('parent_links'),
+      q('pin_designs'), q('athlete_pins'), q('pin_drops'), q('pin_quests'),
       q('rubric_versions'), q('rubric_categories'),
       q('routine_analyses'), q('analysis_elements'), q('analysis_deductions'),
       q('analysis_feedback'), q('analysis_skill_updates'),
@@ -55,6 +57,7 @@
       leads, lead_touches,
       volunteer_roles, volunteer_assignments,
       drills, practice_plans, practice_plan_blocks, parent_links,
+      pin_designs, athlete_pins, pin_drops, pin_quests,
       rubric_versions, rubric_categories,
       routine_analyses, analysis_elements, analysis_deductions,
       analysis_feedback, analysis_skill_updates,
@@ -403,6 +406,48 @@
     }, { total: 0, pending: 0, accepted: 0, waitlist: 0, rejected: 0, withdrawn: 0 });
   }
 
+  // Pins
+  function pinDesignById(id) {
+    return (cache.pin_designs || []).find(d => d.id === id) || null;
+  }
+  function pinInventory(aid) {
+    return (cache.athlete_pins || [])
+      .filter(row => row.athlete_id === aid)
+      .map(row => ({ ...row, design: pinDesignById(row.design_id) }))
+      .filter(row => row.design)
+      .sort((a, b) =>
+        Number(!!b.favorite) - Number(!!a.favorite) ||
+        new Date(b.unlocked_at || 0) - new Date(a.unlocked_at || 0)
+      );
+  }
+  function pinDropsForAthlete(aid) {
+    return (cache.pin_drops || [])
+      .filter(drop => drop.from_athlete_id === aid || drop.to_athlete_id === aid)
+      .map(drop => ({
+        ...drop,
+        design: pinDesignById(drop.design_id),
+        fromAthlete: athleteById(drop.from_athlete_id),
+        toAthlete: athleteById(drop.to_athlete_id),
+      }))
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  }
+  function pinQuests(aid) {
+    return (cache.pin_quests || [])
+      .filter(row => row.athlete_id === aid)
+      .map(row => ({ ...row, design: pinDesignById(row.reward_design_id) }))
+      .sort((a, b) => new Date(a.expires_at || 0) - new Date(b.expires_at || 0));
+  }
+  function pinStats(aid) {
+    const inventory = pinInventory(aid);
+    const drops = pinDropsForAthlete(aid);
+    return {
+      unique: inventory.length,
+      total: inventory.reduce((sum, row) => sum + Number(row.quantity || 1), 0),
+      sent: drops.filter(drop => drop.from_athlete_id === aid).length,
+      received: drops.filter(drop => drop.to_athlete_id === aid).length,
+    };
+  }
+
   // ─── AI Routine Judge selectors ──────────────────────────────────────────
   function activeRubric() {
     return (cache.rubric_versions || []).find(v => v.is_active) || (cache.rubric_versions || [])[0] || null;
@@ -468,6 +513,7 @@
     volunteerRolesAndAssignments,
     practicePlanForSession, allPracticePlans,
     pendingRegistrations, registrationSummary,
+    pinDesignById, pinInventory, pinDropsForAthlete, pinQuests, pinStats,
     // AI Judge
     activeRubric, rubricCategories,
     recentAnalyses, analysisById,
