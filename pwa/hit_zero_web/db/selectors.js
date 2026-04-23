@@ -63,6 +63,7 @@
   }
 
   const STATUS_PCT = { none: 0, working: 0.33, got_it: 0.75, mastered: 1.0 };
+  const round2 = (n) => Math.round(Number(n || 0) * 100) / 100;
 
   function athleteById(id) { return cache?.athletes.find(a => a.id === id); }
   function skillById(id) { return cache?.skills.find(s => s.id === id); }
@@ -234,7 +235,24 @@
     const paid = accounts.reduce((s,a) => s + (a.paid || 0), 0);
     const owed = accounts.reduce((s,a) => s + (a.owed || 0), 0);
     const delinquent = accounts.filter(a => (a.owed || 0) > 0).length;
-    return { paid, owed, delinquent, total: paid + owed, nAccounts: accounts.length };
+    const syncedPaid = accounts.reduce((s,a) => s + Number(a.synced_paid || 0), 0);
+    const syncedOpen = accounts.reduce((s,a) => s + Number(a.synced_open_amount || 0), 0);
+    const syncedOpenInvoices = accounts.reduce((s,a) => s + Number(a.synced_open_invoice_count || 0), 0);
+    const syncedAccounts = accounts.filter(a => a.sync_status === 'matched').length;
+    const linkedAccounts = accounts.filter(a => a.payment_provider || a.external_customer_id).length;
+    return {
+      paid,
+      owed,
+      delinquent,
+      total: paid + owed,
+      nAccounts: accounts.length,
+      syncedPaid: round2(syncedPaid),
+      syncedOpen: round2(syncedOpen),
+      syncedOpenInvoices,
+      syncedAccounts,
+      linkedAccounts,
+      hasSquareData: syncedAccounts > 0 || linkedAccounts > 0,
+    };
   }
 
   function athleteBilling(aid) {
@@ -329,6 +347,21 @@
   function leadTouches(leadId) {
     return (cache.lead_touches || []).filter(t => t.lead_id === leadId).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
   }
+  function leadSummary() {
+    const rows = cache.leads || [];
+    const byStage = leadsByStage();
+    const active = rows.filter(l => !['converted', 'lost'].includes(l.stage)).length;
+    const converted = byStage.converted?.length || 0;
+    return {
+      total: rows.length,
+      active,
+      converted,
+      new: byStage.new?.length || 0,
+      tours: byStage.tour?.length || 0,
+      trials: byStage.trial?.length || 0,
+      winRate: rows.length ? Math.round((converted / rows.length) * 100) : 0,
+    };
+  }
 
   // Forms
   function formTemplatesActive() {
@@ -361,6 +394,13 @@
   // Registrations
   function pendingRegistrations() {
     return (cache.registrations || []).filter(r => r.status === 'pending').sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+  }
+  function registrationSummary() {
+    return (cache.registrations || []).reduce((out, row) => {
+      out.total += 1;
+      out[row.status] = (out[row.status] || 0) + 1;
+      return out;
+    }, { total: 0, pending: 0, accepted: 0, waitlist: 0, rejected: 0, withdrawn: 0 });
   }
 
   // ─── AI Routine Judge selectors ──────────────────────────────────────────
@@ -423,11 +463,11 @@
     sessionRsvp, upcomingSessions,
     athleteMedical,
     uniformsWithItems, athleteUniformOrders,
-    leadsByStage, leadTouches,
+    leadsByStage, leadTouches, leadSummary,
     formTemplatesActive, formResponsesForTemplate,
     volunteerRolesAndAssignments,
     practicePlanForSession, allPracticePlans,
-    pendingRegistrations,
+    pendingRegistrations, registrationSummary,
     // AI Judge
     activeRubric, rubricCategories,
     recentAnalyses, analysisById,

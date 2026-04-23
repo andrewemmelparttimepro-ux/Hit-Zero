@@ -7,12 +7,10 @@ Supabase project: Postgres 15 + Auth + Realtime + Storage.
 ```
 supabase/
   migrations/           Versioned SQL — applied in filename order
-    20260420000001_initial_schema.sql
-    20260420000002_auth_triggers.sql
-    20260420000003_rls_policies.sql
-    20260420000004_realtime.sql
-    20260420000005_storage_buckets.sql
-    20260420000006_seed_skills.sql
+    20260422014621_hit_zero_01_initial_schema.sql
+    20260422014655_hit_zero_02_auth_triggers.sql
+    ...
+    20260423000001_square_foundation.sql
   seed.sql              Dev-only demo data
   config.toml           Local Supabase CLI config
 functions/              Edge Functions (TypeScript)

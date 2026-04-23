@@ -23,7 +23,7 @@ fetch() {
 
 # Per HANDOFF.md file tree
 FILES=(
-  "hit_zero_backend/supabase/migrations/20260420000001_initial_schema.sql"
+  "hit_zero_backend/supabase/migrations/20260422014621_hit_zero_01_initial_schema.sql"
   "hit_zero_backend/supabase/migrations/20260420000002_auth_triggers.sql"
   "hit_zero_backend/supabase/migrations/20260420000003_rls_policies.sql"
   "hit_zero_backend/supabase/migrations/20260420000004_realtime.sql"

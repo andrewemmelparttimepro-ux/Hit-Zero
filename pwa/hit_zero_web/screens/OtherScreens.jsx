@@ -312,6 +312,9 @@ function AdminConsole({ snap, navigate }) {
   const bill = window.HZsel.programBilling();
   const readiness = window.HZsel.teamReadiness();
   const attendance = window.HZsel.teamAttendance();
+  const leads = window.HZsel.leadSummary();
+  const regs = window.HZsel.registrationSummary();
+  const cashPct = bill.total ? Math.max(0, Math.min(100, (bill.paid / bill.total) * 100)) : 0;
 
   return (
     <div>
@@ -321,8 +324,8 @@ function AdminConsole({ snap, navigate }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
         <StatTile label="Athletes" value={snap.athletes.length} sub="across all teams"/>
         <StatTile label="Ready" value={`${Math.round(readiness*100)}%`} accent="var(--hz-teal)"/>
-        <StatTile label="Attendance" value={`${Math.round(attendance*100)}%`}/>
-        <StatTile label="Outstanding" value={`$${bill.owed.toLocaleString()}`} accent={bill.owed > 0 ? 'var(--hz-amber)' : 'var(--hz-green)'} sub={`${bill.delinquent} accounts`}/>
+        <StatTile label="Leads Open" value={leads.active} sub={`${leads.converted} converted`} accent="var(--hz-pink)"/>
+        <StatTile label="Admissions" value={regs.pending} sub={`${regs.accepted} accepted`} accent={regs.pending ? 'var(--hz-amber)' : 'var(--hz-green)'}/>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
         <div className="hz-card">
@@ -332,18 +335,64 @@ function AdminConsole({ snap, navigate }) {
             <div style={{ color: 'var(--hz-dim)' }}>of ${(bill.total/1000).toFixed(1)}k</div>
           </div>
           <div style={{ height: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 6, overflow: 'hidden' }}>
-            <div style={{ width: `${(bill.paid/bill.total)*100}%`, height: '100%', background: 'linear-gradient(90deg, var(--hz-teal), var(--hz-pink))' }}/>
+            <div style={{ width: `${cashPct}%`, height: '100%', background: 'linear-gradient(90deg, var(--hz-teal), var(--hz-pink))' }}/>
           </div>
           <div style={{ display: 'flex', gap: 20, marginTop: 14, fontSize: 12, color: 'var(--hz-dim)' }}>
             <div>Paid <span style={{ color: 'var(--hz-green)', fontFamily: 'var(--hz-mono)', fontWeight: 700 }}>${bill.paid.toLocaleString()}</span></div>
             <div>Owed <span style={{ color: 'var(--hz-amber)', fontFamily: 'var(--hz-mono)', fontWeight: 700 }}>${bill.owed.toLocaleString()}</span></div>
           </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 18 }}>
+            <div style={{ padding: '12px 14px', borderRadius: 12, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.03)' }}>
+              <div className="hz-eyebrow" style={{ marginBottom: 6 }}>Attendance</div>
+              <div style={{ fontSize: 24, fontWeight: 700 }}>{Math.round(attendance*100)}%</div>
+              <div style={{ color: 'var(--hz-dim)', fontSize: 11, marginTop: 4 }}>program average</div>
+            </div>
+            <div style={{ padding: '12px 14px', borderRadius: 12, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.03)' }}>
+              <div className="hz-eyebrow" style={{ marginBottom: 6 }}>Square Sync</div>
+              <div style={{ fontSize: 24, fontWeight: 700 }}>{bill.syncedAccounts}</div>
+              <div style={{ color: 'var(--hz-dim)', fontSize: 11, marginTop: 4 }}>
+                {bill.hasSquareData ? `$${bill.syncedOpen.toLocaleString()} open` : 'waiting for first sync'}
+              </div>
+            </div>
+          </div>
         </div>
         <div className="hz-card">
-          <div className="hz-eyebrow" style={{ marginBottom: 14 }}>Quick actions</div>
+          <div className="hz-eyebrow" style={{ marginBottom: 14 }}>Owner radar</div>
+          <div style={{ display: 'grid', gap: 12, marginBottom: 18 }}>
+            <div style={{ padding: '12px 14px', borderRadius: 12, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.03)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>Lead pipeline</div>
+                  <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>
+                    {leads.new} new · {leads.tours} tours · {leads.trials} trials
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 22, fontWeight: 700 }}>{leads.winRate}%</div>
+                  <div style={{ color: 'var(--hz-dim)', fontSize: 11 }}>win rate</div>
+                </div>
+              </div>
+            </div>
+            <div style={{ padding: '12px 14px', borderRadius: 12, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.03)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>Admissions queue</div>
+                  <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>
+                    {regs.pending} pending · {regs.waitlist} waitlist
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 22, fontWeight: 700 }}>{bill.delinquent}</div>
+                  <div style={{ color: 'var(--hz-dim)', fontSize: 11 }}>past due families</div>
+                </div>
+              </div>
+            </div>
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <button className="hz-btn" onClick={() => navigate('roster')} style={{ justifyContent: 'space-between' }}>Manage roster <HZIcon name="arrow-right" size={13}/></button>
             <button className="hz-btn" onClick={() => navigate('billing')} style={{ justifyContent: 'space-between' }}>Review billing <HZIcon name="arrow-right" size={13}/></button>
+            <button className="hz-btn" onClick={() => navigate('leads')} style={{ justifyContent: 'space-between' }}>Work lead pipeline <HZIcon name="arrow-right" size={13}/></button>
+            <button className="hz-btn" onClick={() => navigate('registration')} style={{ justifyContent: 'space-between' }}>Review registrations <HZIcon name="arrow-right" size={13}/></button>
             <button className="hz-btn" onClick={() => navigate('messages')} style={{ justifyContent: 'space-between' }}>Post announcement <HZIcon name="arrow-right" size={13}/></button>
             <button className="hz-btn" onClick={() => navigate('score')} style={{ justifyContent: 'space-between' }}>Run mock score <HZIcon name="arrow-right" size={13}/></button>
           </div>
@@ -359,20 +408,34 @@ function Billing({ snap, session, openAthlete }) {
   const bill = window.HZsel.programBilling();
   const isParent = session.profile.role === 'parent';
   const accounts = (snap.billing_accounts || []).map(acc => ({ ...acc, athlete: snap.athletes.find(a => a.id === acc.athlete_id) }));
+  const programRef = {
+    program_id: (snap.teams || [])[0]?.program_id || (snap.programs || [])[0]?.id || null,
+    program_slug: 'mca',
+  };
 
   return (
     <div>
       <SectionHeading eyebrow={isParent ? 'My family' : 'Program billing'} title="Billing."/>
       {!isParent && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
-          <StatTile label="Collected" value={`$${bill.paid.toLocaleString()}`} accent="var(--hz-green)" size="md"/>
-          <StatTile label="Outstanding" value={`$${bill.owed.toLocaleString()}`} accent="var(--hz-amber)" size="md"/>
-          <StatTile label="Past Due" value={bill.delinquent} sub={`of ${bill.nAccounts} accounts`} size="md"/>
-        </div>
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+            <StatTile label="Collected" value={`$${bill.paid.toLocaleString()}`} accent="var(--hz-green)" size="md"/>
+            <StatTile label="Outstanding" value={`$${bill.owed.toLocaleString()}`} accent="var(--hz-amber)" size="md"/>
+            <StatTile label="Past Due" value={bill.delinquent} sub={`of ${bill.nAccounts} accounts`} size="md"/>
+            <StatTile
+              label="Square Open"
+              value={`$${bill.syncedOpen.toLocaleString()}`}
+              sub={bill.hasSquareData ? `${bill.syncedAccounts} matched families` : 'run first sync'}
+              accent={bill.syncedOpen > 0 ? 'var(--hz-pink)' : 'var(--hz-teal)'}
+              size="md"
+            />
+          </div>
+          <SquareBillingPanel programRef={programRef}/>
+        </>
       )}
       <div className="hz-card" style={{ padding: 0, overflow: 'hidden' }}>
         <table className="hz-table">
-          <thead><tr><th style={{ paddingLeft: 20 }}>Athlete</th><th>Season</th><th>Paid</th><th>Balance</th><th>Autopay</th></tr></thead>
+          <thead><tr><th style={{ paddingLeft: 20 }}>Athlete</th><th>Season</th><th>Paid</th><th>Balance</th>{!isParent && <th>Sync</th>}{!isParent && <th>Square snapshot</th>}<th>Autopay</th></tr></thead>
           <tbody>
             {accounts.map(a => (
               <tr key={a.id} onClick={() => openAthlete && openAthlete(a.athlete_id)} style={{ cursor: 'pointer' }}>
@@ -387,6 +450,26 @@ function Billing({ snap, session, openAthlete }) {
                 <td style={{ fontFamily: 'var(--hz-mono)' }}>${a.season_total}</td>
                 <td style={{ fontFamily: 'var(--hz-mono)', color: 'var(--hz-green)' }}>${a.paid}</td>
                 <td>{a.owed > 0 ? <Pill tone="amber">${a.owed}</Pill> : <span style={{ color: 'var(--hz-dim)' }}>$0</span>}</td>
+                {!isParent && (
+                  <td>
+                    {a.sync_status === 'matched' ? <Pill tone="teal">Matched</Pill>
+                      : a.sync_status === 'unmatched' ? <Pill tone="amber">Needs match</Pill>
+                      : a.sync_status === 'missing_parent_email' ? <Pill tone="pink">Missing email</Pill>
+                      : <span style={{ color: 'var(--hz-dim)', fontSize: 11 }}>Not synced</span>}
+                  </td>
+                )}
+                {!isParent && (
+                  <td>
+                    {a.sync_status === 'matched' ? (
+                      <div>
+                        <div style={{ fontFamily: 'var(--hz-mono)', color: 'var(--hz-green)' }}>${Number(a.synced_paid || 0).toLocaleString()} paid</div>
+                        <div style={{ color: 'var(--hz-dim)', fontSize: 11 }}>${Number(a.synced_open_amount || 0).toLocaleString()} open · {a.synced_open_invoice_count || 0} invoices</div>
+                      </div>
+                    ) : (
+                      <div style={{ color: 'var(--hz-dim)', fontSize: 11 }}>Waiting for Square customer match</div>
+                    )}
+                  </td>
+                )}
                 <td>{a.autopay ? <Pill tone="teal">On</Pill> : <span style={{ color: 'var(--hz-dim)', fontSize: 11 }}>Off</span>}</td>
               </tr>
             ))}
@@ -397,3 +480,245 @@ function Billing({ snap, session, openAthlete }) {
   );
 }
 window.Billing = Billing;
+
+function SquareBillingPanel({ programRef }) {
+  const [state, setState] = React.useState({ loading: true, busy: false, data: null, error: '' });
+  const [flash, setFlash] = React.useState(null);
+
+  React.useEffect(() => {
+    const url = new URL(window.location.href);
+    const square = url.searchParams.get('square');
+    const message = url.searchParams.get('message');
+    if (square) {
+      setFlash({
+        kind: square === 'connected' ? 'success' : square === 'error' ? 'error' : 'info',
+        text: square === 'connected'
+          ? 'Square connected. Pulling the first sync in now will show how families map back into Hit Zero.'
+          : message || `Square returned: ${square}`,
+      });
+      url.searchParams.delete('square');
+      url.searchParams.delete('message');
+      history.replaceState(null, '', url.toString());
+    }
+  }, []);
+
+  React.useEffect(() => {
+    let dead = false;
+    loadStatus();
+    return () => { dead = true; };
+
+    async function loadStatus() {
+      setState(prev => ({ ...prev, loading: true, error: '' }));
+      try {
+        const qs = new URLSearchParams();
+        if (programRef.program_id) qs.set('program_id', programRef.program_id);
+        if (programRef.program_slug) qs.set('program_slug', programRef.program_slug);
+        const res = await fetch(`${window.HZ_FN_BASE}/functions/v1/square-admin-v1?${qs.toString()}`, {
+          headers: window.HZ_ANON_KEY ? { Authorization: 'Bearer ' + window.HZ_ANON_KEY } : undefined,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to load Square status');
+        if (!dead) setState({ loading: false, busy: false, data, error: '' });
+      } catch (e) {
+        if (!dead) setState({ loading: false, busy: false, data: null, error: e.message || String(e) });
+      }
+    }
+  }, [programRef.program_id, programRef.program_slug]);
+
+  async function call(action, extra = {}) {
+    setState(prev => ({ ...prev, busy: true, error: '' }));
+    try {
+      const res = await fetch(`${window.HZ_FN_BASE}/functions/v1/square-admin-v1`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(window.HZ_ANON_KEY ? { Authorization: 'Bearer ' + window.HZ_ANON_KEY } : {}),
+        },
+        body: JSON.stringify({
+          action,
+          program_id: programRef.program_id,
+          program_slug: programRef.program_slug,
+          return_to: `${window.location.origin}/#billing`,
+          ...extra,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Square action failed: ${action}`);
+      setState(prev => ({ ...prev, busy: false }));
+      return data;
+    } catch (e) {
+      setState(prev => ({ ...prev, busy: false, error: e.message || String(e) }));
+      throw e;
+    }
+  }
+
+  async function onConnect() {
+    const out = await call('connect_url');
+    if (out?.url) window.location.href = out.url;
+  }
+
+  async function onSync() {
+    const out = await call('sync');
+    setState(prev => ({
+      ...prev,
+      loading: false,
+      data: {
+        ...(prev.data || {}),
+        ...(out || {}),
+        preview: out.preview,
+      },
+      error: '',
+    }));
+    const refreshed = await fetch(`${window.HZ_FN_BASE}/functions/v1/square-admin-v1?program_id=${encodeURIComponent(programRef.program_id || '')}&program_slug=${encodeURIComponent(programRef.program_slug || '')}`, {
+      headers: window.HZ_ANON_KEY ? { Authorization: 'Bearer ' + window.HZ_ANON_KEY } : undefined,
+    });
+    const data = await refreshed.json();
+    if (refreshed.ok) setState(prev => ({ ...prev, loading: false, data }));
+  }
+
+  async function onDisconnect() {
+    if (!confirm('Disconnect Square from this program?')) return;
+    await call('disconnect');
+    setFlash({ kind: 'info', text: 'Square has been disconnected for this program.' });
+    const res = await fetch(`${window.HZ_FN_BASE}/functions/v1/square-admin-v1?program_id=${encodeURIComponent(programRef.program_id || '')}&program_slug=${encodeURIComponent(programRef.program_slug || '')}`, {
+      headers: window.HZ_ANON_KEY ? { Authorization: 'Bearer ' + window.HZ_ANON_KEY } : undefined,
+    });
+    const data = await res.json();
+    if (res.ok) setState(prev => ({ ...prev, loading: false, data, error: '' }));
+  }
+
+  const data = state.data || {};
+  const conn = data.connection;
+  const preview = data.preview;
+  const statusTone = !data.configured ? 'amber' : conn?.status === 'connected' ? 'teal' : conn?.status === 'error' ? 'pink' : 'amber';
+  const statusLabel = !data.configured ? 'Needs setup' : conn?.status === 'connected' ? 'Connected' : conn?.status === 'disconnected' ? 'Disconnected' : 'Not connected';
+
+  return (
+    <div className="hz-card" style={{ marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div>
+          <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Square integration</div>
+          <div className="hz-display" style={{ fontSize: 30, marginBottom: 8 }}>
+            Billing with a <span className="hz-zero">real processor</span>.
+          </div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 13, maxWidth: 760, lineHeight: 1.5 }}>
+            Connect the gym&apos;s Square account, pull live customer + invoice + payment data, and verify which families are matching back into Hit Zero before we let the app become a true billing command center.
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Pill tone={statusTone}>{statusLabel}</Pill>
+          <button className="hz-btn" onClick={onSync} disabled={state.busy || !data.configured || conn?.status !== 'connected'}>
+            {state.busy ? 'Working…' : 'Sync now'}
+          </button>
+          {conn?.status === 'connected' ? (
+            <button className="hz-btn hz-btn--ghost" onClick={onDisconnect} disabled={state.busy}>Disconnect</button>
+          ) : (
+            <button className="hz-btn hz-btn-primary" onClick={onConnect} disabled={state.busy || !data.configured}>
+              Connect Square
+            </button>
+          )}
+        </div>
+      </div>
+
+      {flash && (
+        <div style={{
+          marginTop: 16,
+          padding: '12px 14px',
+          borderRadius: 10,
+          border: '1px solid ' + (flash.kind === 'success' ? 'rgba(63,231,160,0.25)' : flash.kind === 'error' ? 'rgba(255,94,108,0.3)' : 'rgba(255,180,84,0.25)'),
+          background: flash.kind === 'success' ? 'rgba(63,231,160,0.08)' : flash.kind === 'error' ? 'rgba(255,94,108,0.08)' : 'rgba(255,180,84,0.08)',
+          color: flash.kind === 'success' ? 'var(--hz-green)' : flash.kind === 'error' ? 'var(--hz-red)' : 'var(--hz-amber)',
+          fontSize: 12.5,
+        }}>{flash.text}</div>
+      )}
+
+      {state.error && (
+        <div style={{ marginTop: 14, color: 'var(--hz-red)', fontSize: 12.5 }}>{state.error}</div>
+      )}
+
+      {!data.configured && !state.loading && (
+        <div style={{ marginTop: 16, color: 'var(--hz-dim)', fontSize: 12.5, lineHeight: 1.5 }}>
+          Backend wiring is live, but the Square app credentials are not set yet. Add `SQUARE_APP_ID`, `SQUARE_APP_SECRET`, `SQUARE_TOKEN_CRYPT_KEY`, and `SQUARE_WEBHOOK_SIGNATURE_KEY` in Supabase secrets to finish the live connection.
+        </div>
+      )}
+
+      {conn && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginTop: 18 }}>
+          <MiniStat label="Merchant" value={conn.external_business_name || 'Square seller'} sub={conn.environment}/>
+          <MiniStat label="Status" value={(conn.last_sync_status || conn.status || 'idle').replace('_', ' ')} sub={conn.last_sync_completed_at ? new Date(conn.last_sync_completed_at).toLocaleString() : 'No sync yet'}/>
+          <MiniStat label="Location" value={conn.external_location_id ? conn.external_location_id.slice(-6) : '—'} sub="primary location"/>
+          <MiniStat label="Scopes" value={String((conn.scopes || []).length)} sub="granted permissions"/>
+        </div>
+      )}
+
+      {preview && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginTop: 18 }}>
+            <MiniStat label="Matched" value={preview.counts?.matched_accounts ?? 0} sub={`${preview.counts?.accounts ?? 0} billing accounts`} accent="var(--hz-teal)"/>
+            <MiniStat label="Unmatched" value={preview.counts?.unmatched_accounts ?? 0} sub="needs cleanup" accent="var(--hz-amber)"/>
+            <MiniStat label="Square paid" value={`$${Number(preview.totals?.synced_paid || 0).toLocaleString()}`} sub="rolling sync total" accent="var(--hz-green)"/>
+            <MiniStat label="Open invoices" value={preview.totals?.open_invoice_count ?? 0} sub={`$${Number(preview.totals?.open_invoice_amount || 0).toLocaleString()} open`} accent="var(--hz-pink)"/>
+          </div>
+
+          <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: '1.25fr 0.75fr', gap: 16 }}>
+            <div className="hz-card" style={{ padding: 0, overflow: 'hidden', background: 'rgba(255,255,255,0.02)' }}>
+              <table className="hz-table">
+                <thead>
+                  <tr>
+                    <th style={{ paddingLeft: 18 }}>Matched family</th>
+                    <th>Square customer</th>
+                    <th>Paid</th>
+                    <th>Open</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(preview.accounts || []).slice(0, 8).map(row => (
+                    <tr key={row.account_id}>
+                      <td style={{ paddingLeft: 18 }}>
+                        <div style={{ fontWeight: 600 }}>{row.athlete_name}</div>
+                        <div style={{ color: 'var(--hz-dim)', fontSize: 11 }}>{row.parent_email || 'No parent email'}</div>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{row.square_customer_name || '—'}</div>
+                        <div style={{ color: 'var(--hz-dim)', fontSize: 11 }}>{row.square_customer_id}</div>
+                      </td>
+                      <td style={{ color: 'var(--hz-green)', fontFamily: 'var(--hz-mono)' }}>${Number(row.synced_paid || 0).toLocaleString()}</td>
+                      <td>
+                        <div style={{ fontFamily: 'var(--hz-mono)' }}>${Number(row.open_invoice_amount || 0).toLocaleString()}</div>
+                        <div style={{ color: 'var(--hz-dim)', fontSize: 11 }}>{row.open_invoice_count} open</div>
+                      </td>
+                    </tr>
+                  ))}
+                  {!(preview.accounts || []).length && (
+                    <tr><td colSpan="4" style={{ padding: 18, color: 'var(--hz-dim)' }}>No matched families yet. Connect Square and run the first sync.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="hz-card" style={{ background: 'rgba(255,255,255,0.02)' }}>
+              <div className="hz-eyebrow" style={{ marginBottom: 10 }}>Needs attention</div>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {(preview.unmatched_accounts || []).slice(0, 8).map(row => (
+                  <div key={row.athlete_id} style={{ padding: '10px 12px', borderRadius: 10, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.03)' }}>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{row.athlete_name}</div>
+                    <div style={{ color: 'var(--hz-dim)', fontSize: 11, marginTop: 4 }}>
+                      {row.parent_email || 'Missing parent email in Hit Zero'}
+                    </div>
+                  </div>
+                ))}
+                {!(preview.unmatched_accounts || []).length && (
+                  <div style={{ color: 'var(--hz-dim)', fontSize: 12.5 }}>Nothing stuck right now. The family-to-customer matching pass looks clean.</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {state.loading && (
+        <div style={{ marginTop: 16, color: 'var(--hz-dim)', fontSize: 12.5 }}>Loading Square status…</div>
+      )}
+    </div>
+  );
+}

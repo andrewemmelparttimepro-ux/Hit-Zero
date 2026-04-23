@@ -405,6 +405,7 @@ window.Uniforms = Uniforms;
 // Leads — CRM pipeline board
 // ═══════════════════════════════════════════════════════════════════════════
 function Leads({ snap, session }) {
+  const me = session?.profile || { id: 'u_owner', role: 'owner' };
   const grouped = window.HZsel.leadsByStage();
   const stages = [
     { id: 'new',       label: 'New',        color: 'var(--hz-dim)' },
@@ -414,13 +415,49 @@ function Leads({ snap, session }) {
     { id: 'converted', label: 'Converted',  color: 'var(--hz-green)' },
     { id: 'lost',      label: 'Lost',       color: 'var(--hz-red)' },
   ];
+  const leads = (snap.leads || []).slice().sort((a,b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at));
+  const staff = (snap.profiles || []).filter(p => p.role === 'owner' || p.role === 'coach');
   const total = (snap.leads || []).length;
   const converted = grouped.converted?.length || 0;
+  const [activeId, setActiveId] = _useState(leads[0]?.id || null);
+  const [touchKind, setTouchKind] = _useState('note');
+  const [touchBody, setTouchBody] = _useState('');
+  const active = leads.find(l => l.id === activeId) || leads[0] || null;
+  const touches = active ? window.HZsel.leadTouches(active.id) : [];
+
+  function setStage(lead, next) {
+    window.HZdb.from('leads').update({
+      stage: next,
+      updated_at: new Date().toISOString(),
+      ...(next === 'converted' ? { converted_at: new Date().toISOString() } : {}),
+    }).eq('id', lead.id);
+  }
 
   function advance(lead) {
     const order = stages.map(s => s.id);
     const next = order[Math.min(order.length - 1, order.indexOf(lead.stage) + 1)];
-    window.HZdb.from('leads').update({ stage: next, updated_at: new Date().toISOString(), ...(next === 'converted' ? { converted_at: new Date().toISOString() } : {}) }).eq('id', lead.id);
+    setStage(lead, next);
+  }
+
+  function assign(leadId, profileId) {
+    window.HZdb.from('leads').update({
+      assigned_to: profileId || null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', leadId);
+  }
+
+  function addTouch() {
+    if (!active || !touchBody.trim()) return;
+    window.HZdb.from('lead_touches').insert({
+      id: 'lt_' + Math.random().toString(36).slice(2, 10),
+      lead_id: active.id,
+      kind: touchKind,
+      body: touchBody.trim(),
+      author_id: me.id,
+      created_at: new Date().toISOString(),
+    });
+    setTouchBody('');
+    setTouchKind('note');
   }
 
   return (
@@ -436,41 +473,119 @@ function Leads({ snap, session }) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${stages.length}, 1fr)`, gap: 12, overflowX: 'auto' }}>
-        {stages.map(st => (
-          <div key={st.id} className="hz-card" style={{ padding: 14, minWidth: 220 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <div className="hz-eyebrow" style={{ color: st.color }}>{st.label}</div>
-              <div style={{ color: 'var(--hz-dim)', fontSize: 11, fontWeight: 700 }}>{grouped[st.id]?.length || 0}</div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {(grouped[st.id] || []).map(l => (
-                <div key={l.id} style={{ padding: 10, borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid var(--hz-line)' }}>
-                  <div style={{ fontSize: 13, fontWeight: 700 }}>{l.athlete_name || l.parent_name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--hz-dim)', marginTop: 2 }}>
-                    {l.parent_name} · age {l.athlete_age || '—'}
-                  </div>
-                  <div style={{ fontSize: 10, color: 'var(--hz-dimmer)', marginTop: 4, letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700 }}>
-                    {l.interest} · {l.source}
-                  </div>
-                  {st.id !== 'converted' && st.id !== 'lost' && (
-                    <button onClick={() => advance(l)}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.45fr 0.9fr', gap: 16, alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${stages.length}, minmax(200px, 1fr))`, gap: 12, overflowX: 'auto' }}>
+          {stages.map(st => (
+            <div key={st.id} className="hz-card" style={{ padding: 14, minWidth: 220 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <div className="hz-eyebrow" style={{ color: st.color }}>{st.label}</div>
+                <div style={{ color: 'var(--hz-dim)', fontSize: 11, fontWeight: 700 }}>{grouped[st.id]?.length || 0}</div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {(grouped[st.id] || []).map(l => {
+                  const assignee = staff.find(p => p.id === l.assigned_to);
+                  return (
+                    <button key={l.id} onClick={() => setActiveId(l.id)}
                       className="hz-nosel"
                       style={{
-                        marginTop: 8, background: 'transparent', color: 'var(--hz-teal)',
-                        border: '1px solid rgba(39,207,215,0.3)', borderRadius: 8,
-                        padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                        letterSpacing: '0.04em', textTransform: 'uppercase',
-                      }}>Advance →</button>
-                  )}
-                </div>
-              ))}
-              {(grouped[st.id] || []).length === 0 && (
-                <div style={{ fontSize: 11, color: 'var(--hz-dimmer)', textAlign: 'center', padding: '12px 0' }}>Empty</div>
-              )}
+                        padding: 10, borderRadius: 10, background: active?.id === l.id ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)',
+                        border: '1px solid ' + (active?.id === l.id ? 'var(--hz-line-2)' : 'var(--hz-line)'),
+                        textAlign: 'left', color: '#fff', cursor: 'pointer',
+                      }}>
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>{l.athlete_name || l.parent_name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--hz-dim)', marginTop: 2 }}>
+                        {l.parent_name} · age {l.athlete_age || '—'}
+                      </div>
+                      <div style={{ fontSize: 10, color: 'var(--hz-dimmer)', marginTop: 4, letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700 }}>
+                        {l.interest} · {l.source}
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                        <div style={{ fontSize: 10, color: 'var(--hz-dim)' }}>{assignee?.display_name || 'Unassigned'}</div>
+                        {st.id !== 'converted' && st.id !== 'lost' && (
+                          <span onClick={(e) => { e.stopPropagation(); advance(l); }}
+                            style={{
+                              background: 'transparent', color: 'var(--hz-teal)',
+                              border: '1px solid rgba(39,207,215,0.3)', borderRadius: 8,
+                              padding: '4px 10px', fontSize: 11, fontWeight: 700,
+                              letterSpacing: '0.04em', textTransform: 'uppercase',
+                            }}>Advance</span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+                {(grouped[st.id] || []).length === 0 && (
+                  <div style={{ fontSize: 11, color: 'var(--hz-dimmer)', textAlign: 'center', padding: '12px 0' }}>Empty</div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
+
+        <div className="hz-card" style={{ padding: 18, position: 'sticky', top: 88 }}>
+          {!active && <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>Select a family to see the pipeline details.</div>}
+          {active && (
+            <>
+              <div className="hz-eyebrow" style={{ marginBottom: 6 }}>Lead detail</div>
+              <div className="hz-display" style={{ fontSize: 26 }}>{active.athlete_name || active.parent_name}</div>
+              <div style={{ marginTop: 12, display: 'grid', gap: 10, fontSize: 12.5 }}>
+                <DetailRow label="Parent" value={active.parent_name}/>
+                <DetailRow label="Email" value={active.parent_email || '—'}/>
+                <DetailRow label="Phone" value={active.parent_phone || '—'}/>
+                <DetailRow label="Interest" value={active.interest || '—'}/>
+                <DetailRow label="Source" value={active.source || '—'}/>
+              </div>
+
+              <div style={{ display: 'grid', gap: 10, marginTop: 16 }}>
+                <label>
+                  <div className="hz-eyebrow" style={{ marginBottom: 6 }}>Stage</div>
+                  <select value={active.stage} onChange={(e) => setStage(active, e.target.value)}
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--hz-line)', borderRadius: 10, padding: '12px 14px', color: '#fff', fontSize: 14, fontFamily: 'var(--hz-sans)' }}>
+                    {stages.map(st => <option key={st.id} value={st.id}>{st.label}</option>)}
+                  </select>
+                </label>
+
+                <label>
+                  <div className="hz-eyebrow" style={{ marginBottom: 6 }}>Owner / coach</div>
+                  <select value={active.assigned_to || ''} onChange={(e) => assign(active.id, e.target.value)}
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--hz-line)', borderRadius: 10, padding: '12px 14px', color: '#fff', fontSize: 14, fontFamily: 'var(--hz-sans)' }}>
+                    <option value="">Unassigned</option>
+                    {staff.map(p => <option key={p.id} value={p.id}>{p.display_name}</option>)}
+                  </select>
+                </label>
+              </div>
+
+              <div style={{ marginTop: 18 }}>
+                <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Touch log</div>
+                <div style={{ display: 'grid', gap: 8, maxHeight: 200, overflow: 'auto', marginBottom: 10 }}>
+                  {touches.map(t => {
+                    const author = staff.find(p => p.id === t.author_id);
+                    return (
+                      <div key={t.id} style={{ padding: '10px 12px', borderRadius: 10, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.03)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                          <div style={{ fontSize: 10, color: 'var(--hz-teal)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 800 }}>{t.kind}</div>
+                          <div style={{ fontSize: 10, color: 'var(--hz-dim)' }}>{timeAgo(t.created_at)}</div>
+                        </div>
+                        <div style={{ fontSize: 12.5, marginTop: 6, lineHeight: 1.45 }}>{t.body}</div>
+                        <div style={{ fontSize: 10, color: 'var(--hz-dim)', marginTop: 6 }}>{author?.display_name || 'Staff'}</div>
+                      </div>
+                    );
+                  })}
+                  {!touches.length && <div style={{ color: 'var(--hz-dim)', fontSize: 12.5 }}>No touches logged yet.</div>}
+                </div>
+
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <select value={touchKind} onChange={(e) => setTouchKind(e.target.value)}
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--hz-line)', borderRadius: 10, padding: '10px 12px', color: '#fff', fontSize: 13, fontFamily: 'var(--hz-sans)' }}>
+                    {['note','call','email','text','tour','trial','other'].map(k => <option key={k} value={k}>{k}</option>)}
+                  </select>
+                  <textarea className="hz-input" rows="3" placeholder="What happened? What is the next step?" value={touchBody} onChange={(e) => setTouchBody(e.target.value)}/>
+                  <button className="hz-btn hz-btn-primary" onClick={addTouch} disabled={!touchBody.trim()}>Add touch</button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -722,7 +837,12 @@ window.PracticePlans = PracticePlans;
 // ═══════════════════════════════════════════════════════════════════════════
 // Registration (public-ish page — accessed via ?p=register, not sidebar)
 // ═══════════════════════════════════════════════════════════════════════════
-function Registration({ snap }) {
+function Registration({ snap, session }) {
+  const role = session?.profile?.role || 'parent';
+  if (role === 'owner' || role === 'coach') {
+    return <RegistrationInbox snap={snap} session={session}/>;
+  }
+
   const windows = (snap.registration_windows || []).filter(w => w.is_public);
   const [form, setForm] = _useState({
     window_id: windows[0]?.id || '',
@@ -786,6 +906,125 @@ function Registration({ snap }) {
     </div>
   );
 }
+function RegistrationInbox({ snap, session }) {
+  const regs = (snap.registrations || []).slice().sort((a,b) => {
+    if (a.status === 'pending' && b.status !== 'pending') return -1;
+    if (a.status !== 'pending' && b.status === 'pending') return 1;
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+  const windows = new Map((snap.registration_windows || []).map(w => [w.id, w]));
+  const [activeId, setActiveId] = _useState(regs[0]?.id || null);
+  const active = regs.find(r => r.id === activeId) || regs[0] || null;
+  const [notes, setNotes] = _useState(active?.notes || '');
+
+  _useEffect(() => {
+    setNotes(active?.notes || '');
+  }, [active?.id]);
+
+  const counts = regs.reduce((out, r) => {
+    out[r.status] = (out[r.status] || 0) + 1;
+    return out;
+  }, { pending: 0, accepted: 0, waitlist: 0, rejected: 0, withdrawn: 0 });
+
+  function decide(nextStatus) {
+    if (!active) return;
+    window.HZdb.from('registrations').update({
+      status: nextStatus,
+      notes,
+      decided_at: new Date().toISOString(),
+      decided_by: session.profile.id,
+    }).eq('id', active.id);
+  }
+
+  function saveNotes() {
+    if (!active) return;
+    window.HZdb.from('registrations').update({
+      notes,
+      updated_at: new Date().toISOString(),
+    }).eq('id', active.id);
+  }
+
+  return (
+    <div>
+      <div className="hz-eyebrow">Registration · Admissions desk</div>
+      <div className="hz-display" style={{ fontSize: 48, lineHeight: 1, marginBottom: 20 }}>
+        New families, <span className="hz-zero">properly handled</span>.
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+        <MiniStat label="Pending" value={counts.pending} accent="var(--hz-amber)"/>
+        <MiniStat label="Accepted" value={counts.accepted} accent="var(--hz-green)"/>
+        <MiniStat label="Waitlist" value={counts.waitlist} accent="var(--hz-pink)"/>
+        <MiniStat label="Rejected" value={counts.rejected} accent="var(--hz-dim)"/>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: 18 }}>
+        <aside style={{ display: 'grid', gap: 8 }}>
+          {regs.map(r => {
+            const win = windows.get(r.window_id);
+            return (
+              <button key={r.id} onClick={() => setActiveId(r.id)}
+                className="hz-nosel"
+                style={{
+                  textAlign: 'left', padding: 14, borderRadius: 12, cursor: 'pointer',
+                  background: active?.id === r.id ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)',
+                  border: '1px solid ' + (active?.id === r.id ? 'var(--hz-line-2)' : 'var(--hz-line)'),
+                  color: '#fff',
+                }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                  <div className="hz-eyebrow">{win?.title || 'Registration'}</div>
+                  <StatusBadge status={r.status}/>
+                </div>
+                <div style={{ fontWeight: 700, fontSize: 14, marginTop: 4 }}>{r.athlete_name}</div>
+                <div style={{ fontSize: 11, color: 'var(--hz-dim)', marginTop: 4 }}>{r.parent_name} · {r.parent_email}</div>
+                <div style={{ fontSize: 10, color: 'var(--hz-dimmer)', marginTop: 6, letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700 }}>
+                  Level {r.level_interest || '—'} · {r.source || 'unknown source'} · {timeAgo(r.created_at)}
+                </div>
+              </button>
+            );
+          })}
+          {!regs.length && <div className="hz-card" style={{ color: 'var(--hz-dim)', fontSize: 13 }}>No registrations on file yet.</div>}
+        </aside>
+
+        <section className="hz-card" style={{ padding: 22 }}>
+          {!active && <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>Select a registration to review it.</div>}
+          {active && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                <div>
+                  <div className="hz-eyebrow">{windows.get(active.window_id)?.title || 'Registration'}</div>
+                  <div className="hz-display" style={{ fontSize: 28 }}>{active.athlete_name}</div>
+                </div>
+                <StatusBadge status={active.status}/>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 18 }}>
+                <DetailCard label="Parent" value={active.parent_name}/>
+                <DetailCard label="Email" value={active.parent_email}/>
+                <DetailCard label="Phone" value={active.parent_phone || '—'}/>
+                <DetailCard label="DOB / level" value={`${active.athlete_dob || '—'} · L${active.level_interest || '—'}`}/>
+              </div>
+
+              <div style={{ marginTop: 18, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button className="hz-btn hz-btn-primary" onClick={() => decide('accepted')}>Accept</button>
+                <button className="hz-btn" onClick={() => decide('waitlist')}>Waitlist</button>
+                <button className="hz-btn hz-btn--ghost" onClick={() => decide('rejected')}>Reject</button>
+              </div>
+
+              <div style={{ marginTop: 18 }}>
+                <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Decision notes</div>
+                <textarea className="hz-input" rows="6" placeholder="What stood out? Who follows up next? Any placement notes?" value={notes} onChange={(e) => setNotes(e.target.value)}/>
+                <div style={{ marginTop: 10 }}>
+                  <button className="hz-btn" onClick={saveNotes}>Save notes</button>
+                </div>
+              </div>
+            </>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
 function Input({ label, value, onChange, type = 'text', required }) {
   return (
     <label style={{ display: 'block' }}>
@@ -805,6 +1044,33 @@ function Select({ label, value, onChange, options }) {
       </select>
     </label>
   );
+}
+function DetailRow({ label, value }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '84px 1fr', gap: 10 }}>
+      <div style={{ color: 'var(--hz-dim)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700 }}>{label}</div>
+      <div style={{ fontWeight: 600 }}>{value}</div>
+    </div>
+  );
+}
+function DetailCard({ label, value }) {
+  return (
+    <div style={{ padding: '12px 14px', borderRadius: 12, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.03)' }}>
+      <div style={{ color: 'var(--hz-dim)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700 }}>{label}</div>
+      <div style={{ fontWeight: 600, marginTop: 6 }}>{value}</div>
+    </div>
+  );
+}
+function StatusBadge({ status }) {
+  const palette = {
+    pending: ['var(--hz-amber)', 'rgba(255,180,84,0.12)'],
+    accepted: ['var(--hz-green)', 'rgba(63,231,160,0.14)'],
+    waitlist: ['var(--hz-pink)', 'rgba(249,127,172,0.14)'],
+    rejected: ['var(--hz-dim)', 'rgba(255,255,255,0.08)'],
+    withdrawn: ['var(--hz-dim)', 'rgba(255,255,255,0.08)'],
+  };
+  const [fg, bg] = palette[status] || palette.pending;
+  return <span style={{ color: fg, background: bg, padding: '4px 10px', borderRadius: 999, fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{status}</span>;
 }
 window.Registration = Registration;
 

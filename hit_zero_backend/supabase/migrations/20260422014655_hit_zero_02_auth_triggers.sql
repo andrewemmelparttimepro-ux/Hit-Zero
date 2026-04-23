@@ -1,11 +1,3 @@
--- ═══════════════════════════════════════════════════════════════════════════
--- 20260420000002_auth_triggers.sql
---
--- Anyone who signs up via Supabase Auth gets a profiles row automatically.
--- role + program_id come from `raw_user_meta_data` set at signup, or default
--- to 'parent' + null and are completed via the onboarding flow.
--- ═══════════════════════════════════════════════════════════════════════════
-
 create or replace function handle_new_user() returns trigger
 security definer set search_path = public
 as $$
@@ -25,7 +17,6 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function handle_new_user();
 
--- Keep profile email in sync when auth email changes
 create or replace function handle_user_email_change() returns trigger
 security definer set search_path = public
 as $$
@@ -40,10 +31,6 @@ create trigger on_auth_user_email_change
   after update of email on auth.users
   for each row when (old.email is distinct from new.email)
   execute function handle_user_email_change();
-
--- ─── Helper functions used by RLS policies ────────────────────────────────
--- These run with security_definer so they can bypass RLS themselves; keep
--- them narrow so they can't be abused.
 
 create or replace function auth_role() returns text
 security definer set search_path = public
@@ -66,43 +53,27 @@ $$ language sql stable;
 create or replace function is_program_staff(p_program uuid) returns boolean
 security definer set search_path = public
 as $$
-  select exists (
-    select 1 from profiles
-     where id = auth.uid()
-       and program_id = p_program
-       and role in ('coach','owner')
-  )
+  select exists (select 1 from profiles where id = auth.uid() and program_id = p_program and role in ('coach','owner'))
 $$ language sql stable;
 
 create or replace function is_linked_parent(p_athlete uuid) returns boolean
 security definer set search_path = public
 as $$
-  select exists (
-    select 1 from parent_links
-     where parent_id = auth.uid() and athlete_id = p_athlete
-  )
+  select exists (select 1 from parent_links where parent_id = auth.uid() and athlete_id = p_athlete)
 $$ language sql stable;
 
 create or replace function is_own_athlete(p_athlete uuid) returns boolean
 security definer set search_path = public
 as $$
-  select exists (
-    select 1 from athletes
-     where id = p_athlete and profile_id = auth.uid()
-  )
+  select exists (select 1 from athletes where id = p_athlete and profile_id = auth.uid())
 $$ language sql stable;
 
 create or replace function is_teammate(p_athlete uuid) returns boolean
 security definer set search_path = public
 as $$
-  select exists (
-    select 1 from athletes me
-      join athletes them on them.team_id = me.team_id
-     where me.profile_id = auth.uid() and them.id = p_athlete
-  )
+  select exists (select 1 from athletes me join athletes them on them.team_id = me.team_id where me.profile_id = auth.uid() and them.id = p_athlete)
 $$ language sql stable;
 
--- Returns the program id of an athlete (for use in policies)
 create or replace function program_of_athlete(p_athlete uuid) returns uuid
 security definer set search_path = public
 as $$
@@ -113,4 +84,4 @@ create or replace function program_of_team(p_team uuid) returns uuid
 security definer set search_path = public
 as $$
   select program_id from teams where id = p_team
-$$ language sql stable;
+$$ language sql stable;;

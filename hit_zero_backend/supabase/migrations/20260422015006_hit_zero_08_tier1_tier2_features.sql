@@ -1,26 +1,3 @@
--- ═══════════════════════════════════════════════════════════════════════════
--- 20260421000001_tier1_tier2_features.sql
--- Close every Tier 1 + Tier 2 feature gap identified in the competitive
--- analysis (Jackrabbit, Studio Pro, TeamSnap, SportsEngine, etc.).
---
--- Adds:
---   · Messaging         — threads, messages, read receipts
---   · Availability      — RSVP per session (going/maybe/no)
---   · Calendar sync     — per-user iCal export tokens
---   · Registration      — public sign-up + waiver signing
---   · Forms/Evaluations — tryouts, assessments, report cards
---   · Medical           — emergency contacts, medical notes, injuries
---   · Uniforms          — catalog + athlete orders with fit sizes
---   · Leads / CRM       — prospective-family pipeline
---   · Volunteers        — roles + assignments
---   · Practice plans    — coach-built practice outlines + drill library
---
--- Conventions mirror the initial schema: program-scoped, timestamptz,
--- soft-delete via `deleted_at` where history matters, set-null cascades
--- where historical records should survive entity removal.
--- ═══════════════════════════════════════════════════════════════════════════
-
--- ─── Messaging ────────────────────────────────────────────────────────────
 create table message_threads (
   id           uuid primary key default uuid_generate_v4(),
   program_id   uuid not null references programs(id) on delete cascade,
@@ -50,7 +27,7 @@ create table messages (
   thread_id    uuid not null references message_threads(id) on delete cascade,
   author_id    uuid references profiles(id) on delete set null,
   body         text,
-  attachment_path text,                  -- storage key for image/clip
+  attachment_path text,
   reply_to     uuid references messages(id) on delete set null,
   edited_at    timestamptz,
   created_at   timestamptz not null default now(),
@@ -66,17 +43,14 @@ create table message_reads (
   primary key (thread_id, profile_id)
 );
 
--- Keep thread.last_message_at current so inbox sorts right
 create or replace function touch_thread_last_message() returns trigger as $$
 begin
   update message_threads set last_message_at = new.created_at where id = new.thread_id;
   return new;
 end;
 $$ language plpgsql;
-create trigger trg_messages_touch_thread after insert on messages
-  for each row execute function touch_thread_last_message();
+create trigger trg_messages_touch_thread after insert on messages for each row execute function touch_thread_last_message();
 
--- ─── Availability / RSVP for sessions ─────────────────────────────────────
 create table session_availability (
   session_id   uuid references sessions(id) on delete cascade,
   athlete_id   uuid references athletes(id) on delete cascade,
@@ -87,26 +61,23 @@ create table session_availability (
   primary key (session_id, athlete_id)
 );
 create index on session_availability(session_id);
-create trigger trg_session_availability_updated before update on session_availability
-  for each row execute function touch_updated_at();
+create trigger trg_session_availability_updated before update on session_availability for each row execute function touch_updated_at();
 
--- ─── Calendar sync (iCal export tokens) ───────────────────────────────────
 create table calendar_tokens (
   id           uuid primary key default uuid_generate_v4(),
   profile_id   uuid not null references profiles(id) on delete cascade,
   team_id      uuid references teams(id) on delete cascade,
-  token        text not null unique,                  -- embed in public .ics URL
+  token        text not null unique,
   label        text,
   created_at   timestamptz not null default now(),
   revoked_at   timestamptz
 );
 create index on calendar_tokens(profile_id);
 
--- ─── Online registration + digital waivers ───────────────────────────────
 create table registration_windows (
   id           uuid primary key default uuid_generate_v4(),
   program_id   uuid not null references programs(id) on delete cascade,
-  slug         citext not null,                       -- '2026-tryouts'
+  slug         citext not null,
   title        text not null,
   description  text,
   opens_at     timestamptz,
@@ -127,7 +98,7 @@ create table registrations (
   parent_email citext not null,
   parent_phone text,
   level_interest int,
-  source       text,                                  -- 'referral','instagram','walk-in',...
+  source       text,
   status       text not null default 'pending' check (status in ('pending','accepted','waitlist','rejected','withdrawn')),
   notes        text,
   created_at   timestamptz not null default now(),
@@ -142,7 +113,7 @@ create table waiver_templates (
   program_id   uuid not null references programs(id) on delete cascade,
   title        text not null,
   version      int  not null default 1,
-  body         text not null,                         -- markdown/html
+  body         text not null,
   effective_at timestamptz not null default now(),
   created_by   uuid references profiles(id),
   created_at   timestamptz not null default now(),
@@ -158,13 +129,12 @@ create table waiver_signatures (
   signer_name  text not null,
   signer_email citext,
   signer_ip    inet,
-  signature_svg text,                                 -- inline SVG path data
+  signature_svg text,
   signed_at    timestamptz not null default now()
 );
 create index on waiver_signatures(template_id);
 create index on waiver_signatures(athlete_id);
 
--- ─── Custom forms (tryouts, evaluations, report cards) ───────────────────
 create table form_templates (
   id           uuid primary key default uuid_generate_v4(),
   program_id   uuid not null references programs(id) on delete cascade,
@@ -182,9 +152,9 @@ create table form_fields (
   template_id  uuid not null references form_templates(id) on delete cascade,
   label        text not null,
   kind         text not null check (kind in ('text','longtext','number','score','select','checkbox','rubric','signature','skill_ref')),
-  options      jsonb,                                 -- for select/rubric: {choices: [...]}
+  options      jsonb,
   required     boolean not null default false,
-  weight       numeric(5,2) default 1,                -- for score aggregation
+  weight       numeric(5,2) default 1,
   position     int not null default 0
 );
 create index on form_fields(template_id, position);
@@ -194,7 +164,7 @@ create table form_responses (
   template_id  uuid not null references form_templates(id) on delete cascade,
   subject_athlete_id uuid references athletes(id) on delete cascade,
   submitted_by uuid references profiles(id),
-  score_total  numeric(7,2),                          -- computed by the client/edge
+  score_total  numeric(7,2),
   submitted_at timestamptz not null default now(),
   notes        text
 );
@@ -211,7 +181,6 @@ create table form_answers (
 );
 create index on form_answers(response_id);
 
--- ─── Emergency contacts + medical records ────────────────────────────────
 create table emergency_contacts (
   id           uuid primary key default uuid_generate_v4(),
   athlete_id   uuid not null references athletes(id) on delete cascade,
@@ -239,8 +208,7 @@ create table medical_records (
   updated_by       uuid references profiles(id),
   updated_at       timestamptz not null default now()
 );
-create trigger trg_medical_updated before update on medical_records
-  for each row execute function touch_updated_at();
+create trigger trg_medical_updated before update on medical_records for each row execute function touch_updated_at();
 
 create table injuries (
   id           uuid primary key default uuid_generate_v4(),
@@ -250,7 +218,7 @@ create table injuries (
   description  text,
   severity     text check (severity in ('minor','moderate','severe')),
   return_date  date,
-  cleared_by   text,                                  -- physician/ATC name
+  cleared_by   text,
   notes        text,
   created_by   uuid references profiles(id),
   created_at   timestamptz not null default now(),
@@ -258,7 +226,6 @@ create table injuries (
 );
 create index on injuries(athlete_id, occurred_at desc);
 
--- ─── Uniforms / costumes ─────────────────────────────────────────────────
 create table uniforms (
   id           uuid primary key default uuid_generate_v4(),
   program_id   uuid not null references programs(id) on delete cascade,
@@ -273,7 +240,7 @@ create table uniforms (
 create table uniform_items (
   id           uuid primary key default uuid_generate_v4(),
   uniform_id   uuid not null references uniforms(id) on delete cascade,
-  item_type    text not null,                         -- 'top','skirt','shoes','bow','warmup'
+  item_type    text not null,
   sku          text,
   required     boolean not null default true,
   price        numeric(10,2) not null default 0
@@ -285,7 +252,7 @@ create table uniform_orders (
   uniform_id   uuid not null references uniforms(id) on delete restrict,
   athlete_id   uuid not null references athletes(id) on delete cascade,
   billing_charge_id uuid references billing_charges(id) on delete set null,
-  fit_data     jsonb not null default '{}'::jsonb,    -- {top:"AS", skirt:"AXS", shoes:"6.5"}
+  fit_data     jsonb not null default '{}'::jsonb,
   status       text not null default 'pending' check (status in ('pending','ordered','shipped','delivered','returned')),
   tracking     text,
   ordered_at   timestamptz,
@@ -295,7 +262,6 @@ create table uniform_orders (
 create index on uniform_orders(athlete_id, created_at desc);
 create index on uniform_orders(uniform_id);
 
--- ─── Lead / CRM pipeline (gym sales ops) ─────────────────────────────────
 create table leads (
   id           uuid primary key default uuid_generate_v4(),
   program_id   uuid not null references programs(id) on delete cascade,
@@ -304,8 +270,8 @@ create table leads (
   parent_phone text,
   athlete_name text,
   athlete_age  int,
-  interest     text,                                  -- 'tumbling','tryouts','half-year','summer-camp'
-  source       text,                                  -- 'facebook','instagram','google','referral','walk-in'
+  interest     text,
+  source       text,
   stage        text not null default 'new' check (stage in ('new','contacted','tour','trial','converted','lost')),
   assigned_to  uuid references profiles(id),
   converted_at timestamptz,
@@ -315,8 +281,7 @@ create table leads (
 );
 create index on leads(program_id, stage);
 create index on leads(assigned_to, stage);
-create trigger trg_leads_updated before update on leads
-  for each row execute function touch_updated_at();
+create trigger trg_leads_updated before update on leads for each row execute function touch_updated_at();
 
 create table lead_touches (
   id           uuid primary key default uuid_generate_v4(),
@@ -328,11 +293,10 @@ create table lead_touches (
 );
 create index on lead_touches(lead_id, created_at desc);
 
--- ─── Volunteer roles + assignments (TeamSnap-style) ──────────────────────
 create table volunteer_roles (
   id           uuid primary key default uuid_generate_v4(),
   program_id   uuid not null references programs(id) on delete cascade,
-  name         text not null,                         -- 'Ice bag duty','Music cue','Travel lead'
+  name         text not null,
   description  text,
   created_at   timestamptz not null default now()
 );
@@ -350,12 +314,11 @@ create table volunteer_assignments (
 create index on volunteer_assignments(session_id);
 create index on volunteer_assignments(profile_id);
 
--- ─── Practice plans + drill library ──────────────────────────────────────
 create table drills (
   id           uuid primary key default uuid_generate_v4(),
   program_id   uuid not null references programs(id) on delete cascade,
   name         text not null,
-  category     text,                                  -- 'tumbling','stunting','conditioning','choreo'
+  category     text,
   duration_min int not null default 10,
   description  text,
   video_id     uuid references videos(id) on delete set null,
@@ -369,7 +332,7 @@ create table practice_plans (
   session_id   uuid references sessions(id) on delete set null,
   team_id      uuid not null references teams(id) on delete cascade,
   title        text,
-  focus        text,                                  -- 'jumps + tumble', 'full-out day', ...
+  focus        text,
   created_by   uuid references profiles(id),
   created_at   timestamptz not null default now()
 );
@@ -386,10 +349,6 @@ create table practice_plan_blocks (
 );
 create index on practice_plan_blocks(plan_id, position);
 
--- ─── Ancillary: mark athletes table as having an emergency-contact relation ─
--- (nothing to alter — FK is on emergency_contacts)
-
--- ─── Unread-thread helper view (for messaging UI) ─────────────────────────
 create or replace view v_thread_unread as
 select
   tm.profile_id,
@@ -411,5 +370,4 @@ join message_threads mt on mt.id = tm.thread_id
 left join message_reads mr on mr.thread_id = tm.thread_id and mr.profile_id = tm.profile_id
 where mt.deleted_at is null;
 
-comment on view v_thread_unread is
-  'Per-user unread message counts across all their threads. Used by the inbox badge.';
+comment on view v_thread_unread is 'Per-user unread message counts across all their threads. Used by the inbox badge.';;

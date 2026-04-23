@@ -201,12 +201,10 @@ hit_zero_backend/
 │   ├── config.toml
 │   ├── seed.sql
 │   └── migrations/
-│       ├── 20260420000001_initial_schema.sql
-│       ├── 20260420000002_auth_triggers.sql
-│       ├── 20260420000003_rls_policies.sql
-│       ├── 20260420000004_realtime.sql
-│       ├── 20260420000005_storage_buckets.sql
-│       └── 20260420000006_seed_skills.sql
+│       ├── 20260422014621_hit_zero_01_initial_schema.sql
+│       ├── 20260422014655_hit_zero_02_auth_triggers.sql
+│       ├── ...
+│       └── 20260423000001_square_foundation.sql
 └── functions/  (edge functions — see Phase 4)
 
 hit_zero_client/
