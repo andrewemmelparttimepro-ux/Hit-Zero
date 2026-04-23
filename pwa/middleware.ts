@@ -8,11 +8,12 @@ export const config = {
 };
 
 export default function middleware(request: Request) {
-  const lockEnabled = (process.env.DEMO_LOCK ?? 'on') !== 'off';
+  const env = ((globalThis as any).process?.env ?? {}) as Record<string, string | undefined>;
+  const lockEnabled = (env.DEMO_LOCK ?? 'on') !== 'off';
   if (!lockEnabled) return;
 
-  const expectedUser = process.env.DEMO_USERNAME ?? 'coach';
-  const expectedPassword = process.env.DEMO_PASSWORD ?? 'magic-city-2026';
+  const expectedUser = env.DEMO_USERNAME ?? 'coach';
+  const expectedPassword = env.DEMO_PASSWORD ?? 'magic-city-2026';
 
   const auth = request.headers.get('authorization') ?? '';
   if (auth.startsWith('Basic ')) {
