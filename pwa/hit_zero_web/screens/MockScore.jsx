@@ -19,6 +19,10 @@ const DEDUCTIONS = [
 function MockScore({ snap, navigate, pushToast }) {
   const [deductions, setDeductions] = React.useState([]);
   const [note, setNote] = React.useState('');
+  const team = (snap.teams || [])[0] || null;
+  const teamLabel = team
+    ? `${team.name || 'Magic'} · ${team.division || 'Team'}${team.level ? ` · L${team.level}` : ''}`
+    : 'Magic · Team';
 
   const predicted = window.HZsel.predictedScore(deductions);
 
@@ -54,7 +58,7 @@ function MockScore({ snap, navigate, pushToast }) {
         <div className="hz-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 20 }}>
             <div>
-              <div className="hz-eyebrow">Magic · Senior Coed 4 · Dream On</div>
+              <div className="hz-eyebrow">{teamLabel} · Dream On</div>
               <div className="hz-display" style={{ fontSize: 28, marginTop: 4 }}>Tabulation sheet</div>
             </div>
             <div style={{ textAlign: 'right' }}>

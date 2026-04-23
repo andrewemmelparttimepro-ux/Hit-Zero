@@ -105,6 +105,7 @@ const SCREEN_MAP = {
 // ─── Top-level App ───
 function App() {
   const [session, setSession] = useState(() => window.HZdb.auth._getSession());
+  const [authReady, setAuthReady] = useState(() => !window.HZdb.auth._init);
   const [snap, setSnap] = useState(null);
   const [route, setRoute] = useState(() => {
     const h = location.hash.slice(1);
@@ -114,6 +115,22 @@ function App() {
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [drawerAthleteId, setDrawerAthleteId] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    if (!window.HZdb.auth._init) return undefined;
+    window.HZdb.auth._init()
+      .then((nextSession) => {
+        if (!live) return;
+        setSession(nextSession);
+        setAuthReady(true);
+      })
+      .catch((err) => {
+        console.warn('[HZ] auth boot failed', err);
+        if (live) setAuthReady(true);
+      });
+    return () => { live = false; };
+  }, []);
 
   // Auth subscribe
   useEffect(() => {
@@ -197,6 +214,10 @@ function App() {
       .subscribe();
     return () => ch.unsubscribe();
   }, [snap?.athletes?.length, pushToast]);
+
+  if (!authReady) {
+    return <div style={{ color: 'var(--hz-dim)', padding: 40 }}>Loading…</div>;
+  }
 
   // Not signed in → login
   if (!session) return <Login onIn={() => {}} />;
@@ -349,11 +370,24 @@ function Topbar({ session, onOpenCmdk, onSignOut, onHamburger, snap }) {
           </div>
         )}
         <div style={{ width: 1, height: 24, background: 'var(--hz-line)' }} />
-        <RoleSwitcher session={session} />
+        {session.mode === 'prototype'
+          ? <RoleSwitcher session={session} />
+          : <AccountBadge session={session} />}
         <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={onSignOut} title="Sign out">
           <HZIcon name="logout" size={14} />
         </button>
       </div>
+    </div>
+  );
+}
+
+function AccountBadge({ session }) {
+  return (
+    <div className="hz-btn hz-btn-sm" style={{ cursor: 'default', gap: 10 }}>
+      <span style={{ textTransform: 'capitalize', fontWeight: 700 }}>{session.profile.role}</span>
+      <span style={{ color: 'var(--hz-dim)', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {session.user?.email || session.profile.email}
+      </span>
     </div>
   );
 }
@@ -409,46 +443,137 @@ function RoleSwitcher({ session }) {
   );
 }
 
-// ─── Login / role picker ───
+// ─── Login / auth gate ───
 function Login() {
+  const liveAuth = window.HZdb.auth._supportsMagicLink?.();
+  const [email, setEmail] = useState(window.HZdb.auth._lastEmail?.() || '');
+  const [role, setRole] = useState('owner');
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [err, setErr] = useState(null);
   const roles = [
     { id: 'coach', label: 'Coach', sub: 'Run practice, track skills, build routines' },
     { id: 'owner', label: 'Owner', sub: 'Program health, billing, all teams' },
     { id: 'athlete', label: 'Athlete', sub: "My reel, my skills, what's next" },
     { id: 'parent', label: 'Parent', sub: "Kid's wins, billing, schedule" },
   ];
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setErr(null);
+    try {
+      const { error } = await window.HZdb.auth.signInWithMagicLink(email, role);
+      if (error) throw error;
+      setSent(true);
+    } catch (cause) {
+      setErr(cause?.message || 'We could not send the sign-in link.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (sent) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40 }}>
+        <div style={{ maxWidth: 560, width: '100%' }}>
+          <div style={{ textAlign: 'center', marginBottom: 32 }}>
+            <HZWordmark size={80} stacked />
+            <div className="hz-eyebrow" style={{ marginTop: 18, fontSize: 11 }}>Magic City Allstars · Minot, ND</div>
+            <div className="hz-display" style={{ fontSize: 28, marginTop: 40 }}>Check your email.</div>
+            <div style={{ color: 'var(--hz-dim)', marginTop: 14, fontSize: 14 }}>
+              We sent a secure sign-in link to <b>{email}</b>. Open it on this device to continue.
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!liveAuth) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40 }}>
+        <div style={{ maxWidth: 900, width: '100%' }}>
+          <div style={{ textAlign: 'center', marginBottom: 48 }}>
+            <HZWordmark size={80} stacked />
+            <div className="hz-eyebrow" style={{ marginTop: 18, fontSize: 11 }}>Magic City Allstars · Minot, ND</div>
+            <div className="hz-display" style={{ fontSize: 28, marginTop: 40, color: 'var(--hz-dim)', fontWeight: 400, fontStyle: 'italic' }}>
+              Sign in as…
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+            {roles.map(r => (
+              <div
+                key={r.id}
+                onClick={async () => { await window.HZdb.auth.signInAsRole(r.id); }}
+                className="hz-card"
+                style={{
+                  cursor: 'pointer', textAlign: 'center', padding: '28px 20px',
+                  transition: 'transform 120ms, border-color 120ms',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.borderColor = 'rgba(249,127,172,0.3)'; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.borderColor = 'var(--hz-line)'; }}
+              >
+                <div className="hz-display" style={{ fontSize: 40, marginBottom: 8 }}>{r.label}</div>
+                <div style={{ color: 'var(--hz-dim)', fontSize: 12.5 }}>{r.sub}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ textAlign: 'center', marginTop: 40, color: 'var(--hz-dimmer)', fontSize: 11 }}>
+            Prototype fallback is active because the live auth client is unavailable.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40 }}>
-      <div style={{ maxWidth: 900, width: '100%' }}>
+      <form onSubmit={submit} style={{ maxWidth: 720, width: '100%' }}>
         <div style={{ textAlign: 'center', marginBottom: 48 }}>
           <HZWordmark size={80} stacked />
           <div className="hz-eyebrow" style={{ marginTop: 18, fontSize: 11 }}>Magic City Allstars · Minot, ND</div>
           <div className="hz-display" style={{ fontSize: 28, marginTop: 40, color: 'var(--hz-dim)', fontWeight: 400, fontStyle: 'italic' }}>
-            Sign in as…
+            Sign in to your gym.
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
-          {roles.map(r => (
-            <div
-              key={r.id}
-              onClick={async () => { await window.HZdb.auth.signInAsRole(r.id); }}
-              className="hz-card"
-              style={{
-                cursor: 'pointer', textAlign: 'center', padding: '28px 20px',
-                transition: 'transform 120ms, border-color 120ms',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.borderColor = 'rgba(249,127,172,0.3)'; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.borderColor = 'var(--hz-line)'; }}
-            >
-              <div className="hz-display" style={{ fontSize: 40, marginBottom: 8 }}>{r.label}</div>
-              <div style={{ color: 'var(--hz-dim)', fontSize: 12.5 }}>{r.sub}</div>
-            </div>
-          ))}
+        <div className="hz-card" style={{ maxWidth: 560, margin: '0 auto', padding: 28 }}>
+          <label className="hz-eyebrow" style={{ display: 'block', fontSize: 11, marginBottom: 8 }}>Email</label>
+          <input
+            className="hz-input"
+            type="email"
+            required
+            autoFocus
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            placeholder="you@gym.com"
+          />
+          <div className="hz-eyebrow" style={{ display: 'block', fontSize: 11, marginTop: 24, marginBottom: 10 }}>Role</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+            {roles.map(r => (
+              <button
+                key={r.id}
+                type="button"
+                className={'hz-btn' + (role === r.id ? ' hz-btn-primary' : '')}
+                style={{ justifyContent: 'flex-start', padding: '14px 16px' }}
+                onClick={() => setRole(r.id)}
+              >
+                <div style={{ textAlign: 'left' }}>
+                  <div style={{ fontWeight: 700 }}>{r.label}</div>
+                  <div style={{ color: role === r.id ? 'rgba(255,255,255,0.82)' : 'var(--hz-dim)', fontSize: 11, marginTop: 4 }}>{r.sub}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+          {err && <div style={{ color: 'var(--hz-pink)', marginTop: 18, fontSize: 13 }}>{err}</div>}
+          <button className="hz-btn hz-btn-primary" type="submit" disabled={busy || !email} style={{ width: '100%', marginTop: 22, justifyContent: 'center' }}>
+            {busy ? 'Sending…' : 'Send secure sign-in link'}
+          </button>
+          <div style={{ color: 'var(--hz-dimmer)', marginTop: 16, fontSize: 11, textAlign: 'center' }}>
+            Your roster access is attached to the email address on your profile.
+          </div>
         </div>
-        <div style={{ textAlign: 'center', marginTop: 40, color: 'var(--hz-dimmer)', fontSize: 11 }}>
-          Prototype · no password needed · switches roles anytime via the topbar
-        </div>
-      </div>
+      </form>
     </div>
   );
 }

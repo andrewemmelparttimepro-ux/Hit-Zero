@@ -48,7 +48,17 @@
   import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
   const URL = 'https://ldhzkdqznccfgpdvqyfk.supabase.co';
   const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkaHprZHF6bmNjZmdwZHZxeWZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzMTY1MTksImV4cCI6MjA5MDg5MjUxOX0.yPihX_N734HXTk8mzf-F85W_5j_J7EXe3Dg1U90ZMYI';
-  window.HZsupa = createClient(URL, ANON, { auth: { persistSession: false } });
+  window.HZsupa = createClient(URL, ANON, {
+    auth: {
+      persistSession: true,
+      detectSessionInUrl: true,
+      autoRefreshToken: true,
+      storage: window.localStorage,
+      storageKey: 'hz.auth',
+    },
+    realtime: { params: { eventsPerSecond: 10 } },
+    global: { headers: { 'x-client': 'hit-zero-pwa' } },
+  });
   window.HZ_FN_BASE = URL;
   window.HZ_ANON_KEY = ANON;
 
@@ -120,8 +130,12 @@
     if (!teams || !teams.length) return;
     d.teams = teams;
     const ids = teams.map(t => t.id);
-    const { data: athletes } = await s.from('athletes').select('*').in('team_id', ids).is('deleted_at', null);
+    const [{ data: athletes }, { data: profiles }] = await Promise.all([
+      s.from('athletes').select('*').in('team_id', ids).is('deleted_at', null),
+      s.from('profiles').select('*').order('display_name'),
+    ]);
     d.athletes = athletes || [];
+    if (profiles?.length) d.profiles = profiles;
     const aIds = d.athletes.map(a => a.id);
     if (aIds.length) {
       const [ask, pl] = await Promise.all([
@@ -133,6 +147,8 @@
     } else {
       d.athlete_skills = []; d.parent_links = [];
     }
+    const liveSession = window.HZdb?.auth?._getSession?.();
+    if (liveSession?.profile) upsert(d.profiles || (d.profiles = []), liveSession.profile);
     if (window.HZsel && window.HZsel._refresh) await window.HZsel._refresh();
   }
   window.HZmirror = { analysis: mirrorAnalysis, recent: mirrorRecent, roster: mirrorRosterLive };

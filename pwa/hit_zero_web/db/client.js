@@ -620,7 +620,10 @@
   }
 
   // ─── Auth ───
-  const AUTH_KEY = 'hz_auth_v1';
+  const AUTH_KEY = 'hz_auth_v2';
+  const AUTH_EMAIL_KEY = 'hz_auth_email_v1';
+  let realAuthSub = null;
+  let authInitPromise = null;
   function getSession() {
     try { return JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); } catch { return null; }
   }
@@ -629,26 +632,168 @@
     else localStorage.removeItem(AUTH_KEY);
     authListeners.forEach(fn => fn(session ? 'SIGNED_IN' : 'SIGNED_OUT', session));
   }
+  function hasRealAuth() {
+    return Boolean(window.HZsupa && window.HZsupa.auth);
+  }
+  function rememberEmail(email) {
+    try { if (email) localStorage.setItem(AUTH_EMAIL_KEY, email); } catch {}
+  }
+  function lastEmail() {
+    try { return localStorage.getItem(AUTH_EMAIL_KEY) || ''; } catch { return ''; }
+  }
+  function upsertLocalProfile(profile) {
+    if (!profile || !profile.id) return;
+    data.profiles = data.profiles || [];
+    const idx = data.profiles.findIndex(r => r.id === profile.id);
+    const old = idx >= 0 ? data.profiles[idx] : null;
+    if (idx >= 0) data.profiles[idx] = { ...data.profiles[idx], ...profile };
+    else data.profiles.push(profile);
+    save(data);
+    emit('profiles', { eventType: old ? 'UPDATE' : 'INSERT', new: idx >= 0 ? data.profiles[idx] : profile, old });
+  }
+  function normalizeProfile(profile, user) {
+    if (profile) return profile;
+    const meta = user?.user_metadata || {};
+    return {
+      id: user?.id,
+      email: user?.email || '',
+      role: meta.role || 'parent',
+      display_name: meta.display_name || (user?.email ? user.email.split('@')[0] : 'Hit Zero Member'),
+      program_id: meta.program_id || data.teams?.[0]?.program_id || null,
+    };
+  }
+  async function loadProfile(user) {
+    if (!user) return null;
+    if (!hasRealAuth()) {
+      return (data.profiles || []).find(p => p.id === user.id || (user.email && p.email === user.email)) || null;
+    }
+    let profile = null;
+    try {
+      const byId = await window.HZsupa.from('profiles').select('*').eq('id', user.id).maybeSingle();
+      if (byId.data) profile = byId.data;
+    } catch (err) {
+      console.warn('[HZ] profile lookup by id failed', err);
+    }
+    if (!profile && user.email) {
+      try {
+        const byEmail = await window.HZsupa.from('profiles').select('*').eq('email', user.email).maybeSingle();
+        if (byEmail.data) profile = { ...byEmail.data, id: user.id, email: user.email };
+      } catch (err) {
+        console.warn('[HZ] profile lookup by email failed', err);
+      }
+    }
+    profile = normalizeProfile(profile, user);
+    if (profile) upsertLocalProfile(profile);
+    return profile;
+  }
+  function wrapSession(raw, profile, mode = hasRealAuth() ? 'live' : 'prototype') {
+    if (!raw || !profile) return null;
+    return { ...raw, user: raw.user || { id: profile.id, email: profile.email }, profile, mode };
+  }
+  async function syncSupabaseSession(rawSession) {
+    if (!rawSession?.user) {
+      setSession(null);
+      return null;
+    }
+    const profile = await loadProfile(rawSession.user);
+    const wrapped = wrapSession(rawSession, profile);
+    if (wrapped?.user?.email) rememberEmail(wrapped.user.email);
+    setSession(wrapped);
+    if (window.location.pathname === '/auth/callback') history.replaceState({}, '', '/');
+    return wrapped;
+  }
+  function ensureRealAuthSubscription() {
+    if (!hasRealAuth() || realAuthSub) return;
+    const { data: sub } = window.HZsupa.auth.onAuthStateChange(async (_evt, session) => {
+      try { await syncSupabaseSession(session); }
+      catch (err) { console.warn('[HZ] auth sync failed', err); }
+    });
+    realAuthSub = sub.subscription;
+  }
+  async function initRealAuth() {
+    if (!hasRealAuth()) return Promise.resolve(getSession());
+    ensureRealAuthSubscription();
+    if (!authInitPromise) {
+      authInitPromise = window.HZsupa.auth.getSession()
+        .then(async ({ data: result, error }) => {
+          if (error) throw error;
+          return syncSupabaseSession(result.session);
+        })
+        .catch((err) => {
+          console.warn('[HZ] auth init failed', err);
+          setSession(null);
+          return null;
+        });
+    }
+    return authInitPromise;
+  }
 
   const auth = {
     async signInAsRole(role) {
+      if (hasRealAuth()) {
+        return { data: null, error: new Error('Prototype role switching is disabled for credentialed sign-in.') };
+      }
       // Demo auth: map role to seeded profile
       const profile = (data.profiles || []).find(p => p.role === role);
       if (!profile) return { data: null, error: new Error('no profile') };
-      const session = { user: { id: profile.id, email: profile.email }, profile };
+      const session = { user: { id: profile.id, email: profile.email }, profile, mode: 'prototype' };
       setSession(session);
       return { data: { session }, error: null };
     },
-    async signOut() { setSession(null); return { error: null }; },
-    getSession() { return Promise.resolve({ data: { session: getSession() }, error: null }); },
+    async signInWithMagicLink(email, role) {
+      if (!hasRealAuth() || !window.HZ_FN_BASE || !window.HZ_ANON_KEY) {
+        return { data: null, error: new Error('Magic-link auth is unavailable in prototype mode.') };
+      }
+      rememberEmail(email);
+      try {
+        const res = await fetch(window.HZ_FN_BASE + '/functions/v1/auth-link-v1', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + window.HZ_ANON_KEY,
+            'apikey': window.HZ_ANON_KEY,
+          },
+          body: JSON.stringify({
+            email,
+            role,
+            redirect_to: window.location.origin + '/auth/callback',
+          }),
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          return { data: null, error: new Error(payload?.error || payload?.message || 'We could not start the sign-in flow.') };
+        }
+        if (payload?.action_link) window.location.assign(payload.action_link);
+        return { data: payload, error: null };
+      } catch (err) {
+        return { data: null, error: err instanceof Error ? err : new Error(String(err)) };
+      }
+    },
+    async signOut() {
+      if (hasRealAuth()) {
+        const { error } = await window.HZsupa.auth.signOut();
+        if (error) return { error };
+      }
+      setSession(null);
+      return { error: null };
+    },
+    async getSession() {
+      if (hasRealAuth()) await initRealAuth();
+      return { data: { session: getSession() }, error: null };
+    },
     onAuthStateChange(cb) {
       authListeners.add(cb);
+      if (hasRealAuth()) ensureRealAuthSubscription();
       cb(getSession() ? 'SIGNED_IN' : 'SIGNED_OUT', getSession());
       return { data: { subscription: { unsubscribe: () => authListeners.delete(cb) } } };
     },
     // Synchronous helper just for the prototype
     _getSession: getSession,
     _setSession: setSession,
+    _init: initRealAuth,
+    _supportsMagicLink: hasRealAuth,
+    _mode: () => hasRealAuth() ? 'live' : 'prototype',
+    _lastEmail: lastEmail,
   };
 
   // ═══════════════════════════════════════════════════════════════════════

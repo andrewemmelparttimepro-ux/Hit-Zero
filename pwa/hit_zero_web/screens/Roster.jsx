@@ -7,6 +7,10 @@ function Roster({ snap, openAthlete, navigate }) {
   const [sort, setSort] = React.useState({ col: 'readiness', dir: 'desc' });
   const [filter, setFilter] = React.useState('all');
   const [view, setView] = React.useState('table');
+  const team = (snap.teams || [])[0] || null;
+  const teamLabel = team
+    ? `${team.division || team.name || 'Team'}${team.level ? ` · L${team.level}` : ''}`
+    : 'Team';
 
   const rows = snap.athletes.map(a => {
     const r = window.HZsel.athleteReadiness(a.id);
@@ -26,7 +30,7 @@ function Roster({ snap, openAthlete, navigate }) {
 
   return (
     <div>
-      <SectionHeading eyebrow={`${snap.athletes.length} athletes · Senior Coed 4`} title="The roster." trailing={
+      <SectionHeading eyebrow={`${snap.athletes.length} athletes · ${teamLabel}`} title="The roster." trailing={
         <div style={{ display: 'flex', gap: 8 }}>
           <select className="hz-input" style={{ width: 160, padding: '8px 12px' }} value={filter} onChange={e => setFilter(e.target.value)}>
             <option value="all">All roles</option>

@@ -15,9 +15,13 @@ port = 54323
 
 [auth]
 enabled = true
-site_url = "http://localhost:5173"
+site_url = "https://hit-zero.vercel.app"
 additional_redirect_urls = [
+  "http://localhost:5173",
   "http://localhost:5173/auth/callback",
+  "https://hit-zero.vercel.app",
+  "https://hit-zero.vercel.app/auth/callback",
+  "https://hitzero.app",
   "https://hitzero.app/auth/callback",
   "capacitor://localhost",
   "hitzero://auth/callback",

@@ -14,6 +14,10 @@ function CoachToday({ snap, openAthlete, navigate, pushToast, session }) {
   }
 
   const safe = (fn, fallback) => { try { const v = fn(); return v == null ? fallback : v; } catch { return fallback; } };
+  const team = (snap.teams || [])[0] || null;
+  const teamLine = team
+    ? `${team.name || 'Magic'} — ${team.division || 'Team'}${team.level ? ` L${team.level}` : ''}`
+    : 'Magic — Team';
   const readiness      = safe(() => window.HZsel.teamReadiness(), 0);
   const teamAttendance = safe(() => window.HZsel.teamAttendance(), 0);
   const predicted      = safe(() => window.HZsel.predictedScore(), { total: 0, deductions: 0, rows: [] });
@@ -50,7 +54,7 @@ function CoachToday({ snap, openAthlete, navigate, pushToast, session }) {
             Today we <span className="hz-zero">hit</span> zero.
           </div>
           <div style={{ color: 'var(--hz-dim)', fontSize: 14, marginTop: 14, maxWidth: 540 }}>
-            Magic — Senior Coed 4. {comp && comp.days <= 14 ? `${comp.days} days to Dream On. The routine is becoming the routine.` : 'Build every rep like it counts twice.'}
+            {teamLine}. {comp && comp.days <= 14 ? `${comp.days} days to Dream On. The routine is becoming the routine.` : 'Build every rep like it counts twice.'}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
