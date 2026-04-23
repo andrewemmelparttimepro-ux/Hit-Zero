@@ -876,6 +876,96 @@
         return { data: null, error: err instanceof Error ? err : new Error(String(err)) };
       }
     },
+    async createChildAthlete(input = {}) {
+      const current = getSession();
+      const name = String(input.display_name || '').trim();
+      if (!current?.profile?.id) return { data: null, error: new Error('You need to be signed in to add a child.') };
+      if (!name) return { data: null, error: new Error('Child name is required.') };
+
+      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) {
+        try {
+          const { data: authData, error: authError } = await window.HZsupa.auth.getSession();
+          if (authError) throw authError;
+          const token = authData?.session?.access_token;
+          if (!token) throw new Error('Your sign-in session expired. Sign in again and retry.');
+          const res = await fetch(window.HZ_FN_BASE + '/functions/v1/parent-athlete-v1', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + token,
+              'apikey': window.HZ_ANON_KEY,
+            },
+            body: JSON.stringify(input),
+          });
+          const payload = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(payload?.error || 'We could not add that child.');
+
+          const raw = payload || {};
+          if (raw.athlete) {
+            data.athletes = data.athletes || [];
+            data.athletes = [...data.athletes.filter(a => a.id !== raw.athlete.id), raw.athlete];
+            emit('athletes', { eventType: 'INSERT', new: raw.athlete, old: null });
+          }
+          if (raw.parent_link) {
+            data.parent_links = data.parent_links || [];
+            data.parent_links = [
+              ...data.parent_links.filter(l => !(l.parent_id === raw.parent_link.parent_id && l.athlete_id === raw.parent_link.athlete_id)),
+              raw.parent_link,
+            ];
+            emit('parent_links', { eventType: 'INSERT', new: raw.parent_link, old: null });
+          }
+          if (raw.billing_account) {
+            data.billing_accounts = data.billing_accounts || [];
+            data.billing_accounts = [...data.billing_accounts.filter(a => a.id !== raw.billing_account.id), raw.billing_account];
+            emit('billing_accounts', { eventType: 'INSERT', new: raw.billing_account, old: null });
+          }
+          save(data);
+          if (window.HZmirror?.roster) await window.HZmirror.roster();
+          if (window.HZsel?._refresh) await window.HZsel._refresh();
+          return { data: raw, error: null };
+        } catch (err) {
+          return { data: null, error: err instanceof Error ? err : new Error(String(err)) };
+        }
+      }
+
+      const team = (data.teams || [])[0];
+      if (!team?.id) return { data: null, error: new Error('No team exists yet.') };
+      const athlete = {
+        id: 'a_' + Math.random().toString(36).slice(2, 10),
+        profile_id: null,
+        team_id: team.id,
+        display_name: name,
+        initials: name.split(' ').filter(Boolean).map(s => s[0]).join('').slice(0, 2).toUpperCase() || 'HZ',
+        age: input.age ? Number(input.age) : null,
+        position: input.position || null,
+        photo_color: input.photo_color || '#F97FAC',
+        joined_at: new Date().toISOString().slice(0, 10),
+      };
+      const link = {
+        parent_id: current.profile.id,
+        athlete_id: athlete.id,
+        relation: input.relation || 'parent',
+        is_primary: true,
+        created_at: new Date().toISOString(),
+      };
+      const billing = {
+        id: 'ba_' + Math.random().toString(36).slice(2, 10),
+        athlete_id: athlete.id,
+        season_total: 0,
+        paid: 0,
+        owed: 0,
+        autopay: false,
+        updated_at: new Date().toISOString(),
+      };
+      data.athletes = [...(data.athletes || []), athlete];
+      data.parent_links = [...(data.parent_links || []), link];
+      data.billing_accounts = [...(data.billing_accounts || []), billing];
+      save(data);
+      emit('athletes', { eventType: 'INSERT', new: athlete, old: null });
+      emit('parent_links', { eventType: 'INSERT', new: link, old: null });
+      emit('billing_accounts', { eventType: 'INSERT', new: billing, old: null });
+      return { data: { ok: true, athlete, parent_link: link, billing_account: billing }, error: null };
+    },
     async signOut() {
       if (hasRealAuth()) {
         const { error } = await window.HZsupa.auth.signOut();

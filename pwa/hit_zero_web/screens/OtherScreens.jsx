@@ -304,20 +304,25 @@ function SkillTree({ snap, session }) {
 window.SkillTree = SkillTree;
 
 // ─── Parent Dashboard ───
-function ParentDashboard({ snap, session, navigate }) {
+function ParentDashboard({ snap, session, navigate, pushToast }) {
   const links = (snap.parent_links || []).filter(l => l.parent_id === session.profile.id);
   const myKids = links.length > 0 ? links.map(l => snap.athletes.find(a => a.id === l.athlete_id)).filter(Boolean) : [snap.athletes[0]];
+  const familyName = (session.profile.display_name || 'Your').split(' ').slice(-1)[0];
+  const leadKid = myKids.filter(Boolean)[0] || null;
 
   return (
     <div>
       <div style={{ marginBottom: 40 }}>
-        <div className="hz-eyebrow" style={{ marginBottom: 10 }}>The Rhodes family · Magic</div>
+        <div className="hz-eyebrow" style={{ marginBottom: 10 }}>{familyName} family · Magic</div>
         <div className="hz-display" style={{ fontSize: 64, lineHeight: 0.9 }}>
-          {myKids[0].display_name.split(' ')[0]} had a <span className="hz-zero">great</span> week.
+          {leadKid ? leadKid.display_name.split(' ')[0] : 'Add your athlete'} <span className="hz-zero">{leadKid ? 'had' : 'without'}</span><br/>
+          {leadKid ? 'a great week.' : 'an email.'}
         </div>
       </div>
 
-      {myKids.map(kid => {
+      <AddChildCard snap={snap} session={session} pushToast={pushToast}/>
+
+      {myKids.filter(Boolean).map(kid => {
         const readiness = window.HZsel.athleteReadiness(kid.id);
         const attendance = window.HZsel.athleteAttendance(kid.id);
         const summary = window.HZsel.athleteSkillsSummary(kid.id);
@@ -332,7 +337,9 @@ function ParentDashboard({ snap, session, navigate }) {
                   <Avatar name={kid.display_name} initials={kid.initials} color={kid.photo_color} src={kid.photo_url} size={64}/>
                   <div>
                     <div className="hz-display" style={{ fontSize: 30 }}>{kid.display_name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--hz-dim)', textTransform: 'capitalize', marginTop: 2 }}>{kid.role} · Age {kid.age}</div>
+                    <div style={{ fontSize: 12, color: 'var(--hz-dim)', textTransform: 'capitalize', marginTop: 2 }}>
+                      {kid.position || kid.role || 'athlete'}{kid.age ? ' · Age ' + kid.age : ''}
+                    </div>
                   </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
@@ -400,6 +407,116 @@ function MiniBox({ label, value, accent }) {
     <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
       <div style={{ fontSize: 9, color: 'var(--hz-dim)', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 700 }}>{label}</div>
       <div className="hz-display" style={{ fontSize: 22, color: accent || '#fff', marginTop: 2 }}>{value}</div>
+    </div>
+  );
+}
+
+function AddChildCard({ snap, session, pushToast }) {
+  const teams = snap.teams || [];
+  const [open, setOpen] = React.useState(false);
+  const [form, setForm] = React.useState({
+    display_name: '',
+    age: '',
+    position: 'all-around',
+    team_id: teams[0]?.id || '',
+  });
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  React.useEffect(() => {
+    if (!form.team_id && teams[0]?.id) setForm(f => ({ ...f, team_id: teams[0].id }));
+  }, [teams.length]);
+
+  const addChild = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    const { data, error: err } = await window.HZdb.auth.createChildAthlete({
+      ...form,
+      display_name: form.display_name.trim(),
+      age: form.age ? Number(form.age) : null,
+      relation: 'parent',
+      photo_color: '#F97FAC',
+    });
+    setBusy(false);
+    if (err) {
+      setError(err.message || String(err));
+      return;
+    }
+    const name = data?.athlete?.display_name || form.display_name.trim();
+    setForm(f => ({ ...f, display_name: '', age: '' }));
+    setOpen(false);
+    pushToast && pushToast({
+      eyebrow: 'Child added',
+      title: `${name} is on your family roster`,
+      body: 'No kid email required. Their profile is managed through your parent login.',
+    });
+  };
+
+  return (
+    <div className="hz-card" style={{ marginBottom: 24, borderColor: open ? 'rgba(39,207,215,0.45)' : 'var(--hz-line)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div>
+          <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)', marginBottom: 8 }}>Parent-managed athlete</div>
+          <div className="hz-display" style={{ fontSize: 30, marginBottom: 6 }}>Kids do not need inboxes.</div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.55, maxWidth: 680 }}>
+            Add younger athletes under your parent account. Coaches still see them on the roster; billing, skills, attendance, and pins attach to the child profile.
+          </div>
+        </div>
+        <button className="hz-btn hz-btn-primary" onClick={() => setOpen(v => !v)}>
+          {open ? 'Close' : 'Add child'} <HZIcon name={open ? 'x' : 'plus'} size={13}/>
+        </button>
+      </div>
+
+      {open && (
+        <form onSubmit={addChild} style={{ marginTop: 22, display: 'grid', gridTemplateColumns: '2fr 100px 150px 180px auto', gap: 10, alignItems: 'end' }}>
+          <label>
+            <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Child name</div>
+            <input
+              className="hz-input"
+              value={form.display_name}
+              onChange={e => setForm(f => ({ ...f, display_name: e.target.value }))}
+              placeholder="Arlowe Emmel"
+              required
+            />
+          </label>
+          <label>
+            <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Age</div>
+            <input
+              className="hz-input"
+              type="number"
+              min="4"
+              max="25"
+              value={form.age}
+              onChange={e => setForm(f => ({ ...f, age: e.target.value }))}
+              placeholder="8"
+            />
+          </label>
+          <label>
+            <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Role</div>
+            <select className="hz-input" value={form.position} onChange={e => setForm(f => ({ ...f, position: e.target.value }))}>
+              <option value="all-around">All-around</option>
+              <option value="flyer">Flyer</option>
+              <option value="base">Base</option>
+              <option value="backspot">Backspot</option>
+              <option value="tumbler">Tumbler</option>
+            </select>
+          </label>
+          <label>
+            <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Team</div>
+            <select className="hz-input" value={form.team_id} onChange={e => setForm(f => ({ ...f, team_id: e.target.value }))}>
+              {teams.map(t => <option key={t.id} value={t.id}>{t.division || t.name || 'Team'}{t.level ? ` L${t.level}` : ''}</option>)}
+            </select>
+          </label>
+          <button className="hz-btn hz-btn-primary" disabled={busy || !form.display_name.trim()}>
+            {busy ? 'Adding…' : 'Create'}
+          </button>
+          {error && <div style={{ gridColumn: '1 / -1', color: 'var(--hz-pink)', fontSize: 13 }}>{error}</div>}
+          <div style={{ gridColumn: '1 / -1', color: 'var(--hz-dim)', fontSize: 12 }}>
+            This creates an athlete row with no auth profile. If she gets her own login later, staff can attach one without losing history.
+          </div>
+        </form>
+      )}
     </div>
   );
 }
