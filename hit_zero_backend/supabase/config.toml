@@ -1,0 +1,43 @@
+# Supabase CLI config — run `supabase start` in this folder
+project_id = "hit-zero"
+
+[api]
+enabled = true
+port = 54321
+
+[db]
+port = 54322
+major_version = 17
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = [
+  "http://localhost:5173/auth/callback",
+  "https://hitzero.app/auth/callback",
+  "capacitor://localhost",
+  "hitzero://auth/callback",
+]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = true
+
+[auth.sms]
+enable_signup = false
+enable_confirmations = false
+
+[storage]
+enabled = true
+file_size_limit = "500MiB"        # cheer videos get large
+
+[edge_runtime]
+enabled = true
+policy = "oneshot"

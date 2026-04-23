@@ -1,0 +1,76 @@
+/* src/styles.css — shell + auth + recorder + review.
+   Ports the prototype's HZ palette. Screen-specific styles live with the screens. */
+
+:root {
+  --hz-bg:        #0B0D12;
+  --hz-surface:   #141820;
+  --hz-elev:      #1B2130;
+  --hz-line:      #242B3A;
+  --hz-text:      #E8ECF4;
+  --hz-dim:       #8690A6;
+  --hz-pink:      #E8356D;
+  --hz-blue:      #1B7FEB;
+  --hz-yellow:    #FFC300;
+  --hz-green:     #2EC4B6;
+  --hz-danger:    #FF4D6D;
+  --hz-radius:    12px;
+  --hz-safe-top:    env(safe-area-inset-top);
+  --hz-safe-bottom: env(safe-area-inset-bottom);
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; background: var(--hz-bg); color: var(--hz-text); }
+body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; cursor: pointer; }
+
+.booting { height: 100%; display: grid; place-items: center; }
+.spinner { width: 28px; height: 28px; border: 3px solid var(--hz-line); border-top-color: var(--hz-pink); border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Auth ─────────────────────────────────────────── */
+.auth { min-height: 100%; padding: calc(48px + var(--hz-safe-top)) 24px var(--hz-safe-bottom); display: grid; place-items: center; }
+.auth-card { width: 100%; max-width: 380px; background: var(--hz-surface); border: 1px solid var(--hz-line); border-radius: 20px; padding: 28px; }
+.auth-card .mark { width: 44px; height: 44px; border-radius: 12px; background: var(--hz-pink); color: #fff; display: grid; place-items: center; font-weight: 800; letter-spacing: .5px; margin-bottom: 20px; }
+.auth-card h1 { margin: 0 0 6px; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+.auth-card p { color: var(--hz-dim); margin: 0 0 24px; }
+.auth-card label { display: block; font-size: 13px; color: var(--hz-dim); margin-bottom: 6px; margin-top: 16px; }
+.auth-card input { width: 100%; background: var(--hz-elev); border: 1px solid var(--hz-line); color: var(--hz-text); border-radius: 10px; padding: 12px 14px; font-size: 16px; outline: none; }
+.auth-card input:focus { border-color: var(--hz-pink); }
+.role-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
+.role-picker button { background: var(--hz-elev); border: 1px solid var(--hz-line); color: var(--hz-text); border-radius: 10px; padding: 12px; text-transform: capitalize; }
+.role-picker button.on { background: var(--hz-pink); border-color: var(--hz-pink); color: #fff; }
+.err { background: rgba(255,77,109,.12); color: var(--hz-danger); padding: 10px 12px; border-radius: 8px; margin-top: 16px; font-size: 14px; }
+button.primary { width: 100%; margin-top: 20px; padding: 14px; border: none; border-radius: 12px; background: var(--hz-pink); color: #fff; font-weight: 600; font-size: 16px; }
+button.primary:disabled { opacity: .5; }
+
+/* ── Shell ─────────────────────────────────────────── */
+.shell { height: 100%; display: grid; grid-template-rows: auto 1fr; }
+.top { padding: calc(12px + var(--hz-safe-top)) 16px 12px; background: var(--hz-surface); border-bottom: 1px solid var(--hz-line); display: flex; justify-content: space-between; align-items: center; }
+.top .brand { font-weight: 700; letter-spacing: -0.01em; }
+.top .who { color: var(--hz-dim); font-size: 13px; }
+.content { padding: 16px; overflow: auto; }
+.placeholder { background: var(--hz-surface); border: 1px solid var(--hz-line); border-radius: 16px; padding: 20px; }
+
+/* ── Recorder ─────────────────────────────────────── */
+.recorder { position: fixed; inset: 0; background: #000; color: #fff; display: grid; place-items: center; z-index: 1000; }
+.recorder-live { position: relative; width: 100%; height: 100%; }
+.recorder-live video { width: 100%; height: 100%; object-fit: cover; }
+.recorder-live .timer { position: absolute; top: calc(20px + var(--hz-safe-top)); left: 50%; transform: translateX(-50%); background: rgba(255,77,109,.9); padding: 6px 12px; border-radius: 999px; font-weight: 600; }
+.recorder-live .stop { position: absolute; bottom: calc(32px + var(--hz-safe-bottom)); left: 50%; transform: translateX(-50%); width: 72px; height: 72px; border-radius: 50%; background: var(--hz-danger); border: 4px solid #fff; }
+.recorder-review video { max-width: 90vw; max-height: 70vh; border-radius: 12px; }
+.recorder-review .row { display: flex; gap: 12px; margin-top: 16px; }
+
+/* ── Video review ─────────────────────────────────── */
+.review { padding: 16px; }
+.review video { width: 100%; border-radius: 12px; background: #000; }
+.timeline { position: relative; height: 12px; background: var(--hz-elev); border-radius: 999px; margin: 12px 0; cursor: pointer; }
+.marker { position: absolute; top: -4px; width: 4px; height: 20px; background: var(--hz-blue); border-radius: 2px; transform: translateX(-2px); }
+.marker.new { background: var(--hz-pink); }
+.note-compose { display: flex; gap: 8px; align-items: center; margin: 12px 0; }
+.note-compose .at { color: var(--hz-pink); font-variant-numeric: tabular-nums; font-weight: 600; min-width: 48px; }
+.note-compose input { flex: 1; background: var(--hz-elev); border: 1px solid var(--hz-line); color: var(--hz-text); border-radius: 10px; padding: 10px; }
+.notes { list-style: none; padding: 0; margin: 0; }
+.notes li { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--hz-line); cursor: pointer; }
+.notes .at { color: var(--hz-pink); font-variant-numeric: tabular-nums; font-weight: 600; min-width: 48px; }
+.verify { margin-top: 16px; background: var(--hz-green); }
+.verified { margin-top: 16px; color: var(--hz-green); font-weight: 600; text-align: center; }

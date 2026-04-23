@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Hit Zero — Magic City Allstars</title>
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.webmanifest"/>
+<meta name="theme-color" content="#050507"/>
+<meta name="color-scheme" content="dark"/>
+
+<!-- iOS PWA -->
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Hit Zero"/>
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png"/>
+<link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png"/>
+<link rel="icon" type="image/svg+xml" href="icons/icon.svg"/>
+
+<!-- Open Graph for text previews -->
+<meta property="og:title" content="Hit Zero"/>
+<meta property="og:description" content="An operating system for all-star cheer — built for Magic City Allstars."/>
+<meta property="og:type" content="website"/>
+
+<link rel="stylesheet" href="hit_zero_web/styles/web.css"/>
+
+<!-- React + Babel pinned versions -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<!-- TUS resumable upload client for files that exceed the 50MB free-tier
+     single-request cap. Chunks in 6MB slices and reports real progress. -->
+<script src="https://unpkg.com/tus-js-client@4.3.1/dist/tus.min.js"></script>
+
+<!-- Seed data from the iOS prototype (single source of truth) -->
+<script src="hit_zero/data/cheer-data.js"></script>
+
+<!-- DB + selectors -->
+<script src="hit_zero_web/db/client.js"></script>
+<script src="hit_zero_web/db/selectors.js"></script>
+
+<!-- Real Supabase client for AI Judge video upload + edge-function calls.
+     Falls back to the HZdb in-browser mock when keys are absent. -->
+<script type="module">
+  import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+  const URL = 'https://ldhzkdqznccfgpdvqyfk.supabase.co';
+  const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkaHprZHF6bmNjZmdwZHZxeWZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzMTY1MTksImV4cCI6MjA5MDg5MjUxOX0.yPihX_N734HXTk8mzf-F85W_5j_J7EXe3Dg1U90ZMYI';
+  window.HZsupa = createClient(URL, ANON, { auth: { persistSession: false } });
+  window.HZ_FN_BASE = URL;
+  window.HZ_ANON_KEY = ANON;
+
+  // ─── Mirror: pull real Supabase analyses into the in-browser HZdb so the
+  // existing history + scorecard screens render them. The UI was built
+  // against the mock store; this keeps the screens dumb while the real
+  // backend drives the data. Safe to call repeatedly — it de-dupes by id.
+  function upsert(bucket, row) {
+    if (!row || !row.id) return;
+    const arr = bucket;
+    const i = arr.findIndex(x => x.id === row.id);
+    if (i >= 0) arr[i] = row; else arr.push(row);
+  }
+  async function mirrorAnalysis(id) {
+    const d = window.HZdb && window.HZdb._raw && window.HZdb._raw();
+    if (!d || !window.HZsupa) return null;
+    const s = window.HZsupa;
+    const [a, els, dds, fb, su] = await Promise.all([
+      s.from('routine_analyses').select('*').eq('id', id).maybeSingle(),
+      s.from('analysis_elements').select('*').eq('analysis_id', id),
+      s.from('analysis_deductions').select('*').eq('analysis_id', id),
+      s.from('analysis_feedback').select('*').eq('analysis_id', id),
+      s.from('analysis_skill_updates').select('*').eq('analysis_id', id),
+    ]);
+    if (a.error || !a.data) return null;
+    d.routine_analyses = d.routine_analyses || [];
+    d.analysis_elements = d.analysis_elements || [];
+    d.analysis_deductions = d.analysis_deductions || [];
+    d.analysis_feedback = d.analysis_feedback || [];
+    d.analysis_skill_updates = d.analysis_skill_updates || [];
+    upsert(d.routine_analyses, a.data);
+    (els.data || []).forEach(r => upsert(d.analysis_elements, r));
+    (dds.data || []).forEach(r => upsert(d.analysis_deductions, r));
+    (fb.data || []).forEach(r => upsert(d.analysis_feedback, r));
+    (su.data || []).forEach(r => upsert(d.analysis_skill_updates, r));
+    // Re-snapshot so selectors see the new rows.
+    if (window.HZsel && window.HZsel._refresh) await window.HZsel._refresh();
+    return a.data;
+  }
+  async function mirrorRecent(teamId, n = 20) {
+    if (!window.HZsupa || !teamId) return;
+    const d = window.HZdb && window.HZdb._raw && window.HZdb._raw();
+    const s = window.HZsupa;
+    const { data } = await s.from('routine_analyses')
+      .select('id').eq('team_id', teamId)
+      .order('created_at', { ascending: false }).limit(n);
+    if (!data) return;
+    // Drop any stale local rows whose team_id doesn't match the live team —
+    // otherwise the seeded "Senior Coed 4 L4" demo row lingers in history.
+    if (d) {
+      const keep = new Set(data.map(r => r.id));
+      const filt = (arr) => (arr || []).filter(r => !r.team_id || r.team_id === teamId || keep.has(r.analysis_id) || keep.has(r.id));
+      d.routine_analyses = (d.routine_analyses || []).filter(r => r.team_id === teamId);
+      d.analysis_elements = filt(d.analysis_elements);
+      d.analysis_deductions = filt(d.analysis_deductions);
+      d.analysis_feedback = filt(d.analysis_feedback);
+      d.analysis_skill_updates = filt(d.analysis_skill_updates);
+    }
+    for (const r of data) await mirrorAnalysis(r.id);
+  }
+  // Mirror the live team + athletes from Supabase. The HZdb mock seeds a
+  // Senior Coed 4 team; if the real roster has been updated (e.g. Magic Minis
+  // Mini L1), we overwrite the first team slot so every screen picks it up.
+  async function mirrorRosterLive() {
+    const d = window.HZdb && window.HZdb._raw && window.HZdb._raw();
+    if (!d || !window.HZsupa) return;
+    const s = window.HZsupa;
+    const { data: teams } = await s.from('teams').select('*').is('deleted_at', null).order('created_at');
+    if (!teams || !teams.length) return;
+    d.teams = teams;
+    const ids = teams.map(t => t.id);
+    const { data: athletes } = await s.from('athletes').select('*').in('team_id', ids).is('deleted_at', null);
+    d.athletes = athletes || [];
+    const aIds = d.athletes.map(a => a.id);
+    if (aIds.length) {
+      const [ask, pl] = await Promise.all([
+        s.from('athlete_skills').select('*').in('athlete_id', aIds),
+        s.from('parent_links').select('*').in('athlete_id', aIds),
+      ]);
+      d.athlete_skills = ask.data || [];
+      d.parent_links = pl.data || [];
+    } else {
+      d.athlete_skills = []; d.parent_links = [];
+    }
+    if (window.HZsel && window.HZsel._refresh) await window.HZsel._refresh();
+  }
+  window.HZmirror = { analysis: mirrorAnalysis, recent: mirrorRecent, roster: mirrorRosterLive };
+
+  // Wrap HZsel.snapshot so every snapshot pulls the live roster first. This
+  // guarantees the team + athletes are always the real Supabase ones, not
+  // the stale mock seed — no matter which screen triggered the snapshot.
+  (function patchSnapshot() {
+    // HZsel loads after this script, so defer until it exists.
+    function patch() {
+      if (!window.HZsel || !window.HZsel.snapshot) { setTimeout(patch, 30); return; }
+      const orig = window.HZsel.snapshot.bind(window.HZsel);
+      window.HZsel.snapshot = async function(...args) {
+        try { await mirrorRosterLive(); } catch (e) { console.warn('mirror roster failed', e); }
+        return orig(...args);
+      };
+    }
+    patch();
+  })();
+
+  // Swallow drag-and-drop at the window level so a miss on the dropzone
+  // doesn't make Chrome navigate to the file (which is what was creating
+  // duplicate copies in Downloads).
+  ['dragover','drop'].forEach(ev =>
+    window.addEventListener(ev, (e) => { e.preventDefault(); }, { capture: true })
+  );
+</script>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- Primitives → Shell → Drawer → Screens → App boot -->
+<script type="text/babel" src="hit_zero_web/components/HZPrimitives.jsx"></script>
+<script type="text/babel" src="hit_zero_web/components/AthleteDrawer.jsx"></script>
+<script type="text/babel" src="hit_zero_web/components/HZShell.jsx"></script>
+
+<script type="text/babel" src="hit_zero_web/screens/CoachToday.jsx"></script>
+<script type="text/babel" src="hit_zero_web/screens/Roster.jsx"></script>
+<script type="text/babel" src="hit_zero_web/screens/SkillMatrix.jsx"></script>
+<script type="text/babel" src="hit_zero_web/screens/RoutineBuilder.jsx"></script>
+<script type="text/babel" src="hit_zero_web/screens/MockScore.jsx"></script>
+<script type="text/babel" src="hit_zero_web/screens/OtherScreens.jsx"></script>
+<script type="text/babel" src="hit_zero_web/screens/Tier1Tier2Screens.jsx"></script>
+<script type="text/babel" src="hit_zero_web/screens/AIJudge.jsx"></script>
+
+<script type="text/babel">
+  const root = ReactDOM.createRoot(document.getElementById('root'));
+  root.render(<window.App/>);
+</script>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').then((reg) => {
+        // If there's already a waiting worker (new version ready), activate it now.
+        if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        reg.addEventListener('updatefound', () => {
+          const nw = reg.installing;
+          if (!nw) return;
+          nw.addEventListener('statechange', () => {
+            if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+              nw.postMessage({ type: 'SKIP_WAITING' });
+            }
+          });
+        });
+      }).catch(() => {});
+      // When the active worker changes, reload once so the page uses the new bundle.
+      let reloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (reloaded) return;
+        reloaded = true;
+        window.location.reload();
+      });
+    });
+  }
+</script>
+</body>
+</html>

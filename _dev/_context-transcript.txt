@@ -1,0 +1,4125 @@
+
+
+===CHUNK 0 y=0===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 1 y=400===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 2 y=800===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 3 y=1200===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 4 y=1600===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 5 y=2000===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 6 y=2400===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 7 y=2800===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 8 y=3200===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 9 y=3600===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 10 y=4000===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 11 y=4400===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 12 y=4800===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 13 y=5200===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 14 y=5600===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 15 y=6000===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 16 y=6400===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 17 y=6800===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 18 y=7200===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 19 y=7600===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 20 y=8000===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 21 y=8400===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 22 y=8800===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 23 y=9200===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 24 y=9600===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 25 y=10000===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 26 y=10400===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 27 y=10800===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 28 y=11200===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 29 y=11600===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 30 y=12000===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 31 y=12154.5===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…
+
+
+===CHUNK 32 y=12154.5===
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching ×2
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — snapshot() now wraps each query in an async IIFE so Promise.all gets real promises instead of non-chaining thenables.
+
+You
+A background task has completed. Here are the results:
+fork_verifier_agent result
+Claude
+
+<_></_>
+
+Searching
+
+<_></_>
+
+Editing
+
+<_></_>
+
+Done
+
+<_></_>
+
+Fork verifier agent
+
+<_></_>
+
+Fixed — setSession() now calls listeners with (event, session) to match the Supabase signature, so sign-in propagates to React state.
+
+You
+once youve got it ready, how do i get it to my phone?
+Claude
+
+You've got two ways to do it, with very different amounts of work. I'd start with #1 today because it takes 10 minutes, then do #2 in parallel.
+
+Option 1 — PWA, on your phone in 10 minutes (today)
+
+This gets the prototype itself onto your home screen, icon and all. It's not the App Store version, but it looks and feels like an app and updates instantly when we change anything.
+
+What you need:
+
+A way to host the HTML file so your phone can open it at a URL. Easiest: Netlify Drop (netlify.com/drop) — literally drag the project folder onto the page, get a URL like hit-zero-abc.netlify.app.
+
+Steps:
+
+I'll bundle Hit Zero Web.html and all its dependencies into a single folder you can drop onto Netlify.
+You drag → get a URL → text it to yourself.
+On iPhone: open the URL in Safari (not Chrome — only Safari can install PWAs on iOS) → tap Share → Add to Home Screen.
+On Android: Chrome → menu → Install app.
+
+You'll have a Hit Zero icon on your home screen that opens fullscreen with no browser chrome. It's live within the hour.
+
+Say the word and I'll build the deployable bundle right now.
+
+Option 2 — Real App Store build (the right way)
+
+This is the one with the native wrapper (Capacitor), the real Supabase backend, auth, video recording, push notifications. Everything I already scaffolded in hit_zero_client/ and hit_zero_backend/.
+
+What you need from you:
+
+A Mac with Xcode (can be a rental — MacInCloud is ~$30/mo, or hire a contractor for the first build)
+Apple Developer account — $99/year, sign up at developer.apple.com (24–48 hr approval)
+Google Play Developer account — $25 one-time at play.google.com/console
+A domain — hitzero.app or similar (~$15/year, Cloudflare or Namecheap)
+
+The work — two paths:
+
+2a. You hire a React Native / Capacitor dev (what I'd recommend) The project is in a state where a mid-level mobile developer can take hit_zero_client/ + hit_zero_backend/ + HANDOFF.md and ship to TestFlight in about a week. Cost: somewhere between $3k–8k for the initial ship depending on who. Post on toptal.com, fiverr pro, or ask around in cheer gym groups — you'd be surprised who's in there.
+
+2b. You do it yourself on a Mac Everything is laid out in HANDOFF.md. Realistic timeline if you've never done iOS dev: 2 weekends to first run on your phone via Xcode, 1 more weekend to TestFlight, 1 more weekend to submit. About 40 hours total.
+
+What happens after that:
+
+Week 1: supabase start → local backend running, point the client at it
+Week 2: your phone is running a dev build via USB or QR code
+Week 3: TestFlight beta — invite your coaches and 3–5 parents
+Week 4: iterate based on what they say
+Week 5–7: App Store submission + review (2–3 weeks for Apple, 1 week Google)
+Week 8: live in both stores
+My recommendation
+
+Do both at once:
+
+Today: Let me build the PWA bundle → you drag-and-drop to Netlify → app on your phone tonight. Gets you + 1 or 2 trusted people test-driving it immediately. Free, no accounts needed.
+This week: Register the Apple + Google developer accounts (they take 1–2 days to approve so start now). Buy the domain.
+Next week: Either hire a dev or start the Xcode path yourself.
+
+The PWA version will keep working even after you ship to the stores — think of it as the "web version" that'll always exist alongside the native apps.
+
+Want me to build the drag-and-drop PWA bundle right now? Or do you want to talk through the Apple Developer signup and domain first?
+
+You
+That is a fantastic plan
+Claude
+
+Let me build the PWA bundle right now so you have it on your phone tonight. Then I'll drop a checklist for the developer-account + domain stuff so you can kick that off while I work.
+
+Listing files
+You've hit your Claude Design usage limit — try again in about 24 hours. Claude Design uses its own usage limit for now — this is separate from your regular Claude usage.
+Retry
+Report…

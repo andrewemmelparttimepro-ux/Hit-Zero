@@ -1,0 +1,112 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   HIT ZERO — Brand tokens + base type + utilities
+   Palette sampled from Magic City Allstars logo:
+   teal #27CFD7  |  pink #F97FAC  |  black #000
+   ───────────────────────────────────────────────────────────────────────── */
+
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400;1,9..144,700&family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root {
+  /* core palette */
+  --hz-teal:        #27CFD7;
+  --hz-teal-dim:    #1a8f94;
+  --hz-teal-glow:   #81ffff;
+  --hz-pink:        #F97FAC;
+  --hz-pink-dim:    #b8567a;
+  --hz-pink-glow:   #ffb0f9;
+  --hz-black:       #000;
+  --hz-ink:         #0A0A0B;
+  --hz-ink-2:       #14141A;
+  --hz-ink-3:       #1C1C24;
+  --hz-line:        rgba(255,255,255,0.08);
+  --hz-line-2:      rgba(255,255,255,0.14);
+  --hz-dim:         rgba(255,255,255,0.55);
+  --hz-dimmer:      rgba(255,255,255,0.35);
+
+  /* status */
+  --hz-amber:       #FFB454;
+  --hz-red:         #FF5E6C;
+  --hz-green:       #3FE7A0;
+
+  /* fonts */
+  --hz-serif:       'Fraunces', 'Times New Roman', serif;
+  --hz-sans:        'Inter', -apple-system, system-ui, sans-serif;
+  --hz-mono:        'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* ─────── base ─────── */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: #050507; color: #fff; font-family: var(--hz-sans); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+#root { min-height: 100vh; }
+
+/* ─────── editorial type system ─────── */
+.hz-display {
+  font-family: var(--hz-serif);
+  font-weight: 500;
+  font-variation-settings: "opsz" 144, "SOFT" 50;
+  letter-spacing: -0.04em;
+  line-height: 0.9;
+  font-style: italic;
+}
+.hz-display-strong { font-weight: 800; font-style: normal; letter-spacing: -0.05em; }
+
+.hz-serif { font-family: var(--hz-serif); font-variation-settings: "opsz" 36; }
+.hz-sans  { font-family: var(--hz-sans); }
+.hz-mono  { font-family: var(--hz-mono); }
+.hz-eyebrow {
+  font-family: var(--hz-sans);
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--hz-dim);
+}
+.hz-label {
+  font-family: var(--hz-sans);
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase;
+}
+
+/* ─────── brand accents ─────── */
+.hz-teal    { color: var(--hz-teal); }
+.hz-pink    { color: var(--hz-pink); }
+.hz-bg-teal { background: var(--hz-teal); color: #000; }
+.hz-bg-pink { background: var(--hz-pink); color: #000; }
+
+/* ─────── utils ─────── */
+.hz-divider { height: 1px; background: var(--hz-line); }
+.hz-pill { display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px; border-radius: 999px; background: rgba(255,255,255,0.08); font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* scrollbar hidden */
+.hz-scroll::-webkit-scrollbar { display: none; }
+.hz-scroll { scrollbar-width: none; }
+
+/* no text selection on app chrome */
+.hz-nosel { user-select: none; -webkit-user-select: none; }
+
+/* appear animation used across screens */
+@keyframes hz-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+.hz-rise { animation: hz-rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+
+@keyframes hz-pulse-teal { 0%, 100% { box-shadow: 0 0 0 0 rgba(39,207,215,0.6); } 50% { box-shadow: 0 0 0 10px rgba(39,207,215,0); } }
+@keyframes hz-pulse-pink { 0%, 100% { box-shadow: 0 0 0 0 rgba(249,127,172,0.6); } 50% { box-shadow: 0 0 0 10px rgba(249,127,172,0); } }
+@keyframes hz-shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+
+/* ─────── the SIGNATURE "HIT ZERO" mark ─────── */
+.hz-wordmark {
+  font-family: var(--hz-serif);
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: -0.055em;
+  line-height: 0.82;
+  font-variation-settings: "opsz" 144;
+}
+.hz-wordmark .z-strike {
+  position: relative; display: inline-block;
+}
+/* the "0" gets a teal→pink gradient, a nod to the logo's pom-pom split */
+.hz-zero {
+  background: linear-gradient(135deg, var(--hz-teal) 0%, var(--hz-pink) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-style: italic;
+}

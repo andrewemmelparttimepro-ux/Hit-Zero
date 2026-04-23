@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<style data-omelette-injected>html,body{background:transparent}</style><script data-omelette-injected>(()=>{var W=["https://claude.ai","https://preview.claude.ai","https://eap-omelette.claude.ai"];var Y=30000;document.addEventListener("DOMContentLoaded",()=>{const D="transform-react-jsx-source";document.querySelectorAll('script[type="text/babel"],script[type="text/jsx"]').forEach((C,F)=>{const Q=C.getAttribute("data-plugins")||"";if(Q.indexOf(D)<0){C.setAttribute("data-plugins",Q?`${Q},${D}`:D)}if(!C.hasAttribute("data-filename")){C.setAttribute("data-filename",C.getAttribute("src")||`inline-${F}`)}})});var K=window.parent;if(K&&K!==window){const D=(k,f)=>{try{K.postMessage({__omelette_log:true,type:k,data:f},"*")}catch{}};["log","warn","error"].forEach((k)=>{const f=console[k];console[k]=(...w)=>{const z=w.map((h)=>{try{return typeof h==="object"?JSON.stringify(h):String(h)}catch{try{return String(h)}catch{return"[unstringifiable]"}}}).join(" ");D(k,z);f.apply(console,w)}});window.addEventListener("error",(k)=>{const f=k.target;if(f&&f!==window&&f.tagName){const w=f.src||f.href||"";D("resource_error",`${f.tagName} failed to load: ${w}`)}else{D("error",`${k.message||"Unknown error"} at ${k.filename||"?"}:${k.lineno||0}:${k.colno||0}`)}},true);window.addEventListener("unhandledrejection",(k)=>{const f=k.reason;const w=f instanceof Error?`${f.message} ${f.stack}`:String(f);D("error",`Unhandled rejection: ${w}`)});const C=()=>{try{K.postMessage({type:"omelette:height",height:document.documentElement.scrollHeight},"*")}catch{}};if(document.readyState==="complete")C();else window.addEventListener("load",C);if(window.ResizeObserver)new ResizeObserver(C).observe(document.documentElement);const F={};let Q=0;window.claude={complete(k){return new Promise((f,w)=>{if(!W.length){w(new Error("claude.complete: no parent origin"));return}const z=`c${++Q}`;const h=()=>setTimeout(()=>{delete F[z];w(new Error(`claude.complete: no data for ${Y/1000}s`))},Y);const J=h();F[z]={resolve:f,reject:w,text:"",t:J,arm:h};try{for(const V of W){K.postMessage({__om_api:true,id:z,body:k},V)}}catch(V){clearTimeout(J);delete F[z];w(V)}})}};const X=(k)=>{try{return JSON.stringify(k)}catch{return JSON.stringify(String(k))}};window.addEventListener("message",(k)=>{if(W.indexOf(k.origin)<0)return;if(k.source!==K)return;const f=k.data;if(!f)return;if(f.__om_api_r){const h=F[f.id];if(!h)return;if(f.error!=null){clearTimeout(h.t);delete F[f.id];h.reject(new Error(f.error));return}if(f.chunk!=null){clearTimeout(h.t);h.t=h.arm();h.text+=f.chunk;return}if(f.done){clearTimeout(h.t);delete F[f.id];h.resolve(f.text!=null?f.text:h.text);return}return}if(!f.__om_eval)return;const w=f;const z=(h)=>{k.source.postMessage({...h,__om_eval_r:1,id:w.id},k.origin)};try{const h=(0,eval)(w.code);if(h&&typeof h.then==="function"){h.then((J)=>z({ok:1,v:X(J)}),(J)=>z({ok:0,e:String(J)}))}else{z({ok:1,v:X(h)})}}catch(h){z({ok:0,e:String(h)})}})}})();
+</script>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hit Zero — Magic City Allstars</title>
+<link rel="stylesheet" href="hit_zero/styles/tokens.css">
+<style>
+  html, body {
+    background:
+      radial-gradient(1200px 600px at 20% 10%, rgba(39,207,215,0.08), transparent 60%),
+      radial-gradient(1200px 600px at 80% 90%, rgba(249,127,172,0.08), transparent 60%),
+      #050507;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  .stage {
+    min-height: 100vh;
+    padding: 48px 24px 80px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .stage-header {
+    max-width: 1280px;
+    width: 100%;
+    margin-bottom: 40px;
+  }
+  .device-row {
+    display: flex;
+    gap: 48px;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: flex-start;
+  }
+  .device-frame-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+  .device-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.55);
+  }
+  .device-label .role {
+    color: var(--hz-teal);
+  }
+</style>
+</head>
+<body>
+
+<div id="root"><div class="stage"><div style="color: rgba(255,255,255,0.4); font-family: 'Inter', sans-serif; padding: 200px;">Loading Hit Zero…</div></div></div>
+
+<!-- React + Babel -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<!-- Data -->
+<script src="hit_zero/data/cheer-data.js"></script>
+<script src="hit_zero/data/store.js"></script>
+
+<!-- Components -->
+<script type="text/babel" src="hit_zero/components/HZIcon.jsx"></script>
+<script type="text/babel" src="hit_zero/components/HZWordmark.jsx"></script>
+<script type="text/babel" src="hit_zero/components/HZShell.jsx"></script>
+
+<!-- Screens -->
+<script type="text/babel" src="hit_zero/screens/CoachToday.jsx"></script>
+<script type="text/babel" src="hit_zero/screens/Roster.jsx"></script>
+<script type="text/babel" src="hit_zero/screens/RoutineBuilder.jsx"></script>
+<script type="text/babel" src="hit_zero/screens/MockScore.jsx"></script>
+<script type="text/babel" src="hit_zero/screens/AthleteReel.jsx"></script>
+
+<!-- Main app -->
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+// Each device has its own tab state but shares the global store.
+function Device({ role, initialTab, label }) {
+  const [tab, setTab] = useState(initialTab);
+  const [state, setState] = useState(window.HZStore.get());
+  useEffect(() => window.HZStore.subscribe(setState), []);
+
+  // Use the device's role locally (not the global one) — lets us show all 3 roles side-by-side
+  const routes = window.HZ_ROUTE[role] || window.HZ_ROUTE.coach;
+  const screenName = routes[tab] || Object.values(routes)[0];
+  const Screen = window[screenName];
+
+  // Override global role when this device renders (so shell & selectors respect it).
+  // We wrap with a lightweight override by using HZ_TABS[role] directly.
+  const tabs = window.HZ_TABS[role];
+
+  return (
+    <div className="device-frame-wrap">
+      <div className="device-label">
+        <span className="role">{role}</span> &nbsp;·&nbsp; {label}
+      </div>
+      <DeviceShell role={role} tab={tab} onTab={setTab} tabs={tabs}>
+        {Screen ? <Screen onNav={setTab} /> : <div style={{padding: 40, color: '#fff'}}>Missing screen: {screenName}</div>}
+      </DeviceShell>
+    </div>
+  );
+}
+
+// Device-scoped shell (uses local role instead of global). Built directly off HZShell's markup.
+function DeviceShell({ role, tab, onTab, tabs, children }) {
+  const [state, setState] = useState(window.HZStore.get());
+  useEffect(() => window.HZStore.subscribe(setState), []);
+
+  return (
+    <div style={{
+      width: 402, height: 874, borderRadius: 48, overflow: 'hidden', position: 'relative',
+      background: '#050507', boxShadow: '0 40px 80px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.06)',
+      fontFamily: 'var(--hz-sans)',
+    }}>
+      <div style={{ position: 'absolute', top: 11, left: '50%', transform: 'translateX(-50%)', width: 126, height: 37, borderRadius: 24, background: '#000', zIndex: 50 }} />
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '19px 32px 0', color: '#fff', fontSize: 15, fontWeight: 600, pointerEvents: 'none' }}>
+        <span style={{ letterSpacing: '-0.01em' }}>9:41</span>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <svg width="18" height="11" viewBox="0 0 18 11"><rect x="0" y="7" width="3" height="4" rx="0.6" fill="#fff"/><rect x="4.5" y="5" width="3" height="6" rx="0.6" fill="#fff"/><rect x="9" y="2.5" width="3" height="8.5" rx="0.6" fill="#fff"/><rect x="13.5" y="0" width="3" height="11" rx="0.6" fill="#fff"/></svg>
+          <svg width="26" height="12" viewBox="0 0 26 12"><rect x="0.5" y="0.5" width="22" height="11" rx="3" stroke="#fff" strokeOpacity="0.4" fill="none"/><rect x="2" y="2" width="19" height="8" rx="1.5" fill="#fff"/></svg>
+        </div>
+      </div>
+
+      {/* Admin tab (only on coach/owner devices) */}
+      {(role === 'coach' || role === 'owner') && (
+        <button
+          onClick={() => window.HZStore.toggleAdmin()}
+          aria-label="Admin"
+          style={{
+            position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
+            width: 14, height: 64, borderRadius: '0 8px 8px 0', border: 'none',
+            background: 'rgba(255,255,255,0.04)', zIndex: 40, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+          }}>
+          <div style={{ width: 3, height: 28, borderRadius: 2, background: 'rgba(255,255,255,0.25)' }} />
+        </button>
+      )}
+
+      <HZAdminDrawerLocal open={state.adminOpen} role={role} />
+
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <div className="hz-scroll" style={{ flex: 1, overflow: 'auto', paddingTop: 54 }}>
+          {children}
+          <div style={{ height: 110 }} />
+        </div>
+      </div>
+
+      <div style={{ position: 'absolute', left: 16, right: 16, bottom: 18, zIndex: 30, height: 64, borderRadius: 32, overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(10,10,14,0.72)', backdropFilter: 'blur(20px) saturate(160%)', WebkitBackdropFilter: 'blur(20px) saturate(160%)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 32 }} />
+        <div style={{ position: 'relative', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: '0 8px' }}>
+          {tabs.map(t => {
+            const active = tab === t.id;
+            const pinkTab = (t.id === 'score' || t.id === 'skills' || t.id === 'reel');
+            return (
+              <button key={t.id} onClick={() => onTab(t.id)} className="hz-nosel" style={{
+                flex: 1, height: 48, border: 'none', background: 'transparent', cursor: 'pointer',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                color: active ? '#fff' : 'rgba(255,255,255,0.45)', gap: 2, padding: 0,
+              }}>
+                <window.HZIcon name={t.icon} size={22} color={active ? (pinkTab ? 'var(--hz-pink)' : 'var(--hz-teal)') : 'currentColor'} stroke={active ? 2 : 1.75}/>
+                <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{t.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ position: 'absolute', bottom: 6, left: 0, right: 0, display: 'flex', justifyContent: 'center', zIndex: 60, pointerEvents: 'none' }}>
+        <div style={{ width: 139, height: 5, borderRadius: 100, background: 'rgba(255,255,255,0.4)' }} />
+      </div>
+    </div>
+  );
+}
+
+// Local admin drawer — scoped so it only appears in coach/owner frames
+function HZAdminDrawerLocal({ open, role }) {
+  const [state, setState] = useState(window.HZStore.get());
+  useEffect(() => window.HZStore.subscribe(setState), []);
+  return (
+    <>
+      <div onClick={() => window.HZStore.toggleAdmin()}
+        style={{ position: 'absolute', inset: 0, zIndex: 45, background: 'rgba(0,0,0,0.55)',
+          opacity: open ? 1 : 0, pointerEvents: open ? 'auto' : 'none', transition: 'opacity 0.3s' }} />
+      <div style={{
+        position: 'absolute', top: 0, bottom: 0, left: 0, width: 320, zIndex: 46,
+        background: '#0A0A0B', borderRight: '1px solid rgba(255,255,255,0.08)',
+        transform: open ? 'translateX(0)' : 'translateX(-100%)',
+        transition: 'transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1)',
+        display: 'flex', flexDirection: 'column', paddingTop: 50,
+      }}>
+        <div style={{ padding: '24px 24px 16px' }}>
+          <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)' }}>Admin · Don't need this often</div>
+          <div style={{ height: 8 }} />
+          <window.HZWordmark size={34} />
+          <div style={{ height: 4 }} />
+          <div className="hz-eyebrow" style={{ color: 'rgba(255,255,255,0.45)' }}>Magic City Allstars · Minot, ND</div>
+        </div>
+        <div className="hz-scroll" style={{ flex: 1, overflow: 'auto', padding: '12px 0' }}>
+          <div style={{ padding: '12px 24px 8px' }} className="hz-eyebrow">Program</div>
+          <AdminKV label="Gym" value="Magic City Allstars"/>
+          <AdminKV label="Teams" value="7 active"/>
+          <AdminKV label="Athletes" value={`${state.roster.length} on Magic · 124 total`}/>
+          <AdminKV label="Staff" value="4 coaches · 2 admin"/>
+          <div style={{ padding: '18px 24px 8px' }} className="hz-eyebrow">Billing</div>
+          <AdminKV label="Monthly tuition" value="$400 · Senior 4"/>
+          <AdminKV label="Outstanding" value="$5,700" warn/>
+          <AdminKV label="This month" value="$48,000"/>
+          <div style={{ padding: '18px 24px 8px' }} className="hz-eyebrow">Data</div>
+          <div style={{ padding: '0 24px' }}>
+            <button onClick={() => { if (confirm('Reset prototype state?')) window.HZStore.reset(); }}
+              style={{ width: '100%', padding: 12, borderRadius: 10, background: 'rgba(255,94,108,0.1)', color: 'var(--hz-red)', border: '1px solid rgba(255,94,108,0.2)', fontFamily: 'var(--hz-sans)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+              Reset prototype data
+            </button>
+          </div>
+        </div>
+        <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="hz-eyebrow">Hit Zero · v0.1 MVP</div>
+          <div style={{ fontFamily: 'var(--hz-serif)', fontStyle: 'italic', fontSize: 13, color: 'rgba(255,255,255,0.5)', marginTop: 4 }}>
+            "Zero deductions. Zero drama. Zero excuses."
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+function AdminKV({ label, value, warn }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 24px', fontSize: 13 }}>
+      <span style={{ color: 'rgba(255,255,255,0.55)' }}>{label}</span>
+      <span style={{ color: warn ? 'var(--hz-amber)' : '#fff', fontWeight: 600 }}>{value}</span>
+    </div>
+  );
+}
+
+// ─── Canvas ───────────────────────────────────────────────────────────────
+function App() {
+  return (
+    <div className="stage" data-screen-label="Hit Zero Canvas">
+      <div className="stage-header">
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 20 }}>
+          <div>
+            <window.HZWordmark size={72} stacked={false} />
+            <div className="hz-eyebrow" style={{ marginTop: 10, color: 'var(--hz-teal)' }}>An operating system for all-star cheer · built for Magic City Allstars</div>
+          </div>
+          <div className="hz-serif" style={{ fontStyle: 'italic', fontSize: 16, color: 'rgba(255,255,255,0.5)', maxWidth: 360, textAlign: 'right' }}>
+            "One app. Coach runs practice. Athletes see their progress.<br/>Parents stop asking. Every change is live across all three."
+          </div>
+        </div>
+        <div style={{ height: 1, background: 'linear-gradient(90deg, var(--hz-teal), var(--hz-pink), transparent)', marginTop: 24 }}/>
+      </div>
+
+      <div className="device-row">
+        <Device role="coach"   initialTab="today" label="Today · Practice Ops" />
+        <Device role="athlete" initialTab="reel"  label="Personal Reel" />
+        <Device role="parent"  initialTab="today" label="Family View" />
+      </div>
+
+      <div style={{ maxWidth: 1280, width: '100%', marginTop: 64, padding: '24px 28px', borderRadius: 20, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="hz-eyebrow" style={{ color: 'var(--hz-pink)' }}>Try it</div>
+        <div className="hz-display" style={{ fontSize: 32, fontStyle: 'italic', fontWeight: 600, marginTop: 4, color: '#fff' }}>Every device shares one brain.</div>
+        <div className="hz-serif" style={{ fontStyle: 'italic', color: 'rgba(255,255,255,0.6)', marginTop: 8, fontSize: 15, maxWidth: 720 }}>
+          Open <b style={{ color: 'var(--hz-teal)', fontStyle: 'normal' }}>Roster</b> on the coach phone, tap into Kenzie, and flip a skill from <span style={{color:'var(--hz-amber)'}}>Working</span> to <span style={{color:'var(--hz-pink)'}}>Mastered</span>. Watch the athlete phone celebrate it, the parent phone surface it, the Today screen update readiness, and the Score Simulator recompute the projected final — all in real time.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+
+</body>
+</html>

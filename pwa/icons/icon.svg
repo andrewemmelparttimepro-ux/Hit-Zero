@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="hzGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#27CFD7"/>
+      <stop offset="100%" stop-color="#F97FAC"/>
+    </linearGradient>
+    <radialGradient id="hzGlowTL" cx="22%" cy="18%" r="55%">
+      <stop offset="0%" stop-color="#27CFD7" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#050507" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="hzGlowBR" cx="78%" cy="82%" r="55%">
+      <stop offset="0%" stop-color="#F97FAC" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#050507" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#050507"/>
+  <rect width="512" height="512" rx="112" fill="url(#hzGlowTL)"/>
+  <rect width="512" height="512" rx="112" fill="url(#hzGlowBR)"/>
+  <!-- Stacked HIT / ZERO wordmark. Text rendered by the OS where Fraunces is
+       available; fallback serif italic otherwise. -->
+  <g font-family="Fraunces, 'Times New Roman', serif"
+     font-style="italic"
+     font-weight="900"
+     font-size="190"
+     letter-spacing="-10"
+     text-anchor="middle"
+     fill="#ffffff">
+    <text x="256" y="228">HIT</text>
+    <text x="256" y="384">ZER<tspan fill="url(#hzGrad)">O</tspan></text>
+  </g>
+</svg>

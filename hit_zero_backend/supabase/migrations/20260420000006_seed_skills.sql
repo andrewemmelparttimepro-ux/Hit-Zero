@@ -1,0 +1,59 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 20260420000006_seed_skills.sql
+-- USASF skill catalog, levels 1–7. Seeded via migration so every environment
+-- has the same ids. Names follow common coach shorthand.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+insert into skills (id, category, name, level, sort_order) values
+  -- Standing tumbling
+  ('st_fwd_roll',      'standing_tumbling', 'Forward Roll',                  1,  10),
+  ('st_cartwheel',     'standing_tumbling', 'Cartwheel',                     1,  20),
+  ('st_roundoff',      'standing_tumbling', 'Round-off',                     1,  30),
+  ('st_bhs',           'standing_tumbling', 'Back Handspring',               2,  40),
+  ('st_bhs_series',    'standing_tumbling', 'BHS Series (2+)',               3,  50),
+  ('st_jump_bhs',      'standing_tumbling', 'Jump → BHS',                    3,  60),
+  ('st_tuck',          'standing_tumbling', 'Standing Tuck',                 4,  70),
+  ('st_jump_tuck',     'standing_tumbling', 'Jump → Tuck',                   5,  80),
+  ('st_jump_layout',   'standing_tumbling', 'Jump → Layout',                 6,  90),
+  ('st_jump_full',     'standing_tumbling', 'Jump → Full',                   7, 100),
+  -- Running tumbling
+  ('rt_ro_bhs',        'running_tumbling',  'Round-off BHS',                 1, 110),
+  ('rt_ro_bhs_series', 'running_tumbling',  'RO BHS Series',                 2, 120),
+  ('rt_ro_tuck',       'running_tumbling',  'RO BHS Tuck',                   3, 130),
+  ('rt_ro_layout',     'running_tumbling',  'RO BHS Layout',                 4, 140),
+  ('rt_ro_full',       'running_tumbling',  'RO BHS Full',                   5, 150),
+  ('rt_ro_double',     'running_tumbling',  'RO BHS Double Full',            6, 160),
+  ('rt_whip_through',  'running_tumbling',  'Whip Through to Full',          6, 170),
+  ('rt_arabian',       'running_tumbling',  'Arabian',                       6, 180),
+  ('rt_double',        'running_tumbling',  'Double Full',                   7, 190),
+  -- Jumps
+  ('j_toe_touch',      'jumps',             'Toe Touch',                     1, 200),
+  ('j_pike',           'jumps',             'Pike',                          1, 210),
+  ('j_hurdler',        'jumps',             'Front Hurdler',                 2, 220),
+  ('j_double_9',       'jumps',             'Double Nine',                   2, 230),
+  ('j_combo_toe_pike', 'jumps',             'Toe-Pike Combo',                3, 240),
+  ('j_triple',         'jumps',             'Triple Jump Sequence',          4, 250),
+  -- Stunts
+  ('s_prep',           'stunts',            'Prep',                          1, 260),
+  ('s_extension',      'stunts',            'Extension',                     2, 270),
+  ('s_lib',            'stunts',            'Liberty',                       2, 280),
+  ('s_heel_stretch',   'stunts',            'Heel Stretch',                  3, 290),
+  ('s_scorpion',       'stunts',            'Scorpion',                      3, 300),
+  ('s_scale',          'stunts',            'Arabesque/Scale',               3, 310),
+  ('s_full_up',        'stunts',            'Full Up to Extension',          4, 320),
+  ('s_one_leg_full',   'stunts',            'Full Up to One-Leg',            5, 330),
+  ('s_rewind',         'stunts',            'Rewind',                        6, 340),
+  ('s_tick_tock',      'stunts',            'Tick-Tock',                     4, 350),
+  -- Pyramids
+  ('p_2hi',            'pyramids',          '2-High Pyramid',                1, 360),
+  ('p_extended',       'pyramids',          'Extended Pyramid',              3, 370),
+  ('p_release',        'pyramids',          'Release Transition',            5, 380),
+  ('p_inversion',      'pyramids',          'Braced Inversion',              6, 390),
+  -- Baskets
+  ('b_straight',       'baskets',           'Straight Ride',                 2, 400),
+  ('b_toe_touch',      'baskets',           'Toe-Touch Basket',              3, 410),
+  ('b_pike_open',      'baskets',           'Pike Open',                     4, 420),
+  ('b_kick_full',      'baskets',           'Kick Full',                     5, 430),
+  ('b_kick_double',    'baskets',           'Kick Double',                   6, 440),
+  ('b_arabian',        'baskets',           'Arabian Basket',                6, 450)
+on conflict (id) do nothing;
