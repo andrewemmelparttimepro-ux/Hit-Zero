@@ -1,9 +1,16 @@
 {
-  "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/auth/callback",
+      "source": "/",
       "destination": "/index.html"
+    },
+    {
+      "source": "/landing",
+      "destination": "/landing.html"
+    },
+    {
+      "source": "/auth/callback",
+      "destination": "/auth/callback.html"
     }
   ],
   "headers": [
