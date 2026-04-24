@@ -15,11 +15,18 @@ const BOOTSTRAP_USERS: Record<string, {
     photo_color: string;
     photo_url?: string;
   };
+  parent_athletes?: string[];
 }> = {
   'andrew@ndai.pro': {
     display_name: 'Andrew Emmel',
     role: 'owner',
     program_id: MAGIC_CITY_PROGRAM_ID,
+  },
+  'amanda.emmel88@gmail.com': {
+    display_name: 'Amanda Emmel',
+    role: 'parent',
+    program_id: MAGIC_CITY_PROGRAM_ID,
+    parent_athletes: ['Arlowe Emmel'],
   },
   'arlowe@ndai.pro': {
     display_name: 'Arlowe Emmel',
@@ -128,11 +135,48 @@ async function ensureAthleteProfile(profile: any, seed: typeof BOOTSTRAP_USERS[s
   if (athleteError) throw athleteError;
 }
 
+async function ensureParentLinks(profile: any, seed: typeof BOOTSTRAP_USERS[string]) {
+  if (!profile?.id || profile.role !== 'parent' || !seed?.parent_athletes?.length) return;
+
+  const { data: teams, error: teamsError } = await supa
+    .from('teams')
+    .select('id')
+    .eq('program_id', seed.program_id)
+    .is('deleted_at', null);
+  if (teamsError) throw teamsError;
+  const teamIds = (teams || []).map((team: any) => team.id).filter(Boolean);
+  if (!teamIds.length) return;
+
+  for (const athleteName of seed.parent_athletes) {
+    const { data: athlete, error: athleteError } = await supa
+      .from('athletes')
+      .select('id')
+      .in('team_id', teamIds)
+      .ilike('display_name', athleteName)
+      .is('deleted_at', null)
+      .limit(1)
+      .maybeSingle();
+    if (athleteError) throw athleteError;
+    if (!athlete?.id) continue;
+
+    const { error: linkError } = await supa
+      .from('parent_links')
+      .upsert({
+        parent_id: profile.id,
+        athlete_id: athlete.id,
+        relation: 'parent',
+        is_primary: true,
+      }, { onConflict: 'parent_id,athlete_id' });
+    if (linkError) throw linkError;
+  }
+}
+
 async function ensureBootstrapUser(email: string, requestedRole: string | null) {
   let profile = await loadProfile(email);
   const seed = BOOTSTRAP_USERS[email];
   if (profile) {
     if (seed) await ensureAthleteProfile(profile, seed);
+    if (seed) await ensureParentLinks(profile, seed);
     return profile;
   }
 
@@ -142,7 +186,7 @@ async function ensureBootstrapUser(email: string, requestedRole: string | null) 
     email,
     email_confirm: true,
     user_metadata: {
-      role: requestedRole || seed.role,
+      role: seed.role,
       display_name: seed.display_name || deriveDisplayName(email),
       program_id: seed.program_id,
     },
@@ -153,6 +197,7 @@ async function ensureBootstrapUser(email: string, requestedRole: string | null) 
     profile = await loadProfile(email);
     if (profile) {
       await ensureAthleteProfile(profile, seed);
+      await ensureParentLinks(profile, seed);
       return profile;
     }
     await new Promise(resolve => setTimeout(resolve, 150));
@@ -177,7 +222,7 @@ Deno.serve(async (req) => {
       email,
       options: {
         redirectTo: safeRedirect(body.redirect_to),
-        data: { role: requestedRole || profile.role || 'owner' },
+        data: { role: profile.role || requestedRole || 'owner' },
       },
     });
     if (error) return json({ error: error.message }, 500);

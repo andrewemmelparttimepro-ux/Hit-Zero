@@ -110,6 +110,7 @@ const ROLE_LABELS = {
   parent: 'Parent',
   athlete: 'Athlete',
 };
+const WALKTHROUGH_VERSION = 'v2';
 
 function roleNav(role) {
   return NAV_CONFIG[role] || NAV_CONFIG.coach;
@@ -136,7 +137,7 @@ function App() {
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [drawerAthleteId, setDrawerAthleteId] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [walkthroughOpen, setWalkthroughOpen] = useState(false);
+  const [walkthroughRole, setWalkthroughRole] = useState(null);
 
   useEffect(() => {
     let live = true;
@@ -193,19 +194,19 @@ function App() {
   const effectiveRole = session?.profile?.role || 'coach';
 
   useEffect(() => {
-    if (!session?.profile || effectiveRole !== 'athlete') return;
-    const key = 'hz_athlete_walkthrough_v1_' + session.profile.id;
+    if (!session?.profile) return;
+    const key = `hz_walkthrough_${WALKTHROUGH_VERSION}_${session.profile.id}_${effectiveRole}`;
     try {
-      if (!localStorage.getItem(key)) setWalkthroughOpen(true);
+      if (!localStorage.getItem(key)) setWalkthroughRole(effectiveRole);
     } catch {}
   }, [session?.profile?.id, effectiveRole]);
 
-  const closeWalkthrough = useCallback(() => {
-    if (session?.profile?.id) {
-      try { localStorage.setItem('hz_athlete_walkthrough_v1_' + session.profile.id, 'done'); } catch {}
+  const closeWalkthrough = useCallback((markDone = true) => {
+    if (markDone && session?.profile?.id && walkthroughRole) {
+      try { localStorage.setItem(`hz_walkthrough_${WALKTHROUGH_VERSION}_${session.profile.id}_${walkthroughRole}`, 'done'); } catch {}
     }
-    setWalkthroughOpen(false);
-  }, [session?.profile?.id]);
+    setWalkthroughRole(null);
+  }, [session?.profile?.id, walkthroughRole]);
 
   useEffect(() => {
     if (!session) return;
@@ -295,6 +296,7 @@ function App() {
         onOpenCmdk={() => setCmdkOpen(true)}
         onSignOut={async () => { await window.HZdb.auth.signOut(); }}
         onHamburger={() => setSidebarOpen(true)}
+        onHelp={() => setWalkthroughRole(effectiveRole)}
         snap={snap}
       />
       <div className="main hz-rise" key={screenId}>
@@ -314,7 +316,7 @@ function App() {
       </div>
       {cmdkOpen && snap && <CommandK snap={snap} onClose={() => setCmdkOpen(false)} onNav={(id) => { location.hash = '#' + id; setCmdkOpen(false); }} openAthlete={(id) => { setDrawerAthleteId(id); setCmdkOpen(false); }} />}
       {drawerAthleteId && snap && <AthleteDrawer athleteId={drawerAthleteId} snap={snap} onClose={() => setDrawerAthleteId(null)} pushToast={pushToast}/>}
-      {walkthroughOpen && <AthleteWalkthrough onClose={closeWalkthrough} navigate={(id) => { location.hash = '#' + id; closeWalkthrough(); }}/>}
+      {walkthroughRole && <RoleWalkthrough role={walkthroughRole} onClose={closeWalkthrough} navigate={(id) => { location.hash = '#' + id; closeWalkthrough(); }}/>}
       <div className="toast-stack">
         {toasts.map(t => <Toast key={t.id} toast={t} onClose={(id) => setToasts(prev => prev.filter(x => x.id !== id))} />)}
       </div>
@@ -393,7 +395,7 @@ function Sidebar({ nav, active, session, onNav, open, snap }) {
 }
 
 // ─── Topbar ───
-function Topbar({ session, onOpenCmdk, onSignOut, onHamburger, snap }) {
+function Topbar({ session, onOpenCmdk, onSignOut, onHamburger, onHelp, snap }) {
   const comp = snap ? window.HZsel.daysToComp() : null;
   const isMagic = comp && comp.days === 14;
   return (
@@ -433,6 +435,9 @@ function Topbar({ session, onOpenCmdk, onSignOut, onHamburger, snap }) {
         {session.canViewAs || session.mode === 'prototype'
           ? <RoleSwitcher session={session} snap={snap} />
           : <AccountBadge session={session} />}
+        <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={onHelp} title="Open walkthrough" aria-label="Open walkthrough">
+          ?
+        </button>
         <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={onSignOut} title="Sign out">
           <HZIcon name="logout" size={14} />
         </button>
@@ -697,25 +702,47 @@ function Login() {
 }
 window.Login = Login;
 
-function AthleteWalkthrough({ onClose, navigate }) {
-  const steps = [
-    { title: 'Your reel', body: 'See wins, readiness, attendance, and what to work on next.', action: 'Open My Reel', nav: 'reel' },
-    { title: 'Pins', body: 'Create pins, keep them in your basket, and drop them on teammates when they do something cool.', action: 'Open Pins', nav: 'pins' },
-    { title: 'AI Judge', body: 'Upload a routine when a parent or coach says it is okay, then review the scorecard together.', action: 'Open AI Judge', nav: 'ai_judge' },
-  ];
+function walkthroughStepsForRole(role) {
+  const steps = {
+    parent: [
+      { title: "Your kid's week", body: 'Start on the family overview: readiness, attendance, wins, balances, and anything the gym needs from you.', action: 'Open Family', nav: 'parent' },
+      { title: 'Skills and routines', body: 'Use Skills to see what Arlowe is working on, and AI Judge to review routine feedback with a coach or parent nearby.', action: 'Open Skills', nav: 'skilltree' },
+      { title: 'The practical stuff', body: 'Billing, schedule, messages, uniforms, volunteers, and medical are grouped under Family so parent jobs are easy to find.', action: 'Open Schedule', nav: 'schedule' },
+    ],
+    athlete: [
+      { title: 'Your reel', body: 'See wins, readiness, attendance, and what to work on next.', action: 'Open My Reel', nav: 'reel' },
+      { title: 'Pins', body: 'Create pins, keep them in your basket, and drop them on teammates when they do something cool.', action: 'Open Pins', nav: 'pins' },
+      { title: 'AI Judge', body: 'Upload a routine when a parent or coach says it is okay, then review the scorecard together.', action: 'Open AI Judge', nav: 'ai_judge' },
+    ],
+    coach: [
+      { title: 'Run the room', body: 'Today, Roster, Skill Matrix, and Practice Plans are the daily cockpit for coaching the team.', action: 'Open Today', nav: 'today' },
+      { title: 'Build the routine', body: 'Routine Builder, Mock Score, and AI Judge connect reps to scoring and feedback.', action: 'Open AI Judge', nav: 'ai_judge' },
+      { title: 'Keep everyone aligned', body: 'Schedule, messages, announcements, volunteers, and medical keep the whole gym moving together.', action: 'Open Schedule', nav: 'schedule' },
+    ],
+    owner: [
+      { title: 'Operate the gym', body: 'Program, Billing, Leads, Teams, Registration, and communications are your ownership command center.', action: 'Open Program', nav: 'admin' },
+      { title: 'Watch performance', body: 'Roster, Skill Matrix, Routine, Mock Score, and AI Judge show what is actually improving.', action: 'Open Roster', nav: 'roster' },
+      { title: 'Switch perspectives', body: 'Use View as to sanity-check what coaches, parents, and athletes experience before rollout.', action: 'Open Today', nav: 'today' },
+    ],
+  };
+  return steps[role] || steps.coach;
+}
+
+function RoleWalkthrough({ role, onClose, navigate }) {
+  const steps = walkthroughStepsForRole(role);
   const [i, setI] = useState(0);
   const step = steps[i];
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.72)', display: 'grid', placeItems: 'center', padding: 24 }}>
       <div className="hz-card" style={{ maxWidth: 640, width: '100%', borderColor: 'rgba(249,127,172,0.45)' }}>
-        <div className="hz-eyebrow" style={{ color: 'var(--hz-pink)', marginBottom: 10 }}>Welcome to Hit Zero</div>
+        <div className="hz-eyebrow" style={{ color: 'var(--hz-pink)', marginBottom: 10 }}>Welcome to Hit Zero · {ROLE_LABELS[role] || role}</div>
         <div className="hz-display" style={{ fontSize: 44, lineHeight: 1 }}>{step.title}</div>
         <div style={{ color: 'var(--hz-dim)', fontSize: 15, lineHeight: 1.6, marginTop: 14 }}>{step.body}</div>
         <div style={{ marginTop: 18, padding: 14, borderRadius: 14, background: 'rgba(39,207,215,0.08)', color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.5 }}>
-          iPad tip: open Hit Zero in Safari, tap Share, then Add to Home Screen. After that it opens like an app and keeps you signed in.
+          Need this again later? Tap the ? in the header to reopen this walkthrough any time.
         </div>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', alignItems: 'center', marginTop: 24 }}>
-          <button className="hz-btn hz-btn-ghost" onClick={onClose}>Skip</button>
+          <button className="hz-btn hz-btn-ghost" onClick={() => onClose(true)}>Skip</button>
           <div style={{ display: 'flex', gap: 8 }}>
             {steps.map((_, idx) => <span key={idx} style={{ width: 8, height: 8, borderRadius: 999, background: idx === i ? 'var(--hz-pink)' : 'rgba(255,255,255,0.18)' }}/>)}
           </div>
@@ -732,7 +759,7 @@ function AthleteWalkthrough({ onClose, navigate }) {
     </div>
   );
 }
-window.AthleteWalkthrough = AthleteWalkthrough;
+window.RoleWalkthrough = RoleWalkthrough;
 
 // ─── Command-K palette ───
 function CommandK({ snap, onClose, onNav, openAthlete }) {
