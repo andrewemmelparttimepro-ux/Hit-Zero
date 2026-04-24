@@ -109,7 +109,16 @@ function PinsHub({ snap, session }) {
   const drops = window.HZsel.pinDropsForAthlete(myAthlete.id);
   const quests = window.HZsel.pinQuests(myAthlete.id);
   const stats = window.HZsel.pinStats(myAthlete.id);
-  const available = (snap.pin_designs || []).filter(d => !inventory.some(row => row.design_id === d.id));
+  const [creatorOpen, setCreatorOpen] = React.useState(false);
+  const [draft, setDraft] = React.useState({
+    name: '',
+    emoji: '🎀',
+    message: 'You made the weekend more fun.',
+    palette: 'aqua',
+    target: '',
+  });
+  const teammates = (snap.athletes || []).filter(a => a.id !== myAthlete.id);
+  const basket = inventory.filter(row => Number(row.quantity || 0) > 0);
 
   const rarityTone = (rarity) => (
     rarity === 'legendary' ? 'pink' :
@@ -117,6 +126,72 @@ function PinsHub({ snap, session }) {
     rarity === 'rare' ? 'amber' :
     undefined
   );
+  const palettes = {
+    aqua: ['#27CFD7', '#8EE3F0'],
+    bow: ['#F97FAC', '#F4B1C8'],
+    lucky: ['#FFD76B', '#FF9F6E'],
+    mint: ['#88F7B3', '#27CFD7'],
+    galaxy: ['#C8A6FF', '#6CE5E8'],
+  };
+  const selectedPalette = palettes[draft.palette] || palettes.aqua;
+  const previewName = draft.name.trim() || `${myAthlete.display_name.split(' ')[0]}'s Pin`;
+
+  async function refreshPins() {
+    if (window.HZsel?._refresh) await window.HZsel._refresh();
+    window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table: 'pin_designs' } }));
+  }
+
+  async function dropPin(row, targetId, message) {
+    const target = teammates.find(a => a.id === targetId) || teammates[0] || null;
+    if (!row?.design || !target) return;
+    await window.HZdb.from('pin_drops').insert({
+      id: 'pd_' + Math.random().toString(36).slice(2, 10),
+      design_id: row.design_id,
+      from_athlete_id: myAthlete.id,
+      to_athlete_id: target.id,
+      recipient_name: target.display_name,
+      recipient_program: 'Magic City Allstars',
+      recipient_city: 'Minot, ND',
+      event_name: 'Team basket drop',
+      message: message || 'You made the weekend more fun.',
+      status: 'sent',
+      created_at: new Date().toISOString(),
+    });
+    await window.HZdb.from('athlete_pins').update({ quantity: Math.max(0, Number(row.quantity || 1) - 1) }).eq('id', row.id);
+    await refreshPins();
+  }
+
+  async function createPin(dropNow = false) {
+    const name = previewName.slice(0, 42);
+    const design = {
+      id: 'pin_custom_' + Math.random().toString(36).slice(2, 10),
+      program_id: 'p_mca',
+      name,
+      emoji: draft.emoji || '🎀',
+      rarity: 'made',
+      accent_start: selectedPalette[0],
+      accent_end: selectedPalette[1],
+      unlock_hint: `Made by ${myAthlete.display_name.split(' ')[0]}.`,
+      lore: draft.message || 'A handmade pin from the basket.',
+      created_by_athlete_id: myAthlete.id,
+      created_at: new Date().toISOString(),
+    };
+    const row = {
+      id: 'ap_' + Math.random().toString(36).slice(2, 10),
+      athlete_id: myAthlete.id,
+      design_id: design.id,
+      quantity: 1,
+      favorite: false,
+      source: 'athlete_created',
+      unlocked_at: new Date().toISOString(),
+    };
+    await window.HZdb.from('pin_designs').insert(design);
+    await window.HZdb.from('athlete_pins').insert(row);
+    if (dropNow) await dropPin({ ...row, design }, draft.target || teammates[0]?.id, draft.message);
+    else await refreshPins();
+    setDraft({ name: '', emoji: '🎀', message: 'You made the weekend more fun.', palette: 'aqua', target: '' });
+    setCreatorOpen(false);
+  }
 
   return (
     <div>
@@ -126,18 +201,161 @@ function PinsHub({ snap, session }) {
           Pin your <span className="hz-zero">people</span>.
         </div>
         <div style={{ color: 'var(--hz-dim)', fontSize: 15, marginTop: 16, maxWidth: 860, lineHeight: 1.6 }}>
-          This is the social layer: collect decorated comp pins, earn rare clothespins, and drop them on girls who made the weekend more fun. Start with your team. Grow it into a country-wide bag game.
+          Make a pin, keep it in your basket, then drop it on another girl’s bag, wall, or profile when she does something cool.
+          Rewards still exist, but the main game is athlete-created.
         </div>
+        <button className="hz-btn hz-btn-primary" onClick={() => setCreatorOpen(v => !v)} style={{ marginTop: 20 }}>
+          {creatorOpen ? 'Close creator' : 'Create a pin'} <HZIcon name={creatorOpen ? 'x' : 'plus'} size={13}/>
+        </button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
-        <StatTile label="Collected" value={stats.unique} sub={`${stats.total} total on your shelf`} accent="var(--hz-pink)" size="md"/>
+        <StatTile label="Basket" value={basket.reduce((sum, row) => sum + Number(row.quantity || 0), 0)} sub="ready to pin later" accent="var(--hz-pink)" size="md"/>
         <StatTile label="Sent" value={stats.sent} sub="pins you dropped" accent="var(--hz-teal)" size="md"/>
         <StatTile label="Received" value={stats.received} sub="girls who pinned you" accent="var(--hz-amber)" size="md"/>
-        <StatTile label="On deck" value={available.length} sub="pins left to craft" size="md"/>
+        <StatTile label="Designs" value={stats.unique} sub="made or earned" size="md"/>
       </div>
 
+      {creatorOpen && (
+        <div className="hz-card" style={{ marginBottom: 24, borderColor: 'rgba(39,207,215,0.45)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 24 }}>
+            <div style={{ display: 'grid', placeItems: 'center', minHeight: 300, borderRadius: 24, background: 'rgba(255,255,255,0.03)', border: '1px dashed var(--hz-line-2)' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{
+                  width: 150, height: 150, borderRadius: 38, display: 'grid', placeItems: 'center', margin: '0 auto 18px',
+                  background: `linear-gradient(135deg, ${selectedPalette[0]}, ${selectedPalette[1]})`,
+                  fontSize: 66, boxShadow: '0 24px 80px rgba(0,0,0,0.35)',
+                }}>{draft.emoji || '🎀'}</div>
+                <div className="hz-display" style={{ fontSize: 28 }}>{previewName}</div>
+                <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 8, lineHeight: 1.5 }}>{draft.message}</div>
+              </div>
+            </div>
+            <div>
+              <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)', marginBottom: 8 }}>Pin creator</div>
+              <div className="hz-display" style={{ fontSize: 34, marginBottom: 16 }}>Decorate it. Save it. Drop it.</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 92px', gap: 10, marginBottom: 10 }}>
+                <label>
+                  <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Pin name</div>
+                  <input className="hz-input" value={draft.name} maxLength={42} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} placeholder="Warm-up Queen"/>
+                </label>
+                <label>
+                  <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Icon</div>
+                  <input className="hz-input" value={draft.emoji} maxLength={2} onChange={e => setDraft(d => ({ ...d, emoji: e.target.value }))}/>
+                </label>
+              </div>
+              <label>
+                <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Message</div>
+                <input className="hz-input" value={draft.message} maxLength={90} onChange={e => setDraft(d => ({ ...d, message: e.target.value }))} placeholder="You made the weekend more fun."/>
+              </label>
+              <div style={{ marginTop: 14 }}>
+                <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Colors</div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {Object.entries(palettes).map(([key, colors]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setDraft(d => ({ ...d, palette: key }))}
+                      style={{
+                        width: 54, height: 34, borderRadius: 999, border: key === draft.palette ? '2px solid #fff' : '1px solid var(--hz-line)',
+                        background: `linear-gradient(135deg, ${colors[0]}, ${colors[1]})`, cursor: 'pointer',
+                      }}
+                      aria-label={key}
+                    />
+                  ))}
+                </div>
+              </div>
+              <label style={{ display: 'block', marginTop: 14 }}>
+                <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Pin now target</div>
+                <select className="hz-input" value={draft.target} onChange={e => setDraft(d => ({ ...d, target: e.target.value }))}>
+                  <option value="">Pick a teammate</option>
+                  {teammates.map(a => <option key={a.id} value={a.id}>{a.display_name}</option>)}
+                </select>
+              </label>
+              <div style={{ display: 'flex', gap: 10, marginTop: 18, flexWrap: 'wrap' }}>
+                <button className="hz-btn hz-btn-primary" onClick={() => createPin(false)}>Put in basket</button>
+                <button className="hz-btn" onClick={() => createPin(true)} disabled={!draft.target && teammates.length === 0}>Pin someone now</button>
+              </div>
+              <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 12 }}>
+                Next pass can add parent approval / coach safety review for cross-gym drops. Team-only drops are safe for the prototype loop.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: '1.05fr 0.95fr', gap: 20, marginBottom: 24 }}>
+        <div className="hz-card">
+          <div className="hz-eyebrow" style={{ marginBottom: 12 }}>Your basket</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+            {basket.map(row => (
+              <div key={row.id} style={{ padding: 14, borderRadius: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--hz-line)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
+                  <div style={{
+                    width: 54, height: 54, borderRadius: 16, display: 'grid', placeItems: 'center',
+                    background: `linear-gradient(135deg, ${row.design.accent_start}, ${row.design.accent_end})`,
+                    fontSize: 24,
+                  }}>{row.design.emoji}</div>
+                  <div style={{ textAlign: 'right' }}>
+                    <Pill tone={rarityTone(row.design.rarity)}>{row.design.rarity}</Pill>
+                    <div style={{ color: 'var(--hz-dim)', fontSize: 11, marginTop: 8 }}>x{row.quantity}</div>
+                  </div>
+                </div>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>{row.design.name}</div>
+                <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>{row.design.lore}</div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                  {teammates.slice(0, 3).map(a => (
+                    <button key={a.id} className="hz-btn hz-btn-ghost hz-btn-xs" onClick={() => dropPin(row, a.id, row.design.lore)}>
+                      Pin {a.display_name.split(' ')[0]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {basket.length === 0 && (
+              <div style={{ gridColumn: '1 / -1', padding: 34, border: '1px dashed var(--hz-line-2)', borderRadius: 18, color: 'var(--hz-dim)', textAlign: 'center' }}>
+                Your basket is empty. Create a pin and save it here for later.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="hz-card">
+          <div className="hz-eyebrow" style={{ marginBottom: 12 }}>Comp trail</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {drops.slice(0, 5).map(drop => {
+              const sent = drop.from_athlete_id === myAthlete.id;
+              const otherName = sent
+                ? (drop.toAthlete?.display_name || drop.recipient_name)
+                : (drop.fromAthlete?.display_name || 'Someone');
+              return (
+                <div key={drop.id} style={{ padding: 14, borderRadius: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--hz-line)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 8, alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{
+                        width: 42, height: 42, borderRadius: 12, display: 'grid', placeItems: 'center',
+                        background: `linear-gradient(135deg, ${drop.design?.accent_start || '#27CFD7'}, ${drop.design?.accent_end || '#F97FAC'})`,
+                        fontSize: 20,
+                      }}>{drop.design?.emoji || '📍'}</div>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 14 }}>{drop.design?.name || 'Pin drop'}</div>
+                        <div style={{ color: 'var(--hz-dim)', fontSize: 11 }}>{sent ? `You pinned ${otherName}` : `${otherName} pinned you`}</div>
+                      </div>
+                    </div>
+                    <Pill tone={sent ? 'teal' : 'pink'}>{sent ? 'Sent' : 'Received'}</Pill>
+                  </div>
+                  <div style={{ fontSize: 13, lineHeight: 1.5 }}>{drop.message}</div>
+                  <div style={{ color: 'var(--hz-dim)', fontSize: 11, marginTop: 8 }}>
+                    {drop.event_name} · {drop.recipient_program}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
         <div className="hz-card">
           <div className="hz-eyebrow" style={{ marginBottom: 12 }}>Active quests</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -166,43 +384,7 @@ function PinsHub({ snap, session }) {
         </div>
 
         <div className="hz-card">
-          <div className="hz-eyebrow" style={{ marginBottom: 12 }}>Comp trail</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {drops.slice(0, 4).map(drop => {
-              const sent = drop.from_athlete_id === myAthlete.id;
-              const otherName = sent
-                ? (drop.toAthlete?.display_name || drop.recipient_name)
-                : (drop.fromAthlete?.display_name || 'Someone');
-              return (
-                <div key={drop.id} style={{ padding: 14, borderRadius: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--hz-line)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{
-                        width: 42, height: 42, borderRadius: 12, display: 'grid', placeItems: 'center',
-                        background: `linear-gradient(135deg, ${drop.design?.accent_start || '#27CFD7'}, ${drop.design?.accent_end || '#F97FAC'})`,
-                        fontSize: 20,
-                      }}>{drop.design?.emoji || '📍'}</div>
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: 14 }}>{drop.design?.name || 'Pin drop'}</div>
-                        <div style={{ color: 'var(--hz-dim)', fontSize: 11 }}>{sent ? `You pinned ${otherName}` : `${otherName} pinned you`}</div>
-                      </div>
-                    </div>
-                    <Pill tone={sent ? 'teal' : 'pink'}>{sent ? 'Sent' : 'Received'}</Pill>
-                  </div>
-                  <div style={{ fontSize: 13, lineHeight: 1.5 }}>{drop.message}</div>
-                  <div style={{ color: 'var(--hz-dim)', fontSize: 11, marginTop: 8 }}>
-                    {drop.event_name} · {drop.recipient_program}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-        <div className="hz-card">
-          <div className="hz-eyebrow" style={{ marginBottom: 12 }}>Your shelf</div>
+          <div className="hz-eyebrow" style={{ marginBottom: 12 }}>Shelf archive</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
             {inventory.map(row => (
               <div key={row.id} style={{ padding: 14, borderRadius: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--hz-line)' }}>
@@ -222,31 +404,6 @@ function PinsHub({ snap, session }) {
                 {row.favorite && <div className="hz-eyebrow" style={{ marginTop: 10, color: 'var(--hz-teal)' }}>On your bag</div>}
               </div>
             ))}
-          </div>
-        </div>
-
-        <div className="hz-card">
-          <div className="hz-eyebrow" style={{ marginBottom: 12 }}>Create next</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {available.slice(0, 4).map(pin => (
-              <div key={pin.id} style={{ padding: 14, borderRadius: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--hz-line)', display: 'flex', gap: 14, alignItems: 'center' }}>
-                <div style={{
-                  width: 52, height: 52, borderRadius: 16, display: 'grid', placeItems: 'center',
-                  background: `linear-gradient(135deg, ${pin.accent_start}, ${pin.accent_end})`,
-                  fontSize: 24,
-                }}>{pin.emoji}</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
-                    <div style={{ fontWeight: 700, fontSize: 15 }}>{pin.name}</div>
-                    <Pill tone={rarityTone(pin.rarity)}>{pin.rarity}</Pill>
-                  </div>
-                  <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>{pin.unlock_hint}</div>
-                </div>
-              </div>
-            ))}
-            <div style={{ padding: 14, borderRadius: 14, border: '1px dashed var(--hz-line-2)', color: 'var(--hz-dim)', fontSize: 12.5, lineHeight: 1.6 }}>
-              Next build: let athletes decorate digital clothespins, turn them into QR-ready comp drops, and pin girls from other gyms in the wild.
-            </div>
           </div>
         </div>
       </div>
