@@ -305,8 +305,11 @@ window.SkillTree = SkillTree;
 
 // ─── Parent Dashboard ───
 function ParentDashboard({ snap, session, navigate, pushToast }) {
+  const [createdKids, setCreatedKids] = React.useState([]);
   const links = (snap.parent_links || []).filter(l => l.parent_id === session.profile.id);
-  const myKids = links.length > 0 ? links.map(l => snap.athletes.find(a => a.id === l.athlete_id)).filter(Boolean) : [snap.athletes[0]];
+  const linkedKids = links.map(l => snap.athletes.find(a => a.id === l.athlete_id)).filter(Boolean);
+  const familyKids = [...createdKids, ...linkedKids].filter((kid, idx, arr) => kid && arr.findIndex(x => x.id === kid.id) === idx);
+  const myKids = familyKids.length > 0 ? familyKids : [snap.athletes[0]];
   const familyName = (session.profile.display_name || 'Your').split(' ').slice(-1)[0];
   const leadKid = myKids.filter(Boolean)[0] || null;
 
@@ -320,7 +323,12 @@ function ParentDashboard({ snap, session, navigate, pushToast }) {
         </div>
       </div>
 
-      <AddChildCard snap={snap} session={session} pushToast={pushToast}/>
+      <AddChildCard
+        snap={snap}
+        session={session}
+        pushToast={pushToast}
+        onCreated={(athlete) => athlete && setCreatedKids(prev => [athlete, ...prev.filter(k => k.id !== athlete.id)])}
+      />
 
       {myKids.filter(Boolean).map(kid => {
         const readiness = window.HZsel.athleteReadiness(kid.id);
@@ -411,7 +419,7 @@ function MiniBox({ label, value, accent }) {
   );
 }
 
-function AddChildCard({ snap, session, pushToast }) {
+function AddChildCard({ snap, session, pushToast, onCreated }) {
   const teams = snap.teams || [];
   const [open, setOpen] = React.useState(false);
   const [form, setForm] = React.useState({
@@ -444,6 +452,7 @@ function AddChildCard({ snap, session, pushToast }) {
       return;
     }
     const name = data?.athlete?.display_name || form.display_name.trim();
+    if (data?.athlete) onCreated && onCreated(data.athlete);
     setForm(f => ({ ...f, display_name: '', age: '' }));
     setOpen(false);
     pushToast && pushToast({
