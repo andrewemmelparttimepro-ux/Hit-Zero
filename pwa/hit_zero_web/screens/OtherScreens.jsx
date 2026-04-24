@@ -463,6 +463,7 @@ window.SkillTree = SkillTree;
 // ─── Parent Dashboard ───
 function ParentDashboard({ snap, session, navigate, pushToast }) {
   const [createdKids, setCreatedKids] = React.useState([]);
+  const [loginKidId, setLoginKidId] = React.useState(null);
   const links = (snap.parent_links || []).filter(l => l.parent_id === session.profile.id);
   const linkedKids = links.map(l => snap.athletes.find(a => a.id === l.athlete_id)).filter(Boolean);
   const familyKids = [...createdKids, ...linkedKids].filter((kid, idx, arr) => kid && arr.findIndex(x => x.id === kid.id) === idx);
@@ -505,8 +506,16 @@ function ParentDashboard({ snap, session, navigate, pushToast }) {
                     <div style={{ fontSize: 12, color: 'var(--hz-dim)', textTransform: 'capitalize', marginTop: 2 }}>
                       {kid.position || kid.role || 'athlete'}{kid.age ? ' · Age ' + kid.age : ''}
                     </div>
+                    <button
+                      className="hz-btn"
+                      style={{ marginTop: 12, padding: '9px 12px', fontSize: 12 }}
+                      onClick={() => setLoginKidId(v => v === kid.id ? null : kid.id)}
+                    >
+                      {kid.profile_id ? 'Reset iPad login' : 'Set up iPad login'}
+                    </button>
                   </div>
                 </div>
+                {loginKidId === kid.id && <AthleteLoginSetup athlete={kid}/>}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
                   <MiniBox label="Ready" value={`${Math.round(readiness*100)}%`} accent="var(--hz-teal)"/>
                   <MiniBox label="Attend" value={`${Math.round(attendance.pct*100)}%`}/>
@@ -579,6 +588,8 @@ function MiniBox({ label, value, accent }) {
 function AddChildCard({ snap, session, pushToast, onCreated }) {
   const teams = snap.teams || [];
   const [open, setOpen] = React.useState(false);
+  const [createdAthlete, setCreatedAthlete] = React.useState(null);
+  const [success, setSuccess] = React.useState('');
   const [form, setForm] = React.useState({
     display_name: '',
     age: '',
@@ -594,11 +605,17 @@ function AddChildCard({ snap, session, pushToast, onCreated }) {
 
   const addChild = async (e) => {
     e.preventDefault();
+    const childName = form.display_name.trim();
+    if (!childName) {
+      setError('Type the athlete name first, then Create / Link will connect her profile.');
+      return;
+    }
     setBusy(true);
     setError('');
+    setSuccess('');
     const { data, error: err } = await window.HZdb.auth.createChildAthlete({
       ...form,
-      display_name: form.display_name.trim(),
+      display_name: childName,
       age: form.age ? Number(form.age) : null,
       relation: 'parent',
       photo_color: '#F97FAC',
@@ -610,12 +627,13 @@ function AddChildCard({ snap, session, pushToast, onCreated }) {
     }
     const name = data?.athlete?.display_name || form.display_name.trim();
     if (data?.athlete) onCreated && onCreated(data.athlete);
+    setCreatedAthlete(data?.athlete || null);
+    setSuccess(`${name} is linked to your parent account. Now set up her iPad login.`);
     setForm(f => ({ ...f, display_name: '', age: '' }));
-    setOpen(false);
     pushToast && pushToast({
-      eyebrow: 'Child added',
+      eyebrow: 'Child linked',
       title: `${name} is on your family roster`,
-      body: 'No kid email required. Their profile is managed through your parent login.',
+      body: 'Next: create a username and password for her iPad.',
     });
   };
 
@@ -626,7 +644,7 @@ function AddChildCard({ snap, session, pushToast, onCreated }) {
           <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)', marginBottom: 8 }}>Parent-managed athlete</div>
           <div className="hz-display" style={{ fontSize: 30, marginBottom: 6 }}>Kids do not need inboxes.</div>
           <div style={{ color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.55, maxWidth: 680 }}>
-            Add younger athletes under your parent account. Coaches still see them on the roster; billing, skills, attendance, and pins attach to the child profile.
+            Add or link younger athletes under your parent account, then create a username + password for the iPad.
           </div>
         </div>
         <button className="hz-btn hz-btn-primary" onClick={() => setOpen(v => !v)}>
@@ -642,8 +660,7 @@ function AddChildCard({ snap, session, pushToast, onCreated }) {
               className="hz-input"
               value={form.display_name}
               onChange={e => setForm(f => ({ ...f, display_name: e.target.value }))}
-              placeholder="Arlowe Emmel"
-              required
+              placeholder="Type Arlowe Emmel"
             />
           </label>
           <label>
@@ -674,16 +691,78 @@ function AddChildCard({ snap, session, pushToast, onCreated }) {
               {teams.map(t => <option key={t.id} value={t.id}>{t.division || t.name || 'Team'}{t.level ? ` L${t.level}` : ''}</option>)}
             </select>
           </label>
-          <button className="hz-btn hz-btn-primary" disabled={busy || !form.display_name.trim()}>
-            {busy ? 'Adding…' : 'Create'}
+          <button type="submit" className="hz-btn hz-btn-primary" disabled={busy}>
+            {busy ? 'Working…' : 'Create / Link'}
           </button>
           {error && <div style={{ gridColumn: '1 / -1', color: 'var(--hz-pink)', fontSize: 13 }}>{error}</div>}
+          {success && <div style={{ gridColumn: '1 / -1', color: 'var(--hz-teal)', fontSize: 13 }}>{success}</div>}
           <div style={{ gridColumn: '1 / -1', color: 'var(--hz-dim)', fontSize: 12 }}>
-            This creates an athlete row with no auth profile. If she gets her own login later, staff can attach one without losing history.
+            If the athlete already exists on the roster, this links her to you instead of creating a duplicate.
           </div>
         </form>
       )}
+      {createdAthlete && <AthleteLoginSetup athlete={createdAthlete}/>}
     </div>
+  );
+}
+
+function AthleteLoginSetup({ athlete }) {
+  const defaultUsername = (athlete.display_name || 'athlete')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .split('-')[0]
+    .slice(0, 24);
+  const [username, setUsername] = React.useState(defaultUsername || 'athlete');
+  const [password, setPassword] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [done, setDone] = React.useState(null);
+
+  const save = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    const { data, error: err } = await window.HZdb.auth.createAthleteLogin({
+      athlete_id: athlete.id,
+      username,
+      password,
+    });
+    setBusy(false);
+    if (err) {
+      setError(err.message || String(err));
+      return;
+    }
+    setDone(data);
+  };
+
+  return (
+    <form onSubmit={save} style={{ marginTop: 22, paddingTop: 20, borderTop: '1px solid var(--hz-line)', display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10, alignItems: 'end' }}>
+      <div style={{ gridColumn: '1 / -1' }}>
+        <div className="hz-eyebrow" style={{ color: 'var(--hz-pink)', marginBottom: 8 }}>iPad login</div>
+        <div className="hz-display" style={{ fontSize: 28 }}>Give {athlete.display_name.split(' ')[0]} her own login.</div>
+        <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 6 }}>
+          She can sign in on the iPad with this username and password. No email inbox needed.
+        </div>
+      </div>
+      <label>
+        <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Username</div>
+        <input className="hz-input" value={username} onChange={e => setUsername(e.target.value)} autoCapitalize="none" autoCorrect="off" required minLength={3}/>
+      </label>
+      <label>
+        <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Password</div>
+        <input className="hz-input" type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} placeholder="8+ characters"/>
+      </label>
+      <button type="submit" className="hz-btn hz-btn-primary" disabled={busy || username.length < 3 || password.length < 8}>
+        {busy ? 'Saving…' : 'Save login'}
+      </button>
+      {error && <div style={{ gridColumn: '1 / -1', color: 'var(--hz-pink)', fontSize: 13 }}>{error}</div>}
+      {done && (
+        <div style={{ gridColumn: '1 / -1', padding: 14, borderRadius: 12, background: 'rgba(39,207,215,0.08)', color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.5 }}>
+          Ready for iPad: username <b style={{ color: '#fff' }}>{done.login_identifier}</b>. Open Hit Zero, choose “Username + password,” and sign in.
+        </div>
+      )}
+    </form>
   );
 }
 window.ParentDashboard = ParentDashboard;

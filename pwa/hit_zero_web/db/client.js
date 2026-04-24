@@ -677,6 +677,7 @@
   // ─── Auth ───
   const AUTH_KEY = 'hz_auth_v2';
   const AUTH_EMAIL_KEY = 'hz_auth_email_v1';
+  const ATHLETE_LOGIN_DOMAIN = 'athletes.hit-zero.app';
   let realAuthSub = null;
   let authInitPromise = null;
   function getSession() {
@@ -698,6 +699,11 @@
   }
   function normalizeEmail(value) {
     return String(value || '').trim().toLowerCase();
+  }
+  function loginEmail(value) {
+    const raw = normalizeEmail(value);
+    if (!raw) return '';
+    return raw.includes('@') ? raw : `${raw.replace(/^@+/, '')}@${ATHLETE_LOGIN_DOMAIN}`;
   }
   function canUseViewAs(raw, profile) {
     const email = normalizeEmail(profile?.email || raw?.user?.email || raw?.email);
@@ -876,6 +882,16 @@
         return { data: null, error: err instanceof Error ? err : new Error(String(err)) };
       }
     },
+    async signInWithPassword(identifier, password) {
+      if (!hasRealAuth()) return { data: null, error: new Error('Password auth is unavailable in prototype mode.') };
+      const email = loginEmail(identifier);
+      if (!email || !password) return { data: null, error: new Error('Username and password are required.') };
+      rememberEmail(identifier);
+      const { data: authData, error } = await window.HZsupa.auth.signInWithPassword({ email, password });
+      if (error) return { data: null, error };
+      const session = await syncSupabaseSession(authData.session);
+      return { data: { session }, error: null };
+    },
     async createChildAthlete(input = {}) {
       const current = getSession();
       const name = String(input.display_name || '').trim();
@@ -895,7 +911,7 @@
               'Authorization': 'Bearer ' + token,
               'apikey': window.HZ_ANON_KEY,
             },
-            body: JSON.stringify(input),
+            body: JSON.stringify({ action: 'create_child', ...input }),
           });
           const payload = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(payload?.error || 'We could not add that child.');
@@ -967,6 +983,41 @@
       emit('billing_accounts', { eventType: 'INSERT', new: billing, old: null });
       window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table: 'athletes', action: 'create_child' } }));
       return { data: { ok: true, athlete, parent_link: link, billing_account: billing }, error: null };
+    },
+    async createAthleteLogin(input = {}) {
+      if (!hasRealAuth() || !window.HZ_FN_BASE || !window.HZ_ANON_KEY) {
+        return { data: null, error: new Error('Athlete login setup needs live auth.') };
+      }
+      try {
+        const { data: authData, error: authError } = await window.HZsupa.auth.getSession();
+        if (authError) throw authError;
+        const token = authData?.session?.access_token;
+        if (!token) throw new Error('Your sign-in session expired. Sign in again and retry.');
+        const res = await fetch(window.HZ_FN_BASE + '/functions/v1/parent-athlete-v1', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token,
+            'apikey': window.HZ_ANON_KEY,
+          },
+          body: JSON.stringify({ action: 'create_login', ...input }),
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload?.error || 'We could not create that athlete login.');
+        if (payload?.athlete) {
+          data.athletes = data.athletes || [];
+          data.athletes = [...data.athletes.filter(a => a.id !== payload.athlete.id), payload.athlete];
+          emit('athletes', { eventType: 'UPDATE', new: payload.athlete, old: null });
+        }
+        if (payload?.profile) upsertLocalProfile(payload.profile);
+        save(data);
+        if (window.HZmirror?.roster) await window.HZmirror.roster();
+        if (window.HZsel?._refresh) await window.HZsel._refresh();
+        window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table: 'athletes', action: 'create_login' } }));
+        return { data: payload, error: null };
+      } catch (err) {
+        return { data: null, error: err instanceof Error ? err : new Error(String(err)) };
+      }
     },
     async signOut() {
       if (hasRealAuth()) {

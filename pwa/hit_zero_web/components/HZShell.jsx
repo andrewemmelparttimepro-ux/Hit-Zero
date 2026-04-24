@@ -136,6 +136,7 @@ function App() {
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [drawerAthleteId, setDrawerAthleteId] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [walkthroughOpen, setWalkthroughOpen] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -190,6 +191,21 @@ function App() {
   }, []);
 
   const effectiveRole = session?.profile?.role || 'coach';
+
+  useEffect(() => {
+    if (!session?.profile || effectiveRole !== 'athlete') return;
+    const key = 'hz_athlete_walkthrough_v1_' + session.profile.id;
+    try {
+      if (!localStorage.getItem(key)) setWalkthroughOpen(true);
+    } catch {}
+  }, [session?.profile?.id, effectiveRole]);
+
+  const closeWalkthrough = useCallback(() => {
+    if (session?.profile?.id) {
+      try { localStorage.setItem('hz_athlete_walkthrough_v1_' + session.profile.id, 'done'); } catch {}
+    }
+    setWalkthroughOpen(false);
+  }, [session?.profile?.id]);
 
   useEffect(() => {
     if (!session) return;
@@ -298,6 +314,7 @@ function App() {
       </div>
       {cmdkOpen && snap && <CommandK snap={snap} onClose={() => setCmdkOpen(false)} onNav={(id) => { location.hash = '#' + id; setCmdkOpen(false); }} openAthlete={(id) => { setDrawerAthleteId(id); setCmdkOpen(false); }} />}
       {drawerAthleteId && snap && <AthleteDrawer athleteId={drawerAthleteId} snap={snap} onClose={() => setDrawerAthleteId(null)} pushToast={pushToast}/>}
+      {walkthroughOpen && <AthleteWalkthrough onClose={closeWalkthrough} navigate={(id) => { location.hash = '#' + id; closeWalkthrough(); }}/>}
       <div className="toast-stack">
         {toasts.map(t => <Toast key={t.id} toast={t} onClose={(id) => setToasts(prev => prev.filter(x => x.id !== id))} />)}
       </div>
@@ -511,7 +528,10 @@ function RoleSwitcher({ session, snap }) {
 // ─── Login / auth gate ───
 function Login() {
   const liveAuth = window.HZdb.auth._supportsMagicLink?.();
+  const [mode, setMode] = useState('password');
   const [email, setEmail] = useState(window.HZdb.auth._lastEmail?.() || '');
+  const [identifier, setIdentifier] = useState(window.HZdb.auth._lastEmail?.() || '');
+  const [password, setPassword] = useState('');
   const [role, setRole] = useState('owner');
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
@@ -528,11 +548,13 @@ function Login() {
     setBusy(true);
     setErr(null);
     try {
-      const { error } = await window.HZdb.auth.signInWithMagicLink(email, role);
+      const { error } = mode === 'password'
+        ? await window.HZdb.auth.signInWithPassword(identifier, password)
+        : await window.HZdb.auth.signInWithMagicLink(email, role);
       if (error) throw error;
-      setSent(true);
+      if (mode !== 'password') setSent(true);
     } catch (cause) {
-      setErr(cause?.message || 'We could not send the sign-in link.');
+      setErr(cause?.message || (mode === 'password' ? 'We could not sign you in.' : 'We could not send the sign-in link.'));
     } finally {
       setBusy(false);
     }
@@ -603,39 +625,70 @@ function Login() {
           </div>
         </div>
         <div className="hz-card" style={{ maxWidth: 560, margin: '0 auto', padding: 28 }}>
-          <label className="hz-eyebrow" style={{ display: 'block', fontSize: 11, marginBottom: 8 }}>Email</label>
-          <input
-            className="hz-input"
-            type="email"
-            required
-            autoFocus
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            placeholder="you@gym.com"
-          />
-          <div className="hz-eyebrow" style={{ display: 'block', fontSize: 11, marginTop: 24, marginBottom: 10 }}>Role</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
-            {roles.map(r => (
-              <button
-                key={r.id}
-                type="button"
-                className={'hz-btn' + (role === r.id ? ' hz-btn-primary' : '')}
-                style={{ justifyContent: 'flex-start', padding: '14px 16px' }}
-                onClick={() => setRole(r.id)}
-              >
-                <div style={{ textAlign: 'left' }}>
-                  <div style={{ fontWeight: 700 }}>{r.label}</div>
-                  <div style={{ color: role === r.id ? 'rgba(255,255,255,0.82)' : 'var(--hz-dim)', fontSize: 11, marginTop: 4 }}>{r.sub}</div>
-                </div>
-              </button>
-            ))}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
+            <button type="button" className={'hz-btn' + (mode === 'password' ? ' hz-btn-primary' : '')} onClick={() => setMode('password')}>Username + password</button>
+            <button type="button" className={'hz-btn' + (mode === 'magic' ? ' hz-btn-primary' : '')} onClick={() => setMode('magic')}>Email link</button>
           </div>
+          {mode === 'password' ? (
+            <>
+              <label className="hz-eyebrow" style={{ display: 'block', fontSize: 11, marginBottom: 8 }}>Username or email</label>
+              <input
+                className="hz-input"
+                required
+                autoFocus
+                value={identifier}
+                onChange={e => setIdentifier(e.target.value)}
+                placeholder="arlowe"
+                autoCapitalize="none"
+                autoCorrect="off"
+              />
+              <label className="hz-eyebrow" style={{ display: 'block', fontSize: 11, marginTop: 18, marginBottom: 8 }}>Password</label>
+              <input
+                className="hz-input"
+                type="password"
+                required
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+              />
+            </>
+          ) : (
+            <>
+              <label className="hz-eyebrow" style={{ display: 'block', fontSize: 11, marginBottom: 8 }}>Email</label>
+              <input
+                className="hz-input"
+                type="email"
+                required
+                autoFocus
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="you@gym.com"
+              />
+              <div className="hz-eyebrow" style={{ display: 'block', fontSize: 11, marginTop: 24, marginBottom: 10 }}>Role</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+                {roles.map(r => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    className={'hz-btn' + (role === r.id ? ' hz-btn-primary' : '')}
+                    style={{ justifyContent: 'flex-start', padding: '14px 16px' }}
+                    onClick={() => setRole(r.id)}
+                  >
+                    <div style={{ textAlign: 'left' }}>
+                      <div style={{ fontWeight: 700 }}>{r.label}</div>
+                      <div style={{ color: role === r.id ? 'rgba(255,255,255,0.82)' : 'var(--hz-dim)', fontSize: 11, marginTop: 4 }}>{r.sub}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
           {err && <div style={{ color: 'var(--hz-pink)', marginTop: 18, fontSize: 13 }}>{err}</div>}
-          <button className="hz-btn hz-btn-primary" type="submit" disabled={busy || !email} style={{ width: '100%', marginTop: 22, justifyContent: 'center' }}>
-            {busy ? 'Sending…' : 'Send secure sign-in link'}
+          <button className="hz-btn hz-btn-primary" type="submit" disabled={busy || (mode === 'password' ? (!identifier || !password) : !email)} style={{ width: '100%', marginTop: 22, justifyContent: 'center' }}>
+            {busy ? (mode === 'password' ? 'Signing in…' : 'Sending…') : (mode === 'password' ? 'Sign in' : 'Send secure sign-in link')}
           </button>
           <div style={{ color: 'var(--hz-dimmer)', marginTop: 16, fontSize: 11, textAlign: 'center' }}>
-            Your roster access is attached to the email address on your profile.
+            Athletes can use a simple username on iPad. Parents and staff can still use email links.
           </div>
         </div>
       </form>
@@ -643,6 +696,43 @@ function Login() {
   );
 }
 window.Login = Login;
+
+function AthleteWalkthrough({ onClose, navigate }) {
+  const steps = [
+    { title: 'Your reel', body: 'See wins, readiness, attendance, and what to work on next.', action: 'Open My Reel', nav: 'reel' },
+    { title: 'Pins', body: 'Create pins, keep them in your basket, and drop them on teammates when they do something cool.', action: 'Open Pins', nav: 'pins' },
+    { title: 'AI Judge', body: 'Upload a routine when a parent or coach says it is okay, then review the scorecard together.', action: 'Open AI Judge', nav: 'ai_judge' },
+  ];
+  const [i, setI] = useState(0);
+  const step = steps[i];
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.72)', display: 'grid', placeItems: 'center', padding: 24 }}>
+      <div className="hz-card" style={{ maxWidth: 640, width: '100%', borderColor: 'rgba(249,127,172,0.45)' }}>
+        <div className="hz-eyebrow" style={{ color: 'var(--hz-pink)', marginBottom: 10 }}>Welcome to Hit Zero</div>
+        <div className="hz-display" style={{ fontSize: 44, lineHeight: 1 }}>{step.title}</div>
+        <div style={{ color: 'var(--hz-dim)', fontSize: 15, lineHeight: 1.6, marginTop: 14 }}>{step.body}</div>
+        <div style={{ marginTop: 18, padding: 14, borderRadius: 14, background: 'rgba(39,207,215,0.08)', color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.5 }}>
+          iPad tip: open Hit Zero in Safari, tap Share, then Add to Home Screen. After that it opens like an app and keeps you signed in.
+        </div>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', alignItems: 'center', marginTop: 24 }}>
+          <button className="hz-btn hz-btn-ghost" onClick={onClose}>Skip</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {steps.map((_, idx) => <span key={idx} style={{ width: 8, height: 8, borderRadius: 999, background: idx === i ? 'var(--hz-pink)' : 'rgba(255,255,255,0.18)' }}/>)}
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            {i > 0 && <button className="hz-btn" onClick={() => setI(v => v - 1)}>Back</button>}
+            {i < steps.length - 1 ? (
+              <button className="hz-btn hz-btn-primary" onClick={() => setI(v => v + 1)}>Next</button>
+            ) : (
+              <button className="hz-btn hz-btn-primary" onClick={() => navigate(step.nav)}>{step.action}</button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+window.AthleteWalkthrough = AthleteWalkthrough;
 
 // ─── Command-K palette ───
 function CommandK({ snap, onClose, onNav, openAthlete }) {
