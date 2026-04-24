@@ -167,6 +167,8 @@ function App() {
 
   useEffect(() => {
     refreshSnapshot();
+    const onManualRefresh = () => refreshSnapshot();
+    window.addEventListener('hz:refresh', onManualRefresh);
     const ch = window.HZdb.channel('app-all')
       .on('postgres_changes', { table: '*' }, () => refreshSnapshot())
       .subscribe();
@@ -174,7 +176,10 @@ function App() {
     ['athlete_skills','celebrations','attendance','routine_sections','sessions','billing_accounts','billing_charges','announcements','score_runs'].forEach(t => {
       window.HZdb.channel('t-' + t).on('postgres_changes', { table: t }, () => refreshSnapshot()).subscribe();
     });
-    return () => ch.unsubscribe();
+    return () => {
+      window.removeEventListener('hz:refresh', onManualRefresh);
+      ch.unsubscribe();
+    };
   }, [refreshSnapshot]);
 
   // Hash router

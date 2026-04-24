@@ -922,6 +922,7 @@
           save(data);
           if (window.HZmirror?.roster) await window.HZmirror.roster();
           if (window.HZsel?._refresh) await window.HZsel._refresh();
+          window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table: 'athletes', action: 'create_child' } }));
           return { data: raw, error: null };
         } catch (err) {
           return { data: null, error: err instanceof Error ? err : new Error(String(err)) };
@@ -964,6 +965,7 @@
       emit('athletes', { eventType: 'INSERT', new: athlete, old: null });
       emit('parent_links', { eventType: 'INSERT', new: link, old: null });
       emit('billing_accounts', { eventType: 'INSERT', new: billing, old: null });
+      window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table: 'athletes', action: 'create_child' } }));
       return { data: { ok: true, athlete, parent_link: link, billing_account: billing }, error: null };
     },
     async signOut() {
