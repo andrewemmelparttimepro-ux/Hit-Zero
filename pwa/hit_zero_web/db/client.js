@@ -86,7 +86,7 @@
     ];
 
     const announcements = [
-      { id: 'an1', program_id: 'p_mca', audience: 'all', title: 'Dream On competition — 20 days out', body: 'Bus leaves the gym 6 AM Friday May 8. Uniform + warm-ups + red bow required. Parents: hotel block info in email.', pinned: true, created_at: new Date(Date.now()-1000*60*60*6).toISOString(), created_by: 'owner' },
+      { id: 'an1', program_id: 'p_mca', audience: 'all', title: 'Competition week checklist', body: 'Bus leaves the gym Friday morning. Uniform + warm-ups + red bow required. Parents: travel details are in email.', pinned: true, created_at: new Date(Date.now()-1000*60*60*6).toISOString(), created_by: 'owner' },
       { id: 'an2', program_id: 'p_mca', audience: 'parents', title: 'Choreo fee — final reminder', body: 'Final $150 choreo balance due Friday. Venmo @magiccityallstars or square link in your billing tab.', pinned: false, created_at: new Date(Date.now()-1000*60*60*24*2).toISOString(), created_by: 'owner' },
     ];
 
@@ -327,7 +327,7 @@
       { id: 'vr3', program_id: 'p_mca', name: 'Photography',          description: 'Shoots the team walk-in + after-bid photos.', created_at: iso(-days(20)) },
       { id: 'vr4', program_id: 'p_mca', name: 'Hospitality',          description: 'Snacks/waters for athletes between rounds.', created_at: iso(-days(20)) },
     ];
-    // Assign volunteers to the Dream On comp (last seeded session, is_competition=true)
+    // Assign volunteers to the seeded competition session.
     const compSession = (window.HZ_SESSIONS || []).find(s => s.comp);
     const volunteer_assignments = compSession ? [
       { id: 'va1', role_id: 'vr1', session_id: compSession.id, profile_id: 'u_parent', status: 'claimed',   claimed_at: iso(-days(1)), created_at: iso(-days(3)) },
@@ -375,7 +375,7 @@
       { id: 'ap7', athlete_id: 'a03', design_id: 'pin_clothespin',     quantity: 1, favorite: true,  unlocked_at: iso(-days(2)) },
     ];
     const pin_drops = [
-      { id: 'pd1', design_id: 'pin_confetti_heart', from_athlete_id: 'a07', to_athlete_id: 'a01', recipient_name: 'Kenzie Rhodes', recipient_program: 'Magic City Allstars', recipient_city: 'Minot, ND', event_name: 'Dream On warm-up', message: 'You looked unreal in warm-ups.', created_at: iso(-hours(18)), status: 'received' },
+      { id: 'pd1', design_id: 'pin_confetti_heart', from_athlete_id: 'a07', to_athlete_id: 'a01', recipient_name: 'Kenzie Rhodes', recipient_program: 'Magic City Allstars', recipient_city: 'Minot, ND', event_name: 'Comp warm-up', message: 'You looked unreal in warm-ups.', created_at: iso(-hours(18)), status: 'received' },
       { id: 'pd2', design_id: 'pin_hit_zero',       from_athlete_id: 'a01', to_athlete_id: 'a03', recipient_name: 'Brooklyn Hale', recipient_program: 'Magic City Allstars', recipient_city: 'Minot, ND', event_name: 'Friday full-out',  message: 'That jump section ate.', created_at: iso(-days(2)),  status: 'sent' },
       { id: 'pd3', design_id: 'pin_red_bow',        from_athlete_id: 'a03', to_athlete_id: 'a01', recipient_name: 'Kenzie Rhodes', recipient_program: 'Magic City Allstars', recipient_city: 'Minot, ND', event_name: 'Bus ride',         message: 'Thanks for the pep talk.', created_at: iso(-days(3)),  status: 'received' },
       { id: 'pd4', design_id: 'pin_country_crossover', from_athlete_id: 'a01', to_athlete_id: null, recipient_name: 'Tatum Lee', recipient_program: 'Cheer Athletics', recipient_city: 'Dallas, TX', event_name: 'Next major comp', message: 'Save this one for a girl you meet out of state.', created_at: iso(days(7)), status: 'planned' },

@@ -58,7 +58,7 @@ function MockScore({ snap, navigate, pushToast }) {
         <div className="hz-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 20 }}>
             <div>
-              <div className="hz-eyebrow">{teamLabel} · Dream On</div>
+              <div className="hz-eyebrow">{teamLabel} · Score rehearsal</div>
               <div className="hz-display" style={{ fontSize: 28, marginTop: 4 }}>Tabulation sheet</div>
             </div>
             <div style={{ textAlign: 'right' }}>

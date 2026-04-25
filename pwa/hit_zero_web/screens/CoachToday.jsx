@@ -54,7 +54,7 @@ function CoachToday({ snap, openAthlete, navigate, pushToast, session }) {
             Today we <span className="hz-zero">hit</span> zero.
           </div>
           <div style={{ color: 'var(--hz-dim)', fontSize: 14, marginTop: 14, maxWidth: 540 }}>
-            {teamLine}. {comp && comp.days <= 14 ? `${comp.days} days to Dream On. The routine is becoming the routine.` : 'Build every rep like it counts twice.'}
+            {teamLine}. {comp && comp.days <= 14 ? `${comp.days} days until the next floor moment. The routine is becoming the routine.` : 'Build every rep like it counts twice.'}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>

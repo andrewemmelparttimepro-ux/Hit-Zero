@@ -284,7 +284,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
           <div style={{ marginTop: 14, padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
             <div style={{ fontSize: 11, color: 'var(--hz-dim)', lineHeight: 1.5 }}>
               Prediction blends team skill readiness with the section coverage you've built.
-              {comp && <> We'd take this <span style={{ color: 'var(--hz-teal)', fontWeight: 600 }}>in {comp.days} days</span> at Dream On.</>}
+              {comp && <> We'd take this <span style={{ color: 'var(--hz-teal)', fontWeight: 600 }}>in {comp.days} days</span> to the next floor moment.</>}
             </div>
           </div>
         </div>

@@ -143,7 +143,7 @@ window.HZ_TEAM = {
   gym: 'Magic City Allstars',
   city: 'Minot, ND',
   seasonStart: '2025-05-01',
-  nextComp: { name: 'Dream On Dance & Cheer', date: '2026-05-09', city: 'Bismarck, ND', daysOut: 20 },
+  nextComp: { name: 'Next Competition', date: '2026-05-09', city: '', daysOut: 20 },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -233,7 +233,7 @@ window.HZ_SESSIONS = [
   { id: 's17', date: '2026-04-28', type: 'Practice',   duration: 120, attended: [], scheduled: true },
   { id: 's18', date: '2026-05-02', type: 'Full-Out',   duration: 150, attended: [], scheduled: true },
   { id: 's19', date: '2026-05-05', type: 'Dress',      duration: 180, attended: [], scheduled: true },
-  { id: 's20', date: '2026-05-09', type: 'COMPETITION: Dream On', duration: 0, attended: [], scheduled: true, comp: true },
+  { id: 's20', date: '2026-05-09', type: 'COMPETITION', duration: 0, attended: [], scheduled: true, comp: true },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

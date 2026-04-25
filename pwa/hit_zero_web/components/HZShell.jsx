@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // HIT ZERO WEB — App shell, router, auth gate
-// Sidebar nav, topbar with role switcher + countdown + search, routed main
+// Sidebar nav, topbar with role switcher + command search, routed main
 // ─────────────────────────────────────────────────────────────────────────────
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
@@ -396,49 +396,30 @@ function Sidebar({ nav, active, session, onNav, open, snap }) {
 
 // ─── Topbar ───
 function Topbar({ session, onOpenCmdk, onSignOut, onHamburger, onHelp, snap }) {
-  const comp = snap ? window.HZsel.daysToComp() : null;
-  const isMagic = comp && comp.days === 14;
   return (
     <div className="topbar hz-nosel">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div className="topbar-left">
         <button className="hamburger-btn" onClick={onHamburger} aria-label="Open menu">
           <HZIcon name="skills" size={18}/>
         </button>
-        <div
+        <button
+          type="button"
           onClick={onOpenCmdk}
           className="topbar-search"
-          style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            padding: '7px 14px', borderRadius: 10,
-            background: 'rgba(255,255,255,0.04)', border: '1px solid var(--hz-line)',
-            cursor: 'pointer', minWidth: 320,
-            color: 'var(--hz-dim)', fontSize: 12.5,
-          }}
         >
           <HZIcon name="search" size={14} />
-          <span>Search athletes, skills, routine…</span>
-          <span style={{ marginLeft: 'auto', fontFamily: 'var(--hz-mono)', fontSize: 11, color: 'var(--hz-dimmer)' }}>⌘K</span>
-        </div>
+          <span className="topbar-search-label">Search athletes, skills, routine...</span>
+          <span className="topbar-kbd">⌘K</span>
+        </button>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-        {comp && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div className={isMagic ? 'hz-pill hz-pill-pink' : 'hz-pill hz-pill-teal'}>
-              {isMagic ? '✦ Magic Day 14' : `${comp.days} days out`}
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--hz-dim)' }}>
-              <span style={{ color: '#fff', fontWeight: 600 }}>Dream On</span> · Bismarck, ND · May 9
-            </div>
-          </div>
-        )}
-        <div style={{ width: 1, height: 24, background: 'var(--hz-line)' }} />
+      <div className="topbar-actions">
         {session.canViewAs || session.mode === 'prototype'
           ? <RoleSwitcher session={session} snap={snap} />
           : <AccountBadge session={session} />}
-        <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={onHelp} title="Open walkthrough" aria-label="Open walkthrough">
+        <button className="topbar-icon-btn" onClick={onHelp} title="Open walkthrough" aria-label="Open walkthrough">
           ?
         </button>
-        <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={onSignOut} title="Sign out">
+        <button className="topbar-icon-btn" onClick={onSignOut} title="Sign out" aria-label="Sign out">
           <HZIcon name="logout" size={14} />
         </button>
       </div>
@@ -449,9 +430,9 @@ function Topbar({ session, onOpenCmdk, onSignOut, onHamburger, onHelp, snap }) {
 function AccountBadge({ session }) {
   const role = session.profile.role;
   return (
-    <div className="hz-btn hz-btn-sm" style={{ cursor: 'default', gap: 10 }}>
-      <span style={{ fontWeight: 700 }}>{session.profile.display_name || session.user?.email || session.profile.email}</span>
-      <span style={{ color: 'var(--hz-dim)', textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: 10, fontWeight: 800 }}>
+    <div className="topbar-account" style={{ cursor: 'default' }}>
+      <span className="topbar-account-name">{session.profile.display_name || session.user?.email || session.profile.email}</span>
+      <span className="topbar-account-role">
         {ROLE_LABELS[role] || role}
       </span>
     </div>
@@ -477,10 +458,10 @@ function RoleSwitcher({ session, snap }) {
   };
   return (
     <div style={{ position: 'relative' }}>
-      <button className="hz-btn hz-btn-sm" onClick={() => setOpen(v => !v)} style={{ gap: 10 }}>
-        <span style={{ fontWeight: 700, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{accountName}</span>
-        <span style={{ color: 'var(--hz-dim)' }}>View as</span>
-        <span style={{ fontWeight: 800 }}>{ROLE_LABELS[currentRole] || currentRole}</span>
+      <button className="topbar-account" onClick={() => setOpen(v => !v)}>
+        <span className="topbar-account-name">{accountName}</span>
+        <span className="topbar-view-as">View as</span>
+        <span className="topbar-account-role">{ROLE_LABELS[currentRole] || currentRole}</span>
         <HZIcon name="chev-down" size={13} />
       </button>
       {open && (
