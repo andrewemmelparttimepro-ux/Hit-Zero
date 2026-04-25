@@ -418,12 +418,67 @@ function SkillTree({ snap, session }) {
   if (!myAthlete) return null;
   const cats = ['standing_tumbling','running_tumbling','jumps','stunts','pyramids','baskets'];
   const CAT_LABEL = { standing_tumbling: 'Standing Tumbling', running_tumbling: 'Running Tumbling', jumps: 'Jumps', stunts: 'Stunts', pyramids: 'Pyramids', baskets: 'Baskets' };
+  const STATUS_LABEL = { none: 'Not yet', working: 'Working', got_it: 'Got it', mastered: 'Mastered' };
+  const STATUS_HELP = {
+    none: 'I have not started this one.',
+    working: 'I am learning it.',
+    got_it: 'I can do it.',
+    mastered: 'I can do it clean and confident.',
+  };
+  const STATUS_TONES = { none: 'rgba(255,255,255,0.04)', working: 'rgba(255,180,84,0.16)', got_it: 'rgba(39,207,215,0.18)', mastered: 'linear-gradient(135deg, rgba(39,207,215,0.3), rgba(249,127,172,0.3))' };
   const statusMap = {};
   (snap.athlete_skills || []).filter(r => r.athlete_id === myAthlete.id).forEach(r => { statusMap[r.skill_id] = r.status; });
+  const [localStatus, setLocalStatus] = React.useState({});
+  const [saving, setSaving] = React.useState(null);
+  const [error, setError] = React.useState('');
+
+  const statusFor = (skillId) => localStatus[skillId] || statusMap[skillId] || 'none';
+  const updateSkill = async (skill, status) => {
+    const previous = statusFor(skill.id);
+    if (previous === status || saving) return;
+    const row = {
+      athlete_id: myAthlete.id,
+      skill_id: skill.id,
+      status,
+      updated_by: session?.profile?.id || session?.user?.id || null,
+      updated_at: new Date().toISOString(),
+    };
+    setError('');
+    setSaving(skill.id);
+    setLocalStatus(prev => ({ ...prev, [skill.id]: status }));
+    try {
+      if (window.HZsupa && window.HZdb?.auth?._mode?.() === 'live') {
+        const { error: liveError } = await window.HZsupa
+          .from('athlete_skills')
+          .upsert(row, { onConflict: 'athlete_id,skill_id' });
+        if (liveError) throw liveError;
+      }
+      const { error: localError } = await window.HZdb.from('athlete_skills')
+        .upsert(row, { onConflict: 'athlete_id,skill_id' });
+      if (localError) throw localError;
+      if (window.HZmirror?.roster) await window.HZmirror.roster();
+      if (window.HZsel?._refresh) await window.HZsel._refresh();
+      window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table: 'athlete_skills', action: 'athlete_update' } }));
+    } catch (err) {
+      setLocalStatus(prev => ({ ...prev, [skill.id]: previous }));
+      setError(err?.message || 'That skill did not save. Try again.');
+    } finally {
+      setSaving(null);
+    }
+  };
+  const solidCount = Object.values({ ...statusMap, ...localStatus }).filter(s => s === 'mastered' || s === 'got_it').length;
 
   return (
     <div>
-      <SectionHeading eyebrow={myAthlete.display_name} title="My skill tree." trailing={<Pill tone="teal">{Object.values(statusMap).filter(s => s === 'mastered' || s === 'got_it').length} solid</Pill>}/>
+      <SectionHeading eyebrow={myAthlete.display_name} title="My skill tree." trailing={<Pill tone="teal">{solidCount} solid</Pill>}/>
+      <div className="hz-card" style={{ marginBottom: 20, borderColor: 'rgba(39,207,215,0.35)' }}>
+        <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)', marginBottom: 8 }}>Self tracker</div>
+        <div className="hz-display" style={{ fontSize: 32, marginBottom: 8 }}>Tap what is true today.</div>
+        <div style={{ color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.55, maxWidth: 760 }}>
+          This updates your profile so coaches and parents can see where you are. Pick honestly: Working is still a win.
+        </div>
+        {error && <div style={{ color: 'var(--hz-pink)', fontSize: 13, marginTop: 12 }}>{error}</div>}
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         {cats.map(cat => {
           const cSkills = snap.skills.filter(s => s.category === cat).sort((a,b) => a.level - b.level);
@@ -431,22 +486,39 @@ function SkillTree({ snap, session }) {
             <div key={cat} className="hz-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
                 <div className="hz-display" style={{ fontSize: 24 }}>{CAT_LABEL[cat]}</div>
-                <div style={{ fontSize: 11, color: 'var(--hz-dim)' }}>{cSkills.filter(s => ['got_it','mastered'].includes(statusMap[s.id])).length} / {cSkills.length}</div>
+                <div style={{ fontSize: 11, color: 'var(--hz-dim)' }}>{cSkills.filter(s => ['got_it','mastered'].includes(statusFor(s.id))).length} / {cSkills.length}</div>
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10 }}>
                 {cSkills.map(s => {
-                  const st = statusMap[s.id] || 'none';
+                  const st = statusFor(s.id);
                   return (
                     <div key={s.id} style={{
-                      padding: '8px 14px', borderRadius: 8, fontSize: 12,
-                      background: st === 'mastered' ? 'linear-gradient(135deg, rgba(39,207,215,0.3), rgba(249,127,172,0.3))'
-                        : st === 'got_it' ? 'rgba(39,207,215,0.18)'
-                        : st === 'working' ? 'rgba(255,180,84,0.16)'
-                        : 'rgba(255,255,255,0.04)',
+                      padding: 12, borderRadius: 14, fontSize: 12,
+                      background: STATUS_TONES[st],
                       color: st === 'none' ? 'var(--hz-dim)' : '#fff',
+                      border: '1px solid var(--hz-line)',
                     }}>
-                      <span style={{ fontFamily: 'var(--hz-mono)', fontSize: 10, opacity: 0.6, marginRight: 6 }}>L{s.level}</span>
-                      {s.name}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'start', marginBottom: 10 }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 800, color: '#fff' }}>{s.name}</div>
+                          <div style={{ fontFamily: 'var(--hz-mono)', fontSize: 10, opacity: 0.6, marginTop: 3 }}>L{s.level} · {STATUS_HELP[st]}</div>
+                        </div>
+                        {saving === s.id && <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)' }}>Saving</div>}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
+                        {['none','working','got_it','mastered'].map(option => (
+                          <button
+                            key={option}
+                            type="button"
+                            className={'hz-btn hz-btn-sm' + (st === option ? ' hz-btn-primary' : '')}
+                            disabled={saving === s.id}
+                            onClick={() => updateSkill(s, option)}
+                            style={{ justifyContent: 'center', fontSize: 11, padding: '8px 9px' }}
+                          >
+                            {STATUS_LABEL[option]}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   );
                 })}

@@ -711,6 +711,7 @@ function walkthroughStepsForRole(role) {
     ],
     athlete: [
       { title: 'Your reel', body: 'See wins, readiness, attendance, and what to work on next.', action: 'Open My Reel', nav: 'reel' },
+      { title: 'Skill tracker', body: 'Open Skill Tree and mark each skill as Not yet, Working, Got it, or Mastered so your profile stays current.', action: 'Open Skill Tree', nav: 'skilltree' },
       { title: 'Pins', body: 'Create pins, keep them in your basket, and drop them on teammates when they do something cool.', action: 'Open Pins', nav: 'pins' },
       { title: 'AI Judge', body: 'Upload a routine when a parent or coach says it is okay, then review the scorecard together.', action: 'Open AI Judge', nav: 'ai_judge' },
     ],
