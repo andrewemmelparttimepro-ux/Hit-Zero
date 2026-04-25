@@ -122,9 +122,9 @@ function AIJudge({ snap, session, navigate }) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className={'hz-btn ' + (view === 'results' ? 'hz-btn--primary' : 'hz-btn--ghost')} onClick={() => { setActionErr(null); setView('results'); }}>Scorecard</button>
-          <button className={'hz-btn ' + (view === 'upload' ? 'hz-btn--primary' : 'hz-btn--ghost')} onClick={() => { setDraft(null); setActionErr(null); setView('upload'); }}>+ New analysis</button>
-          <button className={'hz-btn ' + (view === 'trend' ? 'hz-btn--primary' : 'hz-btn--ghost')} onClick={() => setView('trend')}>Trend</button>
+          <button className={'hz-btn ' + (view === 'results' ? 'hz-btn-primary' : 'hz-btn-ghost')} onClick={() => { setActionErr(null); setView('results'); }}>Scorecard</button>
+          <button className={'hz-btn ' + (view === 'upload' ? 'hz-btn-primary' : 'hz-btn-ghost')} onClick={() => { setDraft(null); setActionErr(null); setView('upload'); }}>+ New analysis</button>
+          <button className={'hz-btn ' + (view === 'trend' ? 'hz-btn-primary' : 'hz-btn-ghost')} onClick={() => setView('trend')}>Trend</button>
         </div>
       </div>
       {actionErr && (
@@ -756,7 +756,7 @@ function NewAnalysis({ team, onDone, draft }) {
                 : 'This run will reuse the video already sitting in Supabase Storage.'}
             </div>
             <div style={{ marginTop: 12 }}>
-              <button className="hz-btn hz-btn--ghost" type="button" onClick={() => setSource(null)}>Choose a different video</button>
+              <button className="hz-btn hz-btn-ghost" type="button" onClick={() => setSource(null)}>Choose a different video</button>
             </div>
           </div>
         ) : (
@@ -793,7 +793,7 @@ function NewAnalysis({ team, onDone, draft }) {
             : `${division} routines cap at ${maxFmt} (USASF 2025–26). Analysis runs in 1–3 minutes — you can close this tab, it'll finish in the background.`}
         </div>
         <button
-          className="hz-btn hz-btn--primary"
+          className="hz-btn hz-btn-primary"
           disabled={status === 'processing' || status === 'preparing' || !team}
           onClick={run}>
           {(status === 'processing' || status === 'preparing') ? `${status === 'preparing' ? 'Optimizing' : 'Analyzing'}… ${progress}%` : 'Run AI Judge →'}
@@ -960,7 +960,7 @@ function Scorecard({ analysis, me, snap, onReevaluate, reevaluating }) {
             <div className="hz-display" style={{ fontSize: 22, marginTop: 6 }}>Re-shoot and try again.</div>
           </div>
           {onReevaluate && (
-            <button className="hz-btn hz-btn--ghost" disabled={!!reevaluating} onClick={onReevaluate}>
+            <button className="hz-btn hz-btn-ghost" disabled={!!reevaluating} onClick={onReevaluate}>
               {reevaluating ? 'Finding upload…' : 'Reevaluate'}
             </button>
           )}
@@ -979,7 +979,7 @@ function Scorecard({ analysis, me, snap, onReevaluate, reevaluating }) {
             <div className="hz-display" style={{ fontSize: 22, marginTop: 6 }}>This run did not produce a valid score.</div>
           </div>
           {onReevaluate && (
-            <button className="hz-btn hz-btn--primary" disabled={!!reevaluating} onClick={onReevaluate}>
+            <button className="hz-btn hz-btn-primary" disabled={!!reevaluating} onClick={onReevaluate}>
               {reevaluating ? 'Finding upload…' : 'Retry Video Judge'}
             </button>
           )}
@@ -1004,7 +1004,7 @@ function Scorecard({ analysis, me, snap, onReevaluate, reevaluating }) {
               </div>
             </div>
             {onReevaluate && (
-              <button className="hz-btn hz-btn--primary" disabled={!!reevaluating} onClick={onReevaluate}>
+              <button className="hz-btn hz-btn-primary" disabled={!!reevaluating} onClick={onReevaluate}>
                 {reevaluating ? 'Finding upload…' : 'Retry Video Judge'}
               </button>
             )}
@@ -1036,7 +1036,7 @@ function Scorecard({ analysis, me, snap, onReevaluate, reevaluating }) {
             )}
             {onReevaluate && (
               <div style={{ marginTop: 14 }}>
-                <button className="hz-btn hz-btn--ghost" disabled={!!reevaluating} onClick={onReevaluate}>
+                <button className="hz-btn hz-btn-ghost" disabled={!!reevaluating} onClick={onReevaluate}>
                   {reevaluating ? 'Finding upload…' : 'Reevaluate'}
                 </button>
               </div>
@@ -1118,8 +1118,8 @@ function Scorecard({ analysis, me, snap, onReevaluate, reevaluating }) {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <button className="hz-btn hz-btn--ghost" onClick={() => window.HZdb.applySkillUpdate(p.id, 'reject')}>Reject</button>
-                    <button className="hz-btn hz-btn--primary" onClick={() => window.HZdb.applySkillUpdate(p.id, 'approve')}>Approve</button>
+                    <button className="hz-btn hz-btn-ghost" onClick={() => window.HZdb.applySkillUpdate(p.id, 'reject')}>Reject</button>
+                    <button className="hz-btn hz-btn-primary" onClick={() => window.HZdb.applySkillUpdate(p.id, 'approve')}>Approve</button>
                   </div>
                 </div>
               );

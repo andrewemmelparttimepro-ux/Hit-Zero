@@ -840,6 +840,13 @@ function AthleteLoginSetup({ athlete }) {
 window.ParentDashboard = ParentDashboard;
 
 // ─── Sessions (schedule) ───
+function cleanOtherSessionType(value) {
+  return String(value || 'Session')
+    .replace(/^competition\s*:\s*dream on$/i, 'Competition')
+    .replace(/\bdream on\b/ig, 'Competition')
+    .replace(/\bbismarck,\s*nd\b/ig, '')
+    .trim();
+}
 function Sessions({ snap }) {
   const sessions = [...(snap.sessions || [])].sort((a,b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
   return (
@@ -858,7 +865,7 @@ function Sessions({ snap }) {
                     <div style={{ fontWeight: 600 }}>{d.toLocaleDateString('default', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
                     <div style={{ fontSize: 11, color: 'var(--hz-dim)', fontFamily: 'var(--hz-mono)' }}>{d.toLocaleTimeString('default', { hour: 'numeric', minute: '2-digit' })}</div>
                   </td>
-                  <td><span style={{ fontWeight: 600 }}>{s.type}</span>{s.is_competition && <Pill tone="pink" style={{ marginLeft: 10 }}>COMP</Pill>}</td>
+                  <td><span style={{ fontWeight: 600 }}>{cleanOtherSessionType(s.type)}</span>{s.is_competition && <Pill tone="pink" style={{ marginLeft: 10 }}>COMP</Pill>}</td>
                   <td style={{ fontFamily: 'var(--hz-mono)', color: 'var(--hz-dim)' }}>{s.duration_min}m</td>
                   <td style={{ fontFamily: 'var(--hz-mono)' }}>{att}/{snap.athletes.length}</td>
                   <td>{d > new Date() ? <Pill tone="teal">Upcoming</Pill> : <span style={{ color: 'var(--hz-dim)', fontSize: 11 }}>Done</span>}</td>
@@ -1224,7 +1231,7 @@ function SquareBillingPanel({ programRef }) {
             {state.busy ? 'Working…' : 'Sync now'}
           </button>
           {conn?.status === 'connected' ? (
-            <button className="hz-btn hz-btn--ghost" onClick={onDisconnect} disabled={state.busy}>Disconnect</button>
+            <button className="hz-btn hz-btn-ghost" onClick={onDisconnect} disabled={state.busy}>Disconnect</button>
           ) : (
             <button className="hz-btn hz-btn-primary" onClick={onConnect} disabled={state.busy || !data.configured}>
               Connect Square

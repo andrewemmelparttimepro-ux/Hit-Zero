@@ -4,6 +4,14 @@
 // live celebrations feed, today's practice plan, roster pulse.
 // ─────────────────────────────────────────────────────────────────────────────
 
+function cleanCoachSessionType(value) {
+  return String(value || 'Session')
+    .replace(/^competition\s*:\s*dream on$/i, 'Competition')
+    .replace(/\bdream on\b/ig, 'Competition')
+    .replace(/\bbismarck,\s*nd\b/ig, '')
+    .trim();
+}
+
 function CoachToday({ snap, openAthlete, navigate, pushToast, session }) {
   // Defensive: don't render until the store has hydrated.
   const athletesArr = (snap && Array.isArray(snap.athletes)) ? snap.athletes : null;
@@ -199,7 +207,7 @@ function CoachToday({ snap, openAthlete, navigate, pushToast, session }) {
                     <div className="hz-display" style={{ fontSize: 22, lineHeight: 1 }}>{d.getDate()}</div>
                   </div>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{s.type}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{cleanCoachSessionType(s.type)}</div>
                     <div style={{ fontSize: 11, color: 'var(--hz-dim)' }}>{d.toLocaleString('default', { weekday: 'short' })} · {s.duration_min}m</div>
                   </div>
                   {s.is_competition && <Pill tone="pink">COMP</Pill>}

@@ -23,6 +23,23 @@ function formatSessionTime(iso) {
 }
 function initialsOf(name) { return (name || '?').split(' ').map(n => n[0]).filter(Boolean).slice(0,2).join('').toUpperCase(); }
 function moneyFmt(n) { return '$' + (Math.round((n||0)*100)/100).toLocaleString(); }
+function cleanSessionType(value) {
+  return String(value || 'Session')
+    .replace(/^competition\s*:\s*dream on$/i, 'Competition')
+    .replace(/\bdream on\b/ig, 'Competition')
+    .replace(/\bbismarck,\s*nd\b/ig, '')
+    .replace(/\s+·\s+$/g, '')
+    .trim();
+}
+function isUuid(value) { return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '')); }
+function liveMode() { return Boolean(window.HZsupa && window.HZdb?.auth?._mode?.() === 'live'); }
+async function refreshAppData(table, action = 'update') {
+  if (window.HZsel?._refresh) await window.HZsel._refresh();
+  window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table, action } }));
+}
+function notify(title, body, variant = 'got_it') {
+  if (window.HZToast) window.HZToast({ variant, eyebrow: 'Saved', title, body });
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Messages — left rail of threads, right pane of conversation
@@ -67,7 +84,7 @@ function Messages({ snap, session }) {
       <aside style={{ borderRight: '1px solid var(--hz-line)', overflow: 'auto', paddingRight: 8 }}>
         <div style={{ padding: '8px 10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div className="hz-display" style={{ fontSize: 24, fontWeight: 600 }}>Messages</div>
-          <button className="hz-btn hz-btn--ghost" onClick={() => alert('New thread picker coming soon')}>
+          <button className="hz-btn hz-btn-ghost" onClick={() => alert('New thread picker coming soon')}>
             <window.HZIcon name="plus" size={16}/> New
           </button>
         </div>
@@ -144,7 +161,7 @@ function Messages({ snap, session }) {
                 placeholder={`Message ${active.title || 'thread'}…`}
                 style={{ flex: 1, background: 'rgba(255,255,255,0.04)', border: '1px solid var(--hz-line)', borderRadius: 12, padding: '12px 14px', color: '#fff', fontSize: 14, fontFamily: 'var(--hz-sans)' }}
               />
-              <button className="hz-btn hz-btn--primary" onClick={send} disabled={!draft.trim()}>
+              <button className="hz-btn hz-btn-primary" onClick={send} disabled={!draft.trim()}>
                 <window.HZIcon name="bolt" size={14}/> Send
               </button>
             </div>
@@ -214,7 +231,7 @@ function SessionRow({ session: s, me }) {
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 700, fontSize: 17 }}>
             {s.is_competition && <span style={{ marginRight: 8 }}>🏆</span>}
-            {s.type}
+            {cleanSessionType(s.type)}
           </div>
           <div style={{ color: 'var(--hz-dim)', fontSize: 13, marginTop: 4 }}>
             {s.duration_min}min{s.location ? ' · ' + s.location : ''}
@@ -252,44 +269,131 @@ function PersonalRsvp({ session, me }) {
     || (snap.parent_links || []).find(l => l.parent_id === me.id)?.athlete_id
     || (snap.athletes || [])[0]?.id;
   const row = (snap.session_availability || []).find(r => r.session_id === session.id && r.athlete_id === myAthleteId);
-  const curr = row?.status || 'unknown';
+  const [optimistic, setOptimistic] = _useState(null);
+  const [saving, setSaving] = _useState(null);
+  const [error, setError] = _useState('');
+  const curr = optimistic || row?.status || 'unknown';
 
-  function set(status) {
-    window.HZdb.from('session_availability').upsert(
-      { session_id: session.id, athlete_id: myAthleteId, status, responder_id: me.id, updated_at: new Date().toISOString() },
-      { onConflict: 'session_id,athlete_id' }
-    );
+  async function set(status) {
+    if (!myAthleteId || saving) return;
+    const previous = curr;
+    const payload = {
+      session_id: session.id,
+      athlete_id: myAthleteId,
+      status,
+      responder_id: me.id,
+      updated_at: new Date().toISOString(),
+    };
+    setError('');
+    setSaving(status);
+    setOptimistic(status);
+    try {
+      // Remote writes only run when the current row IDs are real Supabase UUIDs.
+      // Seed/prototype rows still update locally instead of throwing UUID errors.
+      if (liveMode() && isUuid(session.id) && isUuid(myAthleteId)) {
+        const { error: liveError } = await window.HZsupa
+          .from('session_availability')
+          .upsert(payload, { onConflict: 'session_id,athlete_id' });
+        if (liveError) throw liveError;
+      }
+      const { error: localError } = await window.HZdb
+        .from('session_availability')
+        .upsert(payload, { onConflict: 'session_id,athlete_id' });
+      if (localError) throw localError;
+      await refreshAppData('session_availability', 'rsvp');
+      notify('RSVP updated', `Marked ${status}.`);
+    } catch (err) {
+      setOptimistic(previous === 'unknown' ? null : previous);
+      setError(err?.message || 'RSVP did not save. Try again.');
+    } finally {
+      setSaving(null);
+    }
   }
 
   return (
-    <div style={{ display: 'flex', gap: 6 }}>
-      {['going','maybe','no'].map(k => (
-        <button key={k} onClick={() => set(k)}
-          className="hz-nosel"
-          style={{
-            padding: '8px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-            border: '1px solid ' + (curr === k ? 'transparent' : 'var(--hz-line)'),
-            background: curr === k ? (k === 'going' ? 'var(--hz-teal)' : k === 'maybe' ? 'var(--hz-amber)' : 'var(--hz-red)') : 'transparent',
-            color: curr === k ? '#050507' : '#fff', textTransform: 'capitalize', letterSpacing: '0.04em',
-          }}>
-          {k}
-        </button>
-      ))}
+    <div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {['going','maybe','no'].map(k => (
+          <button key={k} onClick={() => set(k)}
+            disabled={!!saving}
+            className="hz-nosel"
+            style={{
+              padding: '8px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: saving ? 'wait' : 'pointer',
+              border: '1px solid ' + (curr === k ? 'transparent' : 'var(--hz-line)'),
+              background: curr === k ? (k === 'going' ? 'var(--hz-teal)' : k === 'maybe' ? 'var(--hz-amber)' : 'var(--hz-red)') : 'transparent',
+              color: curr === k ? '#050507' : '#fff', textTransform: 'capitalize', letterSpacing: '0.04em',
+              opacity: saving && saving !== k ? 0.5 : 1,
+            }}>
+            {saving === k ? 'Saving...' : k}
+          </button>
+        ))}
+      </div>
+      {error && <div style={{ color: 'var(--hz-red)', fontSize: 11, marginTop: 8, maxWidth: 260 }}>{error}</div>}
     </div>
   );
 }
 function CalendarSubscribeButton({ me }) {
-  const tokens = window.HZsel.cache().calendar_tokens || [];
-  const mine = tokens.find(t => t.profile_id === me.id) || tokens[0];
-  const url = mine ? `webcal://api.hitzero.app/functions/v1/calendar-ics?t=${mine.token}` : null;
-  if (!url) return null;
+  const [busy, setBusy] = _useState(false);
+  const [error, setError] = _useState('');
+
+  async function ensureToken() {
+    const cache = window.HZsel.cache();
+    const existing = (cache.calendar_tokens || []).find(t => t.profile_id === me.id && !t.revoked_at);
+    if (existing?.token && !String(existing.token).startsWith('demo-')) return existing.token;
+    if (!liveMode() || !isUuid(me.id)) return existing?.token || null;
+    const { data: liveExisting, error: readError } = await window.HZsupa
+      .from('calendar_tokens')
+      .select('*')
+      .eq('profile_id', me.id)
+      .is('revoked_at', null)
+      .limit(1);
+    if (readError) throw readError;
+    if (liveExisting?.[0]?.token) return liveExisting[0].token;
+    const token = `hz_${crypto.randomUUID().replaceAll('-', '')}`;
+    const team = (cache.teams || [])[0];
+    const row = {
+      profile_id: me.id,
+      team_id: me.role === 'coach' || me.role === 'owner' ? null : team?.id || null,
+      token,
+      label: 'Hit Zero schedule',
+    };
+    const { data, error: insertError } = await window.HZsupa
+      .from('calendar_tokens')
+      .insert(row)
+      .select('*')
+      .single();
+    if (insertError) throw insertError;
+    await window.HZdb.from('calendar_tokens').upsert(data || row, { onConflict: 'id' });
+    await refreshAppData('calendar_tokens', 'create');
+    return token;
+  }
+
+  async function subscribe() {
+    setBusy(true);
+    setError('');
+    try {
+      const token = await ensureToken();
+      if (!token) throw new Error('No calendar token is available for this account yet.');
+      const base = window.HZ_FN_BASE || 'https://ldhzkdqznccfgpdvqyfk.supabase.co';
+      const httpsUrl = `${base}/functions/v1/calendar-ics?t=${encodeURIComponent(token)}`;
+      const webcalUrl = httpsUrl.replace(/^https?:\/\//, 'webcal://');
+      try { await navigator.clipboard?.writeText(httpsUrl); } catch {}
+      notify('Calendar link ready', 'Copied the subscription link and opening Calendar.');
+      window.location.href = webcalUrl;
+    } catch (err) {
+      setError(err?.message || 'Calendar link could not be created.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <button className="hz-btn hz-btn--ghost" onClick={() => {
-      navigator.clipboard?.writeText(url.replace('webcal://','https://'));
-      alert('Calendar URL copied — paste into Google Calendar → Add by URL, or tap to open in iOS Calendar.');
-    }}>
-      <window.HZIcon name="calendar" size={14}/> Subscribe in Calendar
-    </button>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+      <button className="hz-btn hz-btn-ghost" onClick={subscribe} disabled={busy}>
+        <window.HZIcon name="calendar" size={14}/> {busy ? 'Preparing...' : 'Subscribe in Calendar'}
+      </button>
+      {error && <div style={{ color: 'var(--hz-red)', fontSize: 11, maxWidth: 280, textAlign: 'right' }}>{error}</div>}
+    </div>
   );
 }
 window.Schedule = Schedule;
@@ -683,17 +787,44 @@ function Volunteers({ snap, session }) {
   const me = session?.profile || { id: 'u_parent', role: 'parent' };
   const comps = (snap.sessions || []).filter(s => s.is_competition);
   const [activeId, setActiveId] = _useState(comps[0]?.id || null);
+  const [busyId, setBusyId] = _useState(null);
+  const [error, setError] = _useState('');
   const active = comps.find(s => s.id === activeId) || comps[0] || null;
 
+  async function updateAssignment(assignmentId, patch, action) {
+    if (busyId) return;
+    setError('');
+    setBusyId(assignmentId);
+    try {
+      if (liveMode() && isUuid(assignmentId)) {
+        const { error: liveError } = await window.HZsupa
+          .from('volunteer_assignments')
+          .update(patch)
+          .eq('id', assignmentId);
+        if (liveError) throw liveError;
+      }
+      const { error: localError } = await window.HZdb
+        .from('volunteer_assignments')
+        .update(patch)
+        .eq('id', assignmentId);
+      if (localError) throw localError;
+      await refreshAppData('volunteer_assignments', action);
+      notify(action === 'claim' ? 'Volunteer role claimed' : 'Volunteer role released', action === 'claim' ? 'Thanks for grabbing it.' : 'That role is open again.');
+    } catch (err) {
+      setError(err?.message || 'Volunteer role did not save. Try again.');
+    } finally {
+      setBusyId(null);
+    }
+  }
   function claim(assignmentId) {
-    window.HZdb.from('volunteer_assignments').update({
+    updateAssignment(assignmentId, {
       profile_id: me.id, status: 'claimed', claimed_at: new Date().toISOString()
-    }).eq('id', assignmentId);
+    }, 'claim');
   }
   function unclaim(assignmentId) {
-    window.HZdb.from('volunteer_assignments').update({
+    updateAssignment(assignmentId, {
       profile_id: null, status: 'open', claimed_at: null
-    }).eq('id', assignmentId);
+    }, 'release');
   }
 
   return (
@@ -715,10 +846,11 @@ function Volunteers({ snap, session }) {
                   background: c.id === active.id ? '#fff' : 'transparent',
                   color: c.id === active.id ? '#050507' : '#fff',
                 }}>
-                {c.type} · {new Date(c.scheduled_at).toLocaleDateString()}
+                {cleanSessionType(c.type)} · {new Date(c.scheduled_at).toLocaleDateString()}
               </button>
             ))}
           </div>
+          {error && <div style={{ color: 'var(--hz-red)', fontSize: 13, marginBottom: 14 }}>{error}</div>}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 14 }}>
             {window.HZsel.volunteerRolesAndAssignments(active.id).map(({ role, assignments }) => {
@@ -735,10 +867,14 @@ function Volunteers({ snap, session }) {
                       {claimed ? `✓ ${claimer?.display_name || 'Claimed'}` : '○ Needs a volunteer'}
                     </div>
                     {!claimed && open && (
-                      <button onClick={() => claim(open.id)} className="hz-btn hz-btn--primary">I'll do it</button>
+                      <button onClick={() => claim(open.id)} disabled={busyId === open.id} className="hz-btn hz-btn-primary">
+                        {busyId === open.id ? 'Claiming...' : "I'll do it"}
+                      </button>
                     )}
                     {claimed && claimed.profile_id === me.id && (
-                      <button onClick={() => unclaim(claimed.id)} className="hz-btn hz-btn--ghost">Release</button>
+                      <button onClick={() => unclaim(claimed.id)} disabled={busyId === claimed.id} className="hz-btn hz-btn-ghost">
+                        {busyId === claimed.id ? 'Releasing...' : 'Release'}
+                      </button>
                     )}
                   </div>
                 </div>
@@ -898,7 +1034,7 @@ function Registration({ snap, session }) {
                   options={[['google','Google'],['instagram','Instagram'],['facebook','Facebook'],['referral','Referral'],['walk-in','Walk-in']].map(([value,label]) => ({ value, label }))}/>
         </div>
         <div style={{ marginTop: 12 }}>
-          <button className="hz-btn hz-btn--primary" type="submit" disabled={status === 'submitting' || !form.athlete_name || !form.parent_name || !form.parent_email}>
+          <button className="hz-btn hz-btn-primary" type="submit" disabled={status === 'submitting' || !form.athlete_name || !form.parent_name || !form.parent_email}>
             {status === 'submitting' ? 'Submitting…' : 'Submit registration'}
           </button>
         </div>
@@ -1008,7 +1144,7 @@ function RegistrationInbox({ snap, session }) {
               <div style={{ marginTop: 18, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button className="hz-btn hz-btn-primary" onClick={() => decide('accepted')}>Accept</button>
                 <button className="hz-btn" onClick={() => decide('waitlist')}>Waitlist</button>
-                <button className="hz-btn hz-btn--ghost" onClick={() => decide('rejected')}>Reject</button>
+                <button className="hz-btn hz-btn-ghost" onClick={() => decide('rejected')}>Reject</button>
               </div>
 
               <div style={{ marginTop: 18 }}>
