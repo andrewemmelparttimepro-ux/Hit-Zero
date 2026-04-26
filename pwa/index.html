@@ -147,6 +147,35 @@
     } else {
       d.athlete_skills = []; d.parent_links = [];
     }
+    const routineTables = [
+      ['routine_audio_assets', 'routine_id'],
+      ['music_licenses', 'routine_id'],
+      ['routine_count_maps', 'routine_id'],
+      ['routine_events', 'routine_id'],
+      ['routine_assignments', 'routine_id'],
+      ['routine_ai_suggestions', 'routine_id'],
+      ['routine_exports', 'routine_id'],
+    ];
+    const { data: routines } = await s.from('routines').select('*').in('team_id', ids).order('created_at');
+    if (routines?.length) {
+      d.routines = routines;
+      const routineIds = routines.map(r => r.id);
+      const [sections, formations, ...routineRows] = await Promise.all([
+        s.from('routine_sections').select('*').in('routine_id', routineIds).order('position'),
+        s.from('routine_formations').select('*').in('routine_id', routineIds).order('start_count'),
+        ...routineTables.map(([table, col]) => s.from(table).select('*').in(col, routineIds)),
+      ]);
+      d.routine_sections = sections.data || [];
+      d.routine_formations = formations.data || [];
+      routineRows.forEach((res, i) => { d[routineTables[i][0]] = res.data || []; });
+      const formationIds = d.routine_formations.map(f => f.id);
+      if (formationIds.length) {
+        const { data: positions } = await s.from('routine_positions').select('*').in('formation_id', formationIds);
+        d.routine_positions = positions || [];
+      } else {
+        d.routine_positions = [];
+      }
+    }
     const liveSession = window.HZdb?.auth?._getSession?.();
     if (liveSession?.profile) upsert(d.profiles || (d.profiles = []), liveSession.profile);
     if (window.HZsel && window.HZsel._refresh) await window.HZsel._refresh();

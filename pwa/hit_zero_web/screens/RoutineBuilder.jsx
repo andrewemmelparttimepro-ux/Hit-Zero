@@ -233,7 +233,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
         const newStart = Math.max(1, Math.min(routine.length_counts - span, dragging.startCount + delta));
         patch = { start_count: newStart, end_count: newStart + span };
       }
-      if (patch) window.HZdb.from('routine_sections').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', sec.id);
+      if (patch) persistUpdate('routine_sections', sec.id, { ...patch, updated_at: new Date().toISOString() });
     };
     const onUp = () => setDragging(null);
     window.addEventListener('pointermove', onMove);
@@ -252,7 +252,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
       const rect = board.getBoundingClientRect();
       const x = Math.max(0.03, Math.min(0.97, (e.clientX - rect.left) / Math.max(1, rect.width)));
       const y = Math.max(0.05, Math.min(0.95, (e.clientY - rect.top) / Math.max(1, rect.height)));
-      window.HZdb.from('routine_positions').update({ x, y }).eq('id', positionDrag.positionId);
+      persistUpdate('routine_positions', positionDrag.positionId, { x, y });
     };
     const onUp = () => setPositionDrag(null);
     window.addEventListener('pointermove', onMove);
@@ -262,6 +262,54 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
       window.removeEventListener('pointerup', onUp);
     };
   }, [positionDrag]);
+
+  const hasLiveSupabase = () => Boolean(window.HZsupa && window.HZdb?.auth?._getSession?.()?.mode === 'live');
+  const remotePayload = (table, payload) => {
+    const clean = { ...(payload || {}) };
+    delete clean.local_object_url;
+    if (table === 'routine_sections') delete clean.updated_at;
+    if (table === 'routine_positions') delete clean.updated_at;
+    return clean;
+  };
+  const syncRemote = async (table, action, payload, options = {}) => {
+    if (!hasLiveSupabase()) return { data: null, error: null };
+    try {
+      const clean = remotePayload(table, payload);
+      let req;
+      if (action === 'insert') req = window.HZsupa.from(table).insert(clean);
+      if (action === 'upsert') req = window.HZsupa.from(table).upsert(clean, options.onConflict ? { onConflict: options.onConflict } : undefined);
+      if (action === 'update') req = window.HZsupa.from(table).update(clean).eq('id', options.id);
+      if (action === 'delete') req = window.HZsupa.from(table).delete().eq('id', options.id);
+      if (!req) return { data: null, error: null };
+      const res = await req;
+      if (res.error) throw res.error;
+      return res;
+    } catch (err) {
+      console.warn(`[HZ] live sync failed for ${table}`, err);
+      pushToast && pushToast({ kind: 'error', title: 'Supabase sync failed', body: `${table}: ${err.message || 'remote write failed'}` });
+      return { data: null, error: err };
+    }
+  };
+  const persistInsert = async (table, payload) => {
+    const res = await window.HZdb.from(table).insert(payload);
+    if (!res.error) await syncRemote(table, 'insert', payload);
+    return res;
+  };
+  const persistUpdate = async (table, id, patch) => {
+    const res = await window.HZdb.from(table).update(patch).eq('id', id);
+    if (!res.error) await syncRemote(table, 'update', patch, { id });
+    return res;
+  };
+  const persistUpsert = async (table, payload, onConflict) => {
+    const res = await window.HZdb.from(table).upsert(payload, onConflict ? { onConflict } : undefined);
+    if (!res.error) await syncRemote(table, 'upsert', payload, { onConflict });
+    return res;
+  };
+  const persistDelete = async (table, id) => {
+    const res = await window.HZdb.from(table).delete().eq('id', id);
+    if (!res.error) await syncRemote(table, 'delete', null, { id });
+    return res;
+  };
 
   const upsertAudio = async (patch) => {
     const base = {
@@ -273,7 +321,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
       created_at: audio?.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-    const res = await window.HZdb.from('routine_audio_assets').upsert({ ...base, ...patch }, { onConflict: 'routine_id,kind' });
+    const res = await persistUpsert('routine_audio_assets', { ...base, ...patch }, 'routine_id,kind');
     if (res.error) throw res.error;
     return res.data?.[0] || { ...base, ...patch };
   };
@@ -291,7 +339,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
       created_at: license?.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-    const res = await window.HZdb.from('music_licenses').upsert({ ...base, ...patch }, { onConflict: 'routine_id,audio_asset_id' });
+    const res = await persistUpsert('music_licenses', { ...base, ...patch }, 'routine_id,audio_asset_id');
     if (res.error) throw res.error;
   };
 
@@ -309,9 +357,9 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
       updated_at: new Date().toISOString(),
     };
     const payload = { ...base, ...patch };
-    const res = await window.HZdb.from('routine_count_maps').upsert(payload, { onConflict: 'routine_id,audio_asset_id' });
+    const res = await persistUpsert('routine_count_maps', payload, 'routine_id,audio_asset_id');
     if (res.error) throw res.error;
-    if (patch.bpm) await window.HZdb.from('routines').update({ bpm: Number(patch.bpm) }).eq('id', routine.id);
+    if (patch.bpm) await persistUpdate('routines', routine.id, { bpm: Number(patch.bpm) });
   };
 
   const handleMusicFile = async (file) => {
@@ -350,7 +398,8 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   const addSection = async () => {
     const end = Math.max(...routine.sections.map(s => s.end_count), 0);
     const start = Math.max(1, Math.min(end + 1, Math.max(1, routine.length_counts - 3)));
-    const res = await window.HZdb.from('routine_sections').insert({
+    const payload = {
+      id: routineUid('rs'),
       routine_id: routine.id,
       section_type: 'transition',
       label: 'New section',
@@ -358,17 +407,18 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
       end_count: Math.min(start + 3, routine.length_counts),
       position: routine.sections.length,
       notes: '',
-    });
+    };
+    const res = await persistInsert('routine_sections', payload);
     if (res.error) pushToast && pushToast({ kind: 'error', title: 'Section not added', body: res.error.message });
   };
 
   const updateSection = async (id, patch) => {
-    const res = await window.HZdb.from('routine_sections').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id);
+    const res = await persistUpdate('routine_sections', id, { ...patch, updated_at: new Date().toISOString() });
     if (res.error) pushToast && pushToast({ kind: 'error', title: 'Section not saved', body: res.error.message });
   };
 
   const deleteSection = async (id) => {
-    const res = await window.HZdb.from('routine_sections').delete().eq('id', id);
+    const res = await persistDelete('routine_sections', id);
     if (res.error) pushToast && pushToast({ kind: 'error', title: 'Section not deleted', body: res.error.message });
     else setSelected(null);
   };
@@ -395,7 +445,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-    const res = await window.HZdb.from('routine_formations').insert(payload);
+    const res = await persistInsert('routine_formations', payload);
     if (res.error) {
       pushToast && pushToast({ kind: 'error', title: 'Formation not created', body: res.error.message });
       return null;
@@ -406,7 +456,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   };
 
   const updateFormation = async (id, patch) => {
-    const res = await window.HZdb.from('routine_formations').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id);
+    const res = await persistUpdate('routine_formations', id, { ...patch, updated_at: new Date().toISOString() });
     if (res.error) pushToast && pushToast({ kind: 'error', title: 'Formation not saved', body: res.error.message });
   };
 
@@ -422,7 +472,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
     const used = (routine.positions || []).filter(p => p.formation_id === formation.id).length;
     const x = 0.18 + (used % 5) * 0.16;
     const y = 0.28 + Math.floor(used / 5) * 0.24;
-    const res = await window.HZdb.from('routine_positions').insert({
+    const res = await persistInsert('routine_positions', {
       id: routineUid('rp'),
       formation_id: formation.id,
       athlete_id: athlete.id,
@@ -436,12 +486,12 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   };
 
   const updatePosition = async (id, patch) => {
-    const res = await window.HZdb.from('routine_positions').update(patch).eq('id', id);
+    const res = await persistUpdate('routine_positions', id, patch);
     if (res.error) pushToast && pushToast({ kind: 'error', title: 'Position not saved', body: res.error.message });
   };
 
   const removePosition = async (id) => {
-    const res = await window.HZdb.from('routine_positions').delete().eq('id', id);
+    const res = await persistDelete('routine_positions', id);
     if (res.error) pushToast && pushToast({ kind: 'error', title: 'Position not removed', body: res.error.message });
     else setSelectedPositionId(null);
   };
@@ -455,7 +505,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
       pushToast && pushToast({ kind: 'info', title: 'Choose an athlete', body: 'Select who owns this skill or role.' });
       return;
     }
-    const res = await window.HZdb.from('routine_assignments').insert({
+    const res = await persistInsert('routine_assignments', {
       id: routineUid('ras'),
       routine_id: routine.id,
       section_id: selectedSection.id,
@@ -503,7 +553,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
       },
     };
     const idea = byFlavor[flavor] || byFlavor.cleaner;
-    const res = await window.HZdb.from('routine_ai_suggestions').insert({
+    const res = await persistInsert('routine_ai_suggestions', {
       id: routineUid('rai'),
       routine_id: routine.id,
       section_id: selectedSection.id,
@@ -520,10 +570,10 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   };
 
   const resolveSuggestion = async (idea, status) => {
-    const res = await window.HZdb.from('routine_ai_suggestions').update({
+    const res = await persistUpdate('routine_ai_suggestions', idea.id, {
       status,
       resolved_at: new Date().toISOString(),
-    }).eq('id', idea.id);
+    });
     if (res.error) {
       pushToast && pushToast({ kind: 'error', title: 'Suggestion not updated', body: res.error.message });
       return;
