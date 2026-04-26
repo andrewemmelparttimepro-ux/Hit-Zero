@@ -1022,8 +1022,9 @@
     async signOut() {
       if (hasRealAuth()) {
         const { error } = await window.HZsupa.auth.signOut();
-        if (error) return { error };
+        if (error) console.warn('[HZ] remote sign-out failed; clearing local session anyway', error);
       }
+      writeViewRole(null);
       setSession(null);
       return { error: null };
     },

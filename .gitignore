@@ -13,4 +13,5 @@ pwa/.vercel/
 # Supabase local temp state
 hit_zero_backend/supabase/.temp/
 hit_zero_backend/supabase/.branches/
+supabase/.temp/
 .vercel
