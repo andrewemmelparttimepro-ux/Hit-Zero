@@ -96,6 +96,34 @@ function routineAudioMime(file) {
   return raw || 'application/octet-stream';
 }
 
+function routineIsUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || ''));
+}
+
+function routineStorageProgramId(team) {
+  const liveProfile = window.HZdb?.auth?._getSession?.()?.profile;
+  return [liveProfile?.program_id, team?.program_id].find(routineIsUuid) || null;
+}
+
+async function invokeRoutineAudioWorker(jobId) {
+  if (!window.HZ_FN_BASE || !window.HZ_ANON_KEY) throw new Error('Audio worker endpoint is not configured.');
+  const { data: authData, error: authError } = await window.HZsupa.auth.getSession();
+  if (authError) throw authError;
+  const token = authData?.session?.access_token || window.HZ_ANON_KEY;
+  const res = await fetch(`${window.HZ_FN_BASE}/functions/v1/routine-audio-worker`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      apikey: window.HZ_ANON_KEY,
+    },
+    body: JSON.stringify({ job_id: jobId }),
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(payload.error || `Audio worker failed with HTTP ${res.status}`);
+  return payload;
+}
+
 function fmtTime(seconds) {
   const n = Math.max(0, Number(seconds || 0));
   const m = Math.floor(n / 60);
@@ -619,15 +647,16 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
         status: 'local_draft',
       }, { silent: true });
       if (savedAudio._remoteError) issues.push(`metadata sync: ${savedAudio._remoteError.message || 'remote write failed'}`);
-      if (hasLiveSupabase() && !team?.program_id) {
-        issues.push('storage upload: team program id was missing');
+      const storageProgramId = routineStorageProgramId(team);
+      if (hasLiveSupabase() && !storageProgramId) {
+        issues.push('storage upload: no valid program id was available for the private bucket path');
       }
-      if (hasLiveSupabase() && team?.program_id && file.size > 524288000) {
+      if (hasLiveSupabase() && storageProgramId && file.size > 524288000) {
         issues.push('storage upload: file is over the 500 MB routine-audio limit');
       }
-      if (hasLiveSupabase() && team?.program_id && file.size <= 524288000) {
+      if (hasLiveSupabase() && storageProgramId && file.size <= 524288000) {
         const safeName = file.name.replace(/[^a-z0-9._-]+/gi, '-').toLowerCase();
-        const storagePath = `${team.program_id}/${routine.id}/${Date.now()}-${safeName}`;
+        const storagePath = `${storageProgramId}/${routine.id}/${Date.now()}-${safeName}`;
         const upload = await window.HZsupa.storage.from('routine-audio').upload(storagePath, file, {
           contentType: mime,
           upsert: true,
@@ -685,12 +714,11 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
       const res = await persistInsert('routine_audio_analysis_jobs', job);
       if (res.error) throw res.error;
       let finalJob = job;
-      if (hasLiveSupabase() && window.HZsupa?.functions?.invoke) {
+      if (hasLiveSupabase() && window.HZsupa?.auth) {
         try {
-          const worker = await window.HZsupa.functions.invoke('routine-audio-worker', { body: { job_id: job.id } });
-          if (worker.error) throw worker.error;
-          if (worker.data?.job) {
-            finalJob = worker.data.job;
+          const worker = await invokeRoutineAudioWorker(job.id);
+          if (worker?.job) {
+            finalJob = worker.job;
             await window.HZdb.from('routine_audio_analysis_jobs').update(finalJob).eq('id', finalJob.id);
           }
         } catch (workerErr) {
