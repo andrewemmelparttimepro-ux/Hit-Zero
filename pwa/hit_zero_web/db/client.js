@@ -90,6 +90,45 @@
       { id: 'an2', program_id: 'p_mca', audience: 'parents', title: 'Choreo fee — final reminder', body: 'Final $150 choreo balance due Friday. Venmo @magiccityallstars or square link in your billing tab.', pinned: false, created_at: new Date(Date.now()-1000*60*60*24*2).toISOString(), created_by: 'owner' },
     ];
 
+    const routineAudioAssets = routine ? [{
+      id: 'ra_demo_primary',
+      routine_id: routine.id,
+      kind: 'primary_music',
+      mode: 'provider_brief',
+      original_filename: 'Build first, send provider brief',
+      mime_type: null,
+      size_bytes: null,
+      duration_seconds: null,
+      storage_path: null,
+      status: 'metadata_only',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }] : [];
+    const musicLicenses = routine ? [{
+      id: 'ml_demo_primary',
+      routine_id: routine.id,
+      audio_asset_id: 'ra_demo_primary',
+      provider: '',
+      track_title: '',
+      certificate_url: '',
+      proof_status: 'needs_license_proof',
+      notes: 'Start with counts and export a provider brief before marking competition-ready.',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }] : [];
+    const routineCountMaps = routine ? [{
+      id: 'cm_demo_primary',
+      routine_id: routine.id,
+      audio_asset_id: 'ra_demo_primary',
+      bpm: routine.bpm || 144,
+      first_count_seconds: 0,
+      confidence: 0.2,
+      source: 'coach_seed',
+      corrections: {},
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }] : [];
+
     return {
       programs: [{ id: 'p_mca', name: 'Magic City Allstars', city: 'Minot, ND' }],
       teams: [{ id: team.id, program_id: 'p_mca', name: team.name, division: team.division, level: team.level, season_start: team.seasonStart }],
@@ -112,6 +151,15 @@
       athlete_skills: athleteSkills,
       routines: routine ? [routine] : [],
       routine_sections: routineSections,
+      routine_audio_assets: routineAudioAssets,
+      music_licenses: musicLicenses,
+      routine_count_maps: routineCountMaps,
+      routine_events: [],
+      routine_formations: [],
+      routine_positions: [],
+      routine_assignments: [],
+      routine_ai_suggestions: [],
+      routine_exports: [],
       sessions,
       attendance,
       celebrations,
@@ -507,7 +555,12 @@
   function migrateData(existing) {
     const fresh = seed();
     let changed = false;
-    ['pin_designs', 'athlete_pins', 'pin_drops', 'pin_quests'].forEach((table) => {
+    [
+      'pin_designs', 'athlete_pins', 'pin_drops', 'pin_quests',
+      'routine_audio_assets', 'music_licenses', 'routine_count_maps',
+      'routine_events', 'routine_formations', 'routine_positions',
+      'routine_assignments', 'routine_ai_suggestions', 'routine_exports',
+    ].forEach((table) => {
       if (!Array.isArray(existing[table])) {
         existing[table] = fresh[table] || [];
         changed = true;

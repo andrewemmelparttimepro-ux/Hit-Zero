@@ -158,6 +158,28 @@ body {
 .hz-divider { height: 1px; background: var(--hz-line); }
 .hz-nosel { user-select: none; -webkit-user-select: none; }
 
+/* ─── Routine Builder ─── */
+.routine-builder-setup {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(340px, 0.8fr);
+  gap: 24px;
+}
+.routine-builder-music-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.routine-builder-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  gap: 24px;
+}
+.routine-builder-section-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
 /* ─── Animations ─── */
 @keyframes hz-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 .hz-rise { animation: hz-rise 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
@@ -491,6 +513,12 @@ body {
   .main { grid-column: 1; padding: 20px 16px 80px; }
   .drawer { width: 100vw; max-width: 100vw; padding: 20px 16px; }
   .hz-display { font-size: 40px !important; }
+  .routine-builder-setup,
+  .routine-builder-main,
+  .routine-builder-music-grid,
+  .routine-builder-section-form {
+    grid-template-columns: 1fr;
+  }
   .hamburger-btn {
     display: inline-flex; align-items: center; justify-content: center;
     width: 36px; height: 36px; border-radius: 8px;

@@ -9,7 +9,10 @@
   async function snapshot() {
     const q = (t) => (async () => (await window.HZdb.from(t).select('*')).data || [])();
     const [
-      teams, athletes, skills, athlete_skills, sessions, attendance, routines, routine_sections, celebrations, billing_accounts, billing_charges, announcements, profiles,
+      teams, athletes, skills, athlete_skills, sessions, attendance, routines, routine_sections,
+      routine_audio_assets, music_licenses, routine_count_maps, routine_events,
+      routine_formations, routine_positions, routine_assignments, routine_ai_suggestions, routine_exports,
+      celebrations, billing_accounts, billing_charges, announcements, profiles,
       // Tier 1 + Tier 2 additions
       message_threads, thread_members, messages, message_reads,
       session_availability, calendar_tokens,
@@ -28,7 +31,10 @@
       analysis_feedback, analysis_skill_updates,
     ] = await Promise.all([
       q('teams'), q('athletes'), q('skills'), q('athlete_skills'), q('sessions'),
-      q('attendance'), q('routines'), q('routine_sections'), q('celebrations'),
+      q('attendance'), q('routines'), q('routine_sections'),
+      q('routine_audio_assets'), q('music_licenses'), q('routine_count_maps'), q('routine_events'),
+      q('routine_formations'), q('routine_positions'), q('routine_assignments'), q('routine_ai_suggestions'), q('routine_exports'),
+      q('celebrations'),
       q('billing_accounts'), q('billing_charges'), q('announcements'), q('profiles'),
       q('message_threads'), q('thread_members'), q('messages'), q('message_reads'),
       q('session_availability'), q('calendar_tokens'),
@@ -46,7 +52,10 @@
       q('analysis_feedback'), q('analysis_skill_updates'),
     ]);
     cache = {
-      teams, athletes, skills, athlete_skills, sessions, attendance, routines, routine_sections, celebrations, billing_accounts, billing_charges, announcements, profiles,
+      teams, athletes, skills, athlete_skills, sessions, attendance, routines, routine_sections,
+      routine_audio_assets, music_licenses, routine_count_maps, routine_events,
+      routine_formations, routine_positions, routine_assignments, routine_ai_suggestions, routine_exports,
+      celebrations, billing_accounts, billing_charges, announcements, profiles,
       message_threads, thread_members, messages, message_reads,
       session_availability, calendar_tokens,
       registration_windows, registrations,
@@ -150,7 +159,11 @@
     const r = (cache.routines || [])[0];
     if (!r) return null;
     const secs = (cache.routine_sections || []).filter(s => s.routine_id === r.id).sort((a,b) => a.start_count - b.start_count);
-    return { ...r, sections: secs };
+    const audioAssets = (cache.routine_audio_assets || []).filter(a => a.routine_id === r.id);
+    const countMaps = (cache.routine_count_maps || []).filter(m => m.routine_id === r.id);
+    const licenses = (cache.music_licenses || []).filter(l => l.routine_id === r.id);
+    const events = (cache.routine_events || []).filter(e => e.routine_id === r.id).sort((a,b) => (a.count_index || 0) - (b.count_index || 0));
+    return { ...r, sections: secs, audioAssets, countMaps, licenses, events };
   }
 
   // USASF score sheet rows — same weights as iOS version

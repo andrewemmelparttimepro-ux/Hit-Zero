@@ -52,6 +52,7 @@ const HZIcon = ({ name, size = 18, color = 'currentColor', stroke = 1.75, fill }
     case 'play':      return <svg style={s} viewBox="0 0 24 24"><path {...C} fill={color} d="M6 4v16l14-8z"/></svg>;
     case 'pause':     return <svg style={s} viewBox="0 0 24 24"><rect {...C} fill={color} x="6" y="4" width="4" height="16"/><rect {...C} fill={color} x="14" y="4" width="4" height="16"/></svg>;
     case 'print':     return <svg style={s} viewBox="0 0 24 24"><path {...C} d="M6 9V3h12v6M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect {...C} x="6" y="14" width="12" height="8"/></svg>;
+    case 'copy':      return <svg style={s} viewBox="0 0 24 24"><rect {...C} x="9" y="9" width="11" height="11" rx="2"/><path {...C} d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>;
     case 'flag':      return <svg style={s} viewBox="0 0 24 24"><path {...C} d="M4 21V4h9l2 2h5v9h-7l-2-2H6v8"/></svg>;
     case 'music':     return <svg style={s} viewBox="0 0 24 24"><path {...C} d="M9 18V5l12-2v13"/><circle {...C} cx="6" cy="18" r="3"/><circle {...C} cx="18" cy="16" r="3"/></svg>;
     case 'pyramid':   return <svg style={s} viewBox="0 0 24 24"><rect {...C} x="10" y="4" width="4" height="4"/><rect {...C} x="5" y="10" width="4" height="4"/><rect {...C} x="10" y="10" width="4" height="4"/><rect {...C} x="15" y="10" width="4" height="4"/><rect {...C} x="2" y="16" width="4" height="4"/><rect {...C} x="7" y="16" width="4" height="4"/><rect {...C} x="13" y="16" width="4" height="4"/><rect {...C} x="18" y="16" width="4" height="4"/></svg>;
