@@ -323,6 +323,27 @@ body {
   border-radius: 999px;
   background: linear-gradient(180deg, var(--hz-teal), var(--hz-pink));
 }
+.routine-upload-notice {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--hz-line);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.035);
+  font-size: 12px;
+}
+.routine-upload-notice span {
+  color: var(--hz-dim);
+  line-height: 1.45;
+}
+.routine-upload-notice-success {
+  border-color: rgba(63,231,160,0.34);
+  background: rgba(63,231,160,0.06);
+}
+.routine-upload-notice-error {
+  border-color: rgba(255,91,117,0.42);
+  background: rgba(255,91,117,0.07);
+}
 .routine-ai-flavor-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -689,6 +710,11 @@ body {
 }
 .toast.mastered { border-color: rgba(249,127,172,0.35); background: linear-gradient(135deg, rgba(249,127,172,0.1), var(--hz-ink-2)); }
 .toast.got_it { border-color: rgba(39,207,215,0.35); background: linear-gradient(135deg, rgba(39,207,215,0.1), var(--hz-ink-2)); }
+.toast.error {
+  border-color: rgba(255,91,117,0.45);
+  background: linear-gradient(135deg, rgba(255,91,117,0.12), var(--hz-ink-2));
+  max-width: min(520px, calc(100vw - 32px));
+}
 
 /* ─── Drawer ─── */
 .drawer-backdrop {

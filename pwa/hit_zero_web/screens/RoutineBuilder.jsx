@@ -80,6 +80,22 @@ function fmtFileSize(bytes) {
   return `${Math.max(1, Math.round(n / 1024))} KB`;
 }
 
+function routineAudioMime(file) {
+  const raw = String(file?.type || '').toLowerCase();
+  if (raw && raw !== 'application/octet-stream') return raw;
+  const name = String(file?.name || '').toLowerCase();
+  if (name.endsWith('.mp3')) return 'audio/mpeg';
+  if (name.endsWith('.m4a')) return 'audio/x-m4a';
+  if (name.endsWith('.aac')) return 'audio/aac';
+  if (name.endsWith('.wav')) return 'audio/wav';
+  if (name.endsWith('.aif') || name.endsWith('.aiff')) return 'audio/aiff';
+  if (name.endsWith('.ogg')) return 'audio/ogg';
+  if (name.endsWith('.webm')) return 'audio/webm';
+  if (name.endsWith('.mp4')) return 'audio/mp4';
+  if (name.endsWith('.mov')) return 'video/quicktime';
+  return raw || 'application/octet-stream';
+}
+
 function fmtTime(seconds) {
   const n = Math.max(0, Number(seconds || 0));
   const m = Math.floor(n / 60);
@@ -386,6 +402,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
     provider_contact: '',
   });
   const [audioPreviewUrl, setAudioPreviewUrl] = React.useState(null);
+  const [musicNotice, setMusicNotice] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
   const fileInputRef = React.useRef(null);
@@ -495,32 +512,32 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
       return res;
     } catch (err) {
       console.warn(`[HZ] live sync failed for ${table}`, err);
-      pushToast && pushToast({ kind: 'error', title: 'Supabase sync failed', body: `${table}: ${err.message || 'remote write failed'}` });
+      if (!options.silent) pushToast && pushToast({ kind: 'error', title: 'Supabase sync failed', body: `${table}: ${err.message || 'remote write failed'}` });
       return { data: null, error: err };
     }
   };
-  const persistInsert = async (table, payload) => {
+  const persistInsert = async (table, payload, options = {}) => {
     const res = await window.HZdb.from(table).insert(payload);
-    if (!res.error) await syncRemote(table, 'insert', payload);
-    return res;
+    const remote = !res.error ? await syncRemote(table, 'insert', payload, options) : null;
+    return { ...res, remoteError: remote?.error || null };
   };
-  const persistUpdate = async (table, id, patch) => {
+  const persistUpdate = async (table, id, patch, options = {}) => {
     const res = await window.HZdb.from(table).update(patch).eq('id', id);
-    if (!res.error) await syncRemote(table, 'update', patch, { id });
-    return res;
+    const remote = !res.error ? await syncRemote(table, 'update', patch, { ...options, id }) : null;
+    return { ...res, remoteError: remote?.error || null };
   };
-  const persistUpsert = async (table, payload, onConflict) => {
+  const persistUpsert = async (table, payload, onConflict, options = {}) => {
     const res = await window.HZdb.from(table).upsert(payload, onConflict ? { onConflict } : undefined);
-    if (!res.error) await syncRemote(table, 'upsert', payload, { onConflict });
-    return res;
+    const remote = !res.error ? await syncRemote(table, 'upsert', payload, { ...options, onConflict }) : null;
+    return { ...res, remoteError: remote?.error || null };
   };
-  const persistDelete = async (table, id) => {
+  const persistDelete = async (table, id, options = {}) => {
     const res = await window.HZdb.from(table).delete().eq('id', id);
-    if (!res.error) await syncRemote(table, 'delete', null, { id });
-    return res;
+    const remote = !res.error ? await syncRemote(table, 'delete', null, { ...options, id }) : null;
+    return { ...res, remoteError: remote?.error || null };
   };
 
-  const upsertAudio = async (patch) => {
+  const upsertAudio = async (patch, options = {}) => {
     const base = {
       id: audio?.id || routineUid('ra'),
       routine_id: routine.id,
@@ -530,12 +547,14 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
       created_at: audio?.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-    const res = await persistUpsert('routine_audio_assets', { ...base, ...patch }, 'routine_id,kind');
+    const res = await persistUpsert('routine_audio_assets', { ...base, ...patch }, 'routine_id,kind', options);
     if (res.error) throw res.error;
-    return res.data?.[0] || { ...base, ...patch };
+    const row = res.data?.[0] || { ...base, ...patch };
+    if (res.remoteError) row._remoteError = res.remoteError;
+    return row;
   };
 
-  const upsertLicense = async (patch, audioId = audio?.id) => {
+  const upsertLicense = async (patch, audioId = audio?.id, options = {}) => {
     const base = {
       id: license?.id || routineUid('ml'),
       routine_id: routine.id,
@@ -548,11 +567,12 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
       created_at: license?.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-    const res = await persistUpsert('music_licenses', { ...base, ...patch }, 'routine_id,audio_asset_id');
+    const res = await persistUpsert('music_licenses', { ...base, ...patch }, 'routine_id,audio_asset_id', options);
     if (res.error) throw res.error;
+    return res;
   };
 
-  const upsertCountMap = async (patch, audioId = audio?.id) => {
+  const upsertCountMap = async (patch, audioId = audio?.id, options = {}) => {
     const base = {
       id: countMap?.id || routineUid('cm'),
       routine_id: routine.id,
@@ -566,18 +586,22 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
       updated_at: new Date().toISOString(),
     };
     const payload = { ...base, ...patch };
-    const res = await persistUpsert('routine_count_maps', payload, 'routine_id,audio_asset_id');
+    const res = await persistUpsert('routine_count_maps', payload, 'routine_id,audio_asset_id', options);
     if (res.error) throw res.error;
     if (patch.bpm) await persistUpdate('routines', routine.id, { bpm: Number(patch.bpm) });
+    return res;
   };
 
   const handleMusicFile = async (file) => {
     if (!file) return;
     setSaving(true);
+    setMusicNotice(null);
     try {
+      const issues = [];
       const nextUrl = URL.createObjectURL(file);
       if (audioPreviewUrl) URL.revokeObjectURL(audioPreviewUrl);
       setAudioPreviewUrl(nextUrl);
+      const mime = routineAudioMime(file);
       const duration = await new Promise((resolve) => {
         const el = document.createElement('audio');
         el.preload = 'metadata';
@@ -588,30 +612,49 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
       const savedAudio = await upsertAudio({
         mode: 'licensed_upload',
         original_filename: file.name,
-        mime_type: file.type || 'audio/*',
+        mime_type: mime,
         size_bytes: file.size,
         duration_seconds: duration,
         local_object_url: nextUrl,
         status: 'local_draft',
-      });
-      if (hasLiveSupabase() && team?.program_id && file.size <= 104857600) {
+      }, { silent: true });
+      if (savedAudio._remoteError) issues.push(`metadata sync: ${savedAudio._remoteError.message || 'remote write failed'}`);
+      if (hasLiveSupabase() && !team?.program_id) {
+        issues.push('storage upload: team program id was missing');
+      }
+      if (hasLiveSupabase() && team?.program_id && file.size > 524288000) {
+        issues.push('storage upload: file is over the 500 MB routine-audio limit');
+      }
+      if (hasLiveSupabase() && team?.program_id && file.size <= 524288000) {
         const safeName = file.name.replace(/[^a-z0-9._-]+/gi, '-').toLowerCase();
         const storagePath = `${team.program_id}/${routine.id}/${Date.now()}-${safeName}`;
         const upload = await window.HZsupa.storage.from('routine-audio').upload(storagePath, file, {
-          contentType: file.type || 'application/octet-stream',
+          contentType: mime,
           upsert: true,
         });
         if (!upload.error) {
-          await upsertAudio({ id: savedAudio.id, storage_path: storagePath, status: 'uploaded' });
+          const storageRes = await upsertAudio({ id: savedAudio.id, storage_path: storagePath, status: 'uploaded', mime_type: mime }, { silent: true });
+          if (storageRes._remoteError) issues.push(`storage metadata sync: ${storageRes._remoteError.message || 'remote write failed'}`);
         } else {
-          pushToast && pushToast({ kind: 'error', title: 'Audio upload skipped', body: upload.error.message });
+          issues.push(`storage upload: ${upload.error.message}`);
         }
       }
-      await upsertLicense({ proof_status: 'needs_license_proof' }, savedAudio.id);
-      await upsertCountMap({ audio_asset_id: savedAudio.id, confidence: 0.35, source: 'coach_upload' }, savedAudio.id);
-      pushToast && pushToast({ kind: 'success', title: 'Music staged', body: 'Track is ready for count mapping. Add proof before calling it competition-ready.' });
+      const licenseRes = await upsertLicense({ proof_status: 'needs_license_proof' }, savedAudio.id, { silent: true });
+      if (licenseRes.remoteError) issues.push(`license sync: ${licenseRes.remoteError.message || 'remote write failed'}`);
+      const countMapRes = await upsertCountMap({ audio_asset_id: savedAudio.id, confidence: 0.35, source: 'coach_upload' }, savedAudio.id, { silent: true });
+      if (countMapRes.remoteError) issues.push(`count map sync: ${countMapRes.remoteError.message || 'remote write failed'}`);
+      if (issues.length) {
+        const body = issues.slice(0, 4).join(' | ');
+        setMusicNotice({ kind: 'error', title: 'Music staged locally, cloud sync needs attention', body });
+        pushToast && pushToast({ kind: 'error', title: 'Music staged locally, cloud sync needs attention', body, duration: 16000 });
+      } else {
+        setMusicNotice({ kind: 'success', title: 'Music staged', body: 'Track is uploaded, count mapping is ready, and proof still needs to be attached before competition use.' });
+        pushToast && pushToast({ kind: 'success', title: 'Music staged', body: 'Track is ready for count mapping. Add proof before calling it competition-ready.' });
+      }
     } catch (err) {
-      pushToast && pushToast({ kind: 'error', title: 'Music setup failed', body: err.message || 'Try a different audio file.' });
+      const body = err.message || 'Try a different audio file.';
+      setMusicNotice({ kind: 'error', title: 'Music setup failed', body });
+      pushToast && pushToast({ kind: 'error', title: 'Music setup failed', body, duration: 16000 });
     } finally {
       setSaving(false);
     }
@@ -1096,6 +1139,13 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
           ) : (
             <div style={{ padding: 18, border: '1px dashed rgba(255,255,255,0.18)', borderRadius: 14, color: 'var(--hz-dim)', marginBottom: 16 }}>
               Upload an audio file to preview here. Until then, this routine can still be built as a provider brief.
+            </div>
+          )}
+
+          {musicNotice && (
+            <div className={`routine-upload-notice routine-upload-notice-${musicNotice.kind}`} style={{ marginBottom: 16 }}>
+              <b>{musicNotice.title}</b>
+              <span>{musicNotice.body}</span>
             </div>
           )}
 

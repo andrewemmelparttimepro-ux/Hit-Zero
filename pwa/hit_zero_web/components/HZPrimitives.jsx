@@ -167,13 +167,15 @@ window.StatusChip = StatusChip;
 // ─── Toast system ───
 const Toast = ({ toast, onClose }) => {
   React.useEffect(() => {
-    const t = setTimeout(() => onClose(toast.id), toast.duration || 4000);
+    const defaultDuration = toast.duration ?? (toast.kind === 'error' ? 14000 : 4000);
+    if (defaultDuration === Infinity || defaultDuration === 0) return undefined;
+    const t = setTimeout(() => onClose(toast.id), defaultDuration);
     return () => clearTimeout(t);
   }, []);
   return (
-    <div className={`toast ${toast.variant || ''}`}>
+    <div className={`toast ${toast.kind || ''} ${toast.variant || ''}`}>
       <div style={{ flex: 1 }}>
-        <div className="hz-eyebrow" style={{ color: toast.variant === 'mastered' ? 'var(--hz-pink)' : 'var(--hz-teal)' }}>{toast.eyebrow || 'Hit Zero'}</div>
+        <div className="hz-eyebrow" style={{ color: toast.kind === 'error' ? 'var(--hz-red)' : toast.variant === 'mastered' ? 'var(--hz-pink)' : 'var(--hz-teal)' }}>{toast.eyebrow || (toast.kind === 'error' ? 'Needs attention' : 'Hit Zero')}</div>
         <div style={{ marginTop: 4, fontWeight: 600, fontSize: 14 }}>{toast.title}</div>
         {toast.body && <div style={{ marginTop: 2, color: 'var(--hz-dim)', fontSize: 12 }}>{toast.body}</div>}
       </div>
