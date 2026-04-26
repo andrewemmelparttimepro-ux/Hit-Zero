@@ -627,7 +627,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
         routine_id: routine.id,
         audio_asset_id: audio?.id || null,
         job_type: jobType,
-        status: 'ready',
+        status: hasLiveSupabase() ? 'queued' : 'ready',
         request_payload: {
           audio_asset_id: audio?.id || null,
           storage_path: audio?.storage_path || null,
@@ -641,13 +641,29 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
       };
       const res = await persistInsert('routine_audio_analysis_jobs', job);
       if (res.error) throw res.error;
+      let finalJob = job;
+      if (hasLiveSupabase() && window.HZsupa?.functions?.invoke) {
+        try {
+          const worker = await window.HZsupa.functions.invoke('routine-audio-worker', { body: { job_id: job.id } });
+          if (worker.error) throw worker.error;
+          if (worker.data?.job) {
+            finalJob = worker.data.job;
+            await window.HZdb.from('routine_audio_analysis_jobs').update(finalJob).eq('id', finalJob.id);
+          }
+        } catch (workerErr) {
+          finalJob = { ...job, status: 'ready', error_message: null, result_payload: analysis, updated_at: new Date().toISOString() };
+          await persistUpdate('routine_audio_analysis_jobs', job.id, finalJob);
+          console.warn('[HZ] audio worker fallback used', workerErr);
+        }
+      }
+      const finalAnalysis = finalJob.result_payload || analysis;
       await upsertCountMap({
         confidence: Math.max(0.72, Number(countMap?.confidence || 0)),
         source: 'analysis',
-        markers: analysis.markers,
-        corrections: { ...(countMap?.corrections || {}), last_analysis_job_id: job.id },
+        markers: finalAnalysis.markers,
+        corrections: { ...(countMap?.corrections || {}), last_analysis_job_id: finalJob.id },
       }, audio?.id);
-      pushToast && pushToast({ kind: 'success', title: 'Audio map ready', body: 'Beat/energy markers are attached to the routine. Server worker can replace this contract next.' });
+      pushToast && pushToast({ kind: 'success', title: 'Audio map ready', body: `${finalAnalysis.engine || 'Audio worker'} attached beat/energy markers to the routine.` });
     } catch (err) {
       pushToast && pushToast({ kind: 'error', title: 'Audio analysis failed', body: err.message || 'Could not create analysis job.' });
     } finally {
