@@ -13,6 +13,7 @@
       routine_audio_assets, music_licenses, routine_count_maps, routine_events,
       routine_formations, routine_positions, routine_assignments, routine_ai_suggestions, routine_exports,
       routine_versions, routine_comments,
+      routine_audio_analysis_jobs, routine_remix_requests, routine_music_compliance_checks,
       celebrations, billing_accounts, billing_charges, announcements, profiles,
       // Tier 1 + Tier 2 additions
       message_threads, thread_members, messages, message_reads,
@@ -36,6 +37,7 @@
       q('routine_audio_assets'), q('music_licenses'), q('routine_count_maps'), q('routine_events'),
       q('routine_formations'), q('routine_positions'), q('routine_assignments'), q('routine_ai_suggestions'), q('routine_exports'),
       q('routine_versions'), q('routine_comments'),
+      q('routine_audio_analysis_jobs'), q('routine_remix_requests'), q('routine_music_compliance_checks'),
       q('celebrations'),
       q('billing_accounts'), q('billing_charges'), q('announcements'), q('profiles'),
       q('message_threads'), q('thread_members'), q('messages'), q('message_reads'),
@@ -58,6 +60,7 @@
       routine_audio_assets, music_licenses, routine_count_maps, routine_events,
       routine_formations, routine_positions, routine_assignments, routine_ai_suggestions, routine_exports,
       routine_versions, routine_comments,
+      routine_audio_analysis_jobs, routine_remix_requests, routine_music_compliance_checks,
       celebrations, billing_accounts, billing_charges, announcements, profiles,
       message_threads, thread_members, messages, message_reads,
       session_availability, calendar_tokens,
@@ -174,7 +177,10 @@
     const exports = (cache.routine_exports || []).filter(e => e.routine_id === r.id).sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
     const versions = (cache.routine_versions || []).filter(v => v.routine_id === r.id).sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
     const comments = (cache.routine_comments || []).filter(c => c.routine_id === r.id).sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
-    return { ...r, sections: secs, audioAssets, countMaps, licenses, events, formations, positions, assignments, aiSuggestions, exports, versions, comments };
+    const audioJobs = (cache.routine_audio_analysis_jobs || []).filter(j => j.routine_id === r.id).sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    const remixRequests = (cache.routine_remix_requests || []).filter(req => req.routine_id === r.id).sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    const complianceChecks = (cache.routine_music_compliance_checks || []).filter(ch => ch.routine_id === r.id).sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    return { ...r, sections: secs, audioAssets, countMaps, licenses, events, formations, positions, assignments, aiSuggestions, exports, versions, comments, audioJobs, remixRequests, complianceChecks };
   }
 
   // USASF score sheet rows — same weights as iOS version

@@ -62,6 +62,12 @@ const AI_FLAVORS = [
   { id: 'music', label: 'Music cue' },
 ];
 
+const REMIX_WORKFLOWS = [
+  { id: 'provider_handoff', label: 'Provider handoff', compliance: 'proof_required' },
+  { id: 'scratch_practice', label: 'Scratch practice', compliance: 'practice_only' },
+  { id: 'licensed_remix', label: 'Licensed remix', compliance: 'provider_documented' },
+];
+
 function routineUid(prefix) {
   if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -123,6 +129,108 @@ function buildProviderBrief({ routine, team, audio, license, countMap, athletes,
   lines.push('Provider notes:');
   lines.push(license?.notes || 'Use clear 8-count hits, coach-friendly transitions, and leave space for voiceover cues.');
   return lines.join('\n');
+}
+
+function buildRemixBrief({ routine, team, audio, license, countMap, remixRequest, analysisJob }) {
+  const lines = [];
+  lines.push('Hit Zero compliant remix handoff');
+  lines.push(`Team: ${team?.name || 'Team'} (${team?.division || 'division'} Level ${team?.level || ''})`);
+  lines.push(`Routine: ${routine.name}`);
+  lines.push(`Workflow: ${REMIX_WORKFLOWS.find(w => w.id === remixRequest?.workflow_type)?.label || 'Provider handoff'}`);
+  lines.push(`Compliance mode: ${remixRequest?.compliance_mode || 'proof_required'}`);
+  lines.push(`Proof status: ${PROOF_STATES.find(s => s.id === license?.proof_status)?.label || 'Needs license proof'}`);
+  if (license?.provider || remixRequest?.provider_name) lines.push(`Provider: ${remixRequest?.provider_name || license?.provider}`);
+  if (license?.certificate_url) lines.push(`License/proof: ${license.certificate_url}`);
+  lines.push('');
+  lines.push('Important compliance guardrail: Hit Zero scratch or AI-generated planning output is practice-only until a provider/license proof is attached.');
+  lines.push('');
+  lines.push('Music direction:');
+  lines.push(remixRequest?.style_prompt || 'High-energy cheer mix with clean 8-count accents, confident youth-friendly voiceover, and clear stunt/pyramid hits.');
+  lines.push('');
+  lines.push('Voiceover copy:');
+  lines.push(remixRequest?.voiceover_script || 'Magic City. Hit Zero. Clean counts, big smiles, no panic.');
+  lines.push('');
+  lines.push('Count cue map:');
+  [...(routine.sections || [])].sort((a, b) => a.start_count - b.start_count).forEach((sec) => {
+    lines.push(`- Counts ${sec.start_count}-${sec.end_count} (${fmtTime(countToSeconds(sec.start_count, countMap))}-${fmtTime(countToSeconds(sec.end_count + 1, countMap))}): ${sec.label || sec.section_type}`);
+  });
+  const markers = analysisJob?.result_payload?.markers || countMap?.markers || [];
+  if (markers.length) {
+    lines.push('');
+    lines.push('Detected/planned music hits:');
+    markers.slice(0, 12).forEach((m) => lines.push(`- Count ${m.count}: ${m.kind || 'hit'} at ${fmtTime(m.seconds)}${m.energy ? ` / energy ${Math.round(m.energy * 100)}%` : ''}`));
+  }
+  return lines.join('\n');
+}
+
+function synthesizeAudioAnalysis({ routine, audio, countMap }) {
+  const duration = Number(audio?.duration_seconds || countToSeconds(routine.length_counts + 1, countMap));
+  const bpm = Number(countMap?.bpm || routine.bpm || 144);
+  const eightCountSeconds = 8 * (60 / Math.max(1, bpm));
+  const bars = Math.max(1, Math.ceil(Number(routine.length_counts || 0) / 8));
+  const peaks = Array.from({ length: Math.min(96, bars * 4) }).map((_, i) => ({
+    t: Number(Math.min(duration, i * eightCountSeconds / 4).toFixed(3)),
+    value: Number((0.36 + ((i * 37) % 59) / 100).toFixed(2)),
+  }));
+  const markers = [...(routine.sections || [])].map((sec) => ({
+    count: sec.start_count,
+    seconds: Number(countToSeconds(sec.start_count, countMap).toFixed(3)),
+    kind: sec.section_type === 'stunts' || sec.section_type === 'pyramid' ? 'major_hit' : 'section_start',
+    label: sec.label || sec.section_type,
+    energy: sec.section_type === 'dance' ? 0.92 : sec.section_type === 'transition' ? 0.45 : 0.76,
+  }));
+  return {
+    engine: 'hit-zero-local-audio-contract-v1',
+    duration_seconds: duration,
+    bpm,
+    first_count_seconds: Number(countMap?.first_count_seconds || 0),
+    peaks,
+    markers,
+    worker_next: 'Replace this deterministic client analysis with a server worker using ffmpeg + librosa/aubio for waveform peaks, beat/downbeat, and energy curves.',
+  };
+}
+
+function deriveComplianceChecks({ audio, license, remixRequest }) {
+  const workflow = remixRequest?.workflow_type || audio?.mode || 'provider_handoff';
+  const checks = [
+    {
+      check_key: 'competition_proof',
+      label: 'Competition proof',
+      status: license?.proof_status === 'competition_ready' && Boolean(license?.certificate_url) ? 'pass' : 'block',
+      body: license?.proof_status === 'competition_ready' && license?.certificate_url
+        ? 'License/certificate proof is attached.'
+        : 'Do not mark competition-ready until provider/license proof is attached.',
+      evidence_url: license?.certificate_url || '',
+    },
+    {
+      check_key: 'provider_source',
+      label: 'Provider/source named',
+      status: license?.provider || remixRequest?.provider_name ? 'pass' : 'warn',
+      body: license?.provider || remixRequest?.provider_name
+        ? `Source: ${remixRequest?.provider_name || license?.provider}`
+        : 'Name the provider or licensing source before sending this brief.',
+      evidence_url: '',
+    },
+    {
+      check_key: 'scratch_label',
+      label: 'Scratch/AI label',
+      status: workflow === 'scratch_practice' || license?.proof_status === 'practice_only' ? 'warn' : 'pass',
+      body: workflow === 'scratch_practice' || license?.proof_status === 'practice_only'
+        ? 'This is practice-only and must stay out of competition submission.'
+        : 'Workflow is provider/proof oriented.',
+      evidence_url: '',
+    },
+    {
+      check_key: 'derivative_rights',
+      label: 'Remix/derivative rights',
+      status: remixRequest?.workflow_type === 'licensed_remix' && license?.certificate_url ? 'pass' : 'warn',
+      body: remixRequest?.workflow_type === 'licensed_remix'
+        ? 'Confirm the attached license explicitly allows edits/remix/derivative use.'
+        : 'Provider handoff is safest unless remix rights are documented.',
+      evidence_url: license?.certificate_url || '',
+    },
+  ];
+  return checks;
 }
 
 function routineBuilderSuggestions(routine, predicted, countMap, license) {
@@ -248,7 +356,7 @@ function validateRoutinePlan({ routine, countMap, license, athletes }) {
     if (!sectionIdsWithFormations.has(s.id)) issues.push({ severity: 'amber', title: `No formation for ${s.label || s.section_type}`, body: `Counts ${s.start_count}-${s.end_count} need a teachable floor picture.` });
     if (!(routine.assignments || []).some(a => a.section_id === s.id)) issues.push({ severity: 'amber', title: `No athlete ownership`, body: `${s.label || s.section_type} has no role/skill assignments yet.` });
   });
-  if ((license?.proof_status || 'needs_license_proof') !== 'competition_ready') issues.push({ severity: 'red', title: 'Music proof not competition-ready', body: 'Attach provider/license proof before calling this routine complete.' });
+  if ((license?.proof_status || 'needs_license_proof') !== 'competition_ready' || !license?.certificate_url || !license?.provider) issues.push({ severity: 'red', title: 'Music proof not competition-ready', body: 'Attach provider/source and license proof before calling this routine complete.' });
   if (Number(countMap?.confidence || 0) < 0.6) issues.push({ severity: 'teal', title: 'Count map needs confirmation', body: 'Confirm BPM and count 1 so provider notes and teaching packets line up.' });
   const byAthlete = {};
   (routine.assignments || []).forEach(a => { byAthlete[a.athlete_id] = (byAthlete[a.athlete_id] || 0) + 1; });
@@ -269,6 +377,14 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   const [commentDraft, setCommentDraft] = React.useState('');
   const [activeOutput, setActiveOutput] = React.useState('count_sheet');
   const [loopingSection, setLoopingSection] = React.useState(false);
+  const [remixDraft, setRemixDraft] = React.useState({
+    workflow_type: 'provider_handoff',
+    title: '',
+    style_prompt: 'Bright, energetic all-star cheer mix with clear 8-count accents, sharp stunt hits, playful youth-friendly voiceover, and a confident dance finish.',
+    voiceover_script: 'Magic City. Hit Zero. Tiny team, huge energy.',
+    provider_name: '',
+    provider_contact: '',
+  });
   const [audioPreviewUrl, setAudioPreviewUrl] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
@@ -478,6 +594,19 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
         local_object_url: nextUrl,
         status: 'local_draft',
       });
+      if (hasLiveSupabase() && team?.program_id && file.size <= 104857600) {
+        const safeName = file.name.replace(/[^a-z0-9._-]+/gi, '-').toLowerCase();
+        const storagePath = `${team.program_id}/${routine.id}/${Date.now()}-${safeName}`;
+        const upload = await window.HZsupa.storage.from('routine-audio').upload(storagePath, file, {
+          contentType: file.type || 'application/octet-stream',
+          upsert: true,
+        });
+        if (!upload.error) {
+          await upsertAudio({ id: savedAudio.id, storage_path: storagePath, status: 'uploaded' });
+        } else {
+          pushToast && pushToast({ kind: 'error', title: 'Audio upload skipped', body: upload.error.message });
+        }
+      }
       await upsertLicense({ proof_status: 'needs_license_proof' }, savedAudio.id);
       await upsertCountMap({ audio_asset_id: savedAudio.id, confidence: 0.35, source: 'coach_upload' }, savedAudio.id);
       pushToast && pushToast({ kind: 'success', title: 'Music staged', body: 'Track is ready for count mapping. Add proof before calling it competition-ready.' });
@@ -486,6 +615,99 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
     } finally {
       setSaving(false);
     }
+  };
+
+  const runAudioAnalysis = async (jobType = 'beat_map') => {
+    setSaving(true);
+    try {
+      const analysis = synthesizeAudioAnalysis({ routine, audio, countMap });
+      const now = new Date().toISOString();
+      const job = {
+        id: routineUid('aaj'),
+        routine_id: routine.id,
+        audio_asset_id: audio?.id || null,
+        job_type: jobType,
+        status: 'ready',
+        request_payload: {
+          audio_asset_id: audio?.id || null,
+          storage_path: audio?.storage_path || null,
+          bpm: countMap?.bpm || routine.bpm || 144,
+          first_count_seconds: countMap?.first_count_seconds || 0,
+          sections: (routine.sections || []).map(s => ({ id: s.id, label: s.label, start_count: s.start_count, end_count: s.end_count, section_type: s.section_type })),
+        },
+        result_payload: analysis,
+        created_at: now,
+        updated_at: now,
+      };
+      const res = await persistInsert('routine_audio_analysis_jobs', job);
+      if (res.error) throw res.error;
+      await upsertCountMap({
+        confidence: Math.max(0.72, Number(countMap?.confidence || 0)),
+        source: 'analysis',
+        markers: analysis.markers,
+        corrections: { ...(countMap?.corrections || {}), last_analysis_job_id: job.id },
+      }, audio?.id);
+      pushToast && pushToast({ kind: 'success', title: 'Audio map ready', body: 'Beat/energy markers are attached to the routine. Server worker can replace this contract next.' });
+    } catch (err) {
+      pushToast && pushToast({ kind: 'error', title: 'Audio analysis failed', body: err.message || 'Could not create analysis job.' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveRemixRequest = async (status = 'draft') => {
+    const workflow = REMIX_WORKFLOWS.find(w => w.id === remixDraft.workflow_type) || REMIX_WORKFLOWS[0];
+    const latestAnalysis = (routine.audioJobs || [])[0];
+    const payload = {
+      id: routineUid('rr'),
+      routine_id: routine.id,
+      audio_asset_id: audio?.id || null,
+      music_license_id: license?.id || null,
+      title: remixDraft.title || `${routine.name} ${workflow.label}`,
+      workflow_type: workflow.id,
+      status,
+      compliance_mode: workflow.compliance,
+      style_prompt: remixDraft.style_prompt,
+      voiceover_script: remixDraft.voiceover_script,
+      music_hit_map: latestAnalysis?.result_payload?.markers || countMap?.markers || [],
+      provider_name: remixDraft.provider_name || license?.provider || '',
+      provider_contact: remixDraft.provider_contact || '',
+      payload: {
+        routine_length_counts: routine.length_counts,
+        proof_status: license?.proof_status || 'needs_license_proof',
+        certificate_url: license?.certificate_url || '',
+      },
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const res = await persistInsert('routine_remix_requests', payload);
+    if (res.error) {
+      pushToast && pushToast({ kind: 'error', title: 'Remix request not saved', body: res.error.message });
+      return null;
+    }
+    pushToast && pushToast({ kind: 'success', title: status === 'provider_ready' ? 'Provider handoff ready' : 'Remix workflow saved', body: payload.title });
+    return payload;
+  };
+
+  const saveComplianceSnapshot = async (remixRequest = (routine.remixRequests || [])[0]) => {
+    const checks = deriveComplianceChecks({ audio, license, remixRequest });
+    const results = [];
+    for (const check of checks) {
+      const existing = (routine.complianceChecks || []).find(c => c.remix_request_id === (remixRequest?.id || null) && c.check_key === check.check_key);
+      const payload = {
+        id: existing?.id || routineUid('mcc'),
+        routine_id: routine.id,
+        remix_request_id: remixRequest?.id || null,
+        ...check,
+        updated_at: new Date().toISOString(),
+        created_at: existing?.created_at || new Date().toISOString(),
+      };
+      const res = await persistUpsert('routine_music_compliance_checks', payload, 'routine_id,remix_request_id,check_key');
+      results.push(res);
+    }
+    const failed = results.find(r => r.error);
+    if (failed) pushToast && pushToast({ kind: 'error', title: 'Compliance snapshot failed', body: failed.error.message });
+    else pushToast && pushToast({ kind: 'success', title: 'Compliance snapshot saved', body: 'Proof gates are attached to this routine workflow.' });
   };
 
   const addSection = async () => {
@@ -786,16 +1008,25 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
     .filter(t => !['opening', 'transition'].includes(t.id))
     .map(t => ({ ...t, count: byType[t.id] || 0 }));
   const validationIssues = validateRoutinePlan({ routine, countMap, license, athletes });
+  const latestAnalysis = (routine.audioJobs || [])[0] || null;
+  const latestRemixRequest = (routine.remixRequests || [])[0] || null;
+  const complianceChecklist = deriveComplianceChecks({ audio, license, remixRequest: latestRemixRequest });
   const countSheet = buildCountSheet({ routine, countMap, athletes, skills });
   const athletePacket = buildAthletePacket({ routine, athletes, skills });
   const formationCards = buildFormationCards({ routine, athletes });
   const practicePlan = buildPracticePlan({ routine, predicted, validation: validationIssues });
+  const remixBrief = buildRemixBrief({ routine, team, audio, license, countMap, remixRequest: latestRemixRequest || remixDraft, analysisJob: latestAnalysis });
+  const analysisReport = latestAnalysis
+    ? JSON.stringify(latestAnalysis.result_payload, null, 2)
+    : 'No audio analysis job yet. Run Audio map to create waveform peaks, beat/count markers, and the worker-ready result contract.';
   const outputMap = {
     count_sheet: { title: 'Printable 8-count sheet', exportType: 'count_sheet', body: countSheet },
     formation_cards: { title: 'Formation cards', exportType: 'formation_cards', body: formationCards },
     athlete_packet: { title: 'Athlete packet', exportType: 'athlete_packet', body: athletePacket || 'No athlete assignments yet.' },
     practice_plan: { title: 'Practice plan', exportType: 'practice_plan', body: practicePlan },
     provider_brief: { title: 'Music provider brief', exportType: 'provider_brief', body: providerBrief },
+    remix_brief: { title: 'Compliant remix brief', exportType: 'remix_brief', body: remixBrief },
+    audio_analysis_report: { title: 'Audio analysis report', exportType: 'audio_analysis_report', body: analysisReport },
   };
   const activeArtifact = outputMap[activeOutput] || outputMap.count_sheet;
   const scoreLow = Math.max(0, predicted.total - validationIssues.length * 0.25 - (license?.proof_status === 'competition_ready' ? 0 : 0.75));
@@ -863,6 +1094,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
               <button className={`hz-btn hz-btn-sm ${loopingSection ? 'hz-btn-primary' : ''}`} onClick={() => setLoopingSection(!loopingSection)} disabled={!selectedSection}>Loop section</button>
               <button className="hz-btn hz-btn-sm" onClick={() => pushToast && pushToast({ kind: 'info', title: 'Count-in', body: 'Count-in/metronome is staged here; server/audio worker is the next infrastructure step.' })}>8-count in</button>
               <button className="hz-btn hz-btn-sm" onClick={() => generateSectionIdea('music')} disabled={!selectedSection}>Mark music hit</button>
+              <button className="hz-btn hz-btn-sm hz-btn-primary" onClick={() => runAudioAnalysis('beat_map')} disabled={saving}>Audio map</button>
             </div>
             <div className="routine-waveform-strip">
               {Array.from({ length: 48 }).map((_, i) => (
@@ -966,6 +1198,66 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
           </div>
           <div style={{ marginTop: 14, padding: 12, background: 'rgba(255,255,255,0.035)', borderRadius: 12, color: 'var(--hz-dim)', fontSize: 12, lineHeight: 1.5 }}>
             <b style={{ color: '#fff' }}>{mode.label}:</b> {mode.help}
+          </div>
+
+          <div className="routine-remix-console">
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start' }}>
+              <div>
+                <div className="hz-eyebrow">Audio worker contract</div>
+                <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>
+                  {latestAnalysis ? `${latestAnalysis.job_type} ${latestAnalysis.status} - ${latestAnalysis.result_payload?.markers?.length || 0} markers` : 'No analysis job yet. Create a beat/energy map before provider handoff.'}
+                </div>
+              </div>
+              <button className="hz-btn hz-btn-sm" onClick={() => runAudioAnalysis('remix_prep')} disabled={saving}>Prep worker job</button>
+            </div>
+            <div className="routine-compliance-grid">
+              <div>
+                <div className="hz-label" style={{ color: 'var(--hz-dim)', marginBottom: 6 }}>Workflow</div>
+                <select className="hz-input" value={remixDraft.workflow_type} onChange={e => {
+                  const workflow = REMIX_WORKFLOWS.find(w => w.id === e.target.value) || REMIX_WORKFLOWS[0];
+                  setRemixDraft({ ...remixDraft, workflow_type: workflow.id });
+                  if (workflow.id === 'scratch_practice') upsertLicense({ proof_status: 'practice_only' });
+                  if (workflow.id === 'provider_handoff' && license?.proof_status === 'practice_only') upsertLicense({ proof_status: 'provider_pending' });
+                }}>
+                  {REMIX_WORKFLOWS.map(w => <option key={w.id} value={w.id}>{w.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <div className="hz-label" style={{ color: 'var(--hz-dim)', marginBottom: 6 }}>Provider contact</div>
+                <input className="hz-input" placeholder="music@provider.com" value={remixDraft.provider_contact} onChange={e => setRemixDraft({ ...remixDraft, provider_contact: e.target.value })}/>
+              </div>
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <div className="hz-label" style={{ color: 'var(--hz-dim)', marginBottom: 6 }}>Remix direction</div>
+              <textarea className="hz-input" rows="3" value={remixDraft.style_prompt} onChange={e => setRemixDraft({ ...remixDraft, style_prompt: e.target.value })}/>
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <div className="hz-label" style={{ color: 'var(--hz-dim)', marginBottom: 6 }}>Voiceover script</div>
+              <textarea className="hz-input" rows="2" value={remixDraft.voiceover_script} onChange={e => setRemixDraft({ ...remixDraft, voiceover_script: e.target.value })}/>
+            </div>
+            <div className="routine-compliance-grid" style={{ marginTop: 10 }}>
+              <button className="hz-btn" onClick={() => saveRemixRequest('draft')}>Save remix workflow</button>
+              <button className="hz-btn hz-btn-primary" onClick={async () => {
+                const req = await saveRemixRequest('provider_ready');
+                if (req) {
+                  await saveComplianceSnapshot(req);
+                  await saveExport('remix_brief', 'Compliant remix brief', buildRemixBrief({ routine, team, audio, license, countMap, remixRequest: req, analysisJob: latestAnalysis }));
+                }
+              }}>Generate provider packet</button>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 14 }}>
+            <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Compliance gates</div>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {complianceChecklist.map((check) => (
+                <div key={check.check_key} className={`routine-validation-row routine-validation-${check.status === 'block' ? 'red' : check.status === 'pass' ? 'green' : 'amber'}`}>
+                  <b>{check.label}</b>
+                  <span>{check.body}</span>
+                </div>
+              ))}
+            </div>
+            <button className="hz-btn hz-btn-sm" style={{ marginTop: 10 }} onClick={() => saveComplianceSnapshot()}>Save compliance snapshot</button>
           </div>
         </div>
       </div>

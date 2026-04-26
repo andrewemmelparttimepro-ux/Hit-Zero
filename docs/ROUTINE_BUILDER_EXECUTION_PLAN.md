@@ -20,6 +20,7 @@ This slice is now the practical V1 product surface:
 - Rules/safety/compliance validation panel with a simulated score range.
 - Export station for 8-count sheet, formation cards, athlete packet, practice plan, and provider brief.
 - Version snapshots, approval capture, and coach comments.
+- Audio analysis worker contract, synthetic beat/energy map, remix request workflow, provider packet, and compliance gates.
 - Live Supabase dual-write and PWA mock fallback are both wired for the routine builder tables.
 
 Supabase status: local and remote migration history are aligned as of 2026-04-26. `supabase db push --include-all --dry-run` should be used after each schema change as the guardrail before deployment.
@@ -69,7 +70,15 @@ Acceptance:
 - Practice-only/scratch tracks are visibly labeled as not competition-ready.
 - Provider brief includes accurate timestamps from the count map.
 
-Current state: local audio preview, count-map editing, proof metadata, and planning UI exist. The remaining hard requirement is the server/audio worker that produces real waveform peaks, downbeat detection, slow-down, and resilient mobile playback from stored audio.
+Current state: local audio preview, count-map editing, proof metadata, private audio storage path, worker job/result schema, synthetic beat/energy map, and provider-facing remix packet exist. The remaining hard requirement is replacing the deterministic client-side analysis with a server worker that produces real waveform peaks, downbeat detection, slow-down assets, and resilient mobile playback from stored audio.
+
+Execution phases for this track:
+
+1. Persist music metadata, private storage paths, and license/proof state.
+2. Create audio analysis jobs/results for waveform peaks, downbeats, energy, and remix prep.
+3. Generate compliant remix/provider packets from count maps, section cues, music hits, and voiceover notes.
+4. Gate every competition-ready action behind proof, provider/source, and derivative/remix-rights evidence.
+5. Route saved packets into provider handoff, athlete practice material, and final proof storage.
 
 ## Phase 3: Routine Intelligence
 
@@ -120,12 +129,16 @@ Deliverables:
 - Voiceover copy, music-hit list, and transition cue export.
 - Final track/certificate storage.
 - Optional provider partnership/affiliate workflow.
+- Remix requests with status: draft, provider-ready, sent, received, approved, blocked.
+- Compliance snapshots for proof, source, scratch/AI labels, and derivative/remix rights.
 
 Acceptance:
 
 - A coach can send a professional brief to a provider from Hit Zero.
 - The final track and proof stay attached to the routine.
 - Competition-ready status requires proof, not vibes.
+
+Current state: provider packets and compliance snapshots are generated and persisted. Sending to providers is intentionally still a handoff/export step until the email/provider integration is connected.
 
 ## Phase 6: Controlled Music Creation
 

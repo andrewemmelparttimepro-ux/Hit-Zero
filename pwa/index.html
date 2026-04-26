@@ -157,6 +157,9 @@
       ['routine_exports', 'routine_id'],
       ['routine_versions', 'routine_id'],
       ['routine_comments', 'routine_id'],
+      ['routine_audio_analysis_jobs', 'routine_id'],
+      ['routine_remix_requests', 'routine_id'],
+      ['routine_music_compliance_checks', 'routine_id'],
     ];
     const { data: routines } = await s.from('routines').select('*').in('team_id', ids).order('created_at');
     if (routines?.length) {
