@@ -128,6 +128,39 @@
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }] : [];
+    const routineFormations = routine ? [
+      { id: 'rf_demo_opening', routine_id: routine.id, label: 'Opening windows', start_count: 1, end_count: 8, floor_width: 54, floor_depth: 42, notes: 'Keep Arlowe/Kenzie visible in the front window.', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      { id: 'rf_demo_stunts', routine_id: routine.id, label: 'Stunt pods', start_count: 25, end_count: 40, floor_width: 54, floor_depth: 42, notes: 'Three clean pods with space for safe transitions.', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      { id: 'rf_demo_pyramid', routine_id: routine.id, label: 'Pyramid picture', start_count: 49, end_count: 64, floor_width: 54, floor_depth: 42, notes: 'Center pyramid, outside groups frame the hit.', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+    ] : [];
+    const openingSpots = [
+      [0.18, 0.28], [0.32, 0.42], [0.46, 0.28], [0.60, 0.42],
+      [0.74, 0.28], [0.25, 0.70], [0.50, 0.62], [0.75, 0.70],
+    ];
+    const stuntSpots = [
+      [0.22, 0.42], [0.30, 0.48], [0.38, 0.42], [0.50, 0.36],
+      [0.58, 0.48], [0.66, 0.42], [0.78, 0.50], [0.50, 0.72],
+    ];
+    const pyramidSpots = [
+      [0.16, 0.52], [0.28, 0.42], [0.40, 0.35], [0.50, 0.28],
+      [0.60, 0.35], [0.72, 0.42], [0.84, 0.52], [0.50, 0.68],
+    ];
+    const roleForSpot = (i) => (i === 0 || i === 3 ? 'flyer' : i === 7 ? 'front' : i % 3 === 0 ? 'backspot' : 'base');
+    const routinePositions = routine ? [
+      ...openingSpots.map((p, i) => ({ id: `rp_open_${i + 1}`, formation_id: 'rf_demo_opening', athlete_id: roster[i]?.id || null, label: roster[i]?.initials || String(i + 1), x: p[0], y: p[1], role: i < 5 ? 'front' : 'back', created_at: new Date().toISOString() })),
+      ...stuntSpots.map((p, i) => ({ id: `rp_stunt_${i + 1}`, formation_id: 'rf_demo_stunts', athlete_id: roster[i]?.id || null, label: roster[i]?.initials || String(i + 1), x: p[0], y: p[1], role: roleForSpot(i), created_at: new Date().toISOString() })),
+      ...pyramidSpots.map((p, i) => ({ id: `rp_pyramid_${i + 1}`, formation_id: 'rf_demo_pyramid', athlete_id: roster[i]?.id || null, label: roster[i]?.initials || String(i + 1), x: p[0], y: p[1], role: roleForSpot(i), created_at: new Date().toISOString() })),
+    ] : [];
+    const sectionByType = (type) => routineSections.find(s => s.section_type === type) || routineSections[0];
+    const routineAssignments = routine ? [
+      { id: 'ras_demo_1', routine_id: routine.id, section_id: sectionByType('stunts')?.id || null, athlete_id: roster[0]?.id || null, skill_id: 's_full_up', role: 'flyer', count_index: sectionByType('stunts')?.start_count || 25, notes: 'Main visual. Keep entry simple and confident.', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      { id: 'ras_demo_2', routine_id: routine.id, section_id: sectionByType('stunts')?.id || null, athlete_id: roster[3]?.id || null, skill_id: 's_full_up', role: 'base', count_index: sectionByType('stunts')?.start_count || 25, notes: 'Own the timing on the dip.', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      { id: 'ras_demo_3', routine_id: routine.id, section_id: sectionByType('dance')?.id || null, athlete_id: roster[0]?.id || null, skill_id: null, role: 'front', count_index: sectionByType('dance')?.start_count || 65, notes: 'Featured front-row confidence moment.', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+    ] : [];
+    const routineAiSuggestions = routine ? [
+      { id: 'rai_demo_1', routine_id: routine.id, section_id: sectionByType('stunts')?.id || null, kind: 'section_alt', prompt: 'Make this safer and cleaner.', title: 'Safer stunt option', body: 'Use a prep-level picture on the first attempt, then upgrade the release once the group hits it clean twice in practice.', payload: { action: 'simplify', counts: '25-40', reason: 'confidence before difficulty' }, score_delta: -0.2, status: 'proposed', created_at: new Date().toISOString() },
+      { id: 'rai_demo_2', routine_id: routine.id, section_id: sectionByType('pyramid')?.id || null, kind: 'formation_alt', prompt: 'Make the pyramid more visual.', title: 'Bigger pyramid picture', body: 'Hold the center picture two counts longer and let the outside groups travel downstage to frame the hit.', payload: { action: 'formation_frame', counts: '49-64' }, score_delta: 0.35, status: 'proposed', created_at: new Date().toISOString() },
+    ] : [];
 
     return {
       programs: [{ id: 'p_mca', name: 'Magic City Allstars', city: 'Minot, ND' }],
@@ -155,10 +188,10 @@
       music_licenses: musicLicenses,
       routine_count_maps: routineCountMaps,
       routine_events: [],
-      routine_formations: [],
-      routine_positions: [],
-      routine_assignments: [],
-      routine_ai_suggestions: [],
+      routine_formations: routineFormations,
+      routine_positions: routinePositions,
+      routine_assignments: routineAssignments,
+      routine_ai_suggestions: routineAiSuggestions,
       routine_exports: [],
       sessions,
       attendance,
@@ -563,6 +596,17 @@
     ].forEach((table) => {
       if (!Array.isArray(existing[table])) {
         existing[table] = fresh[table] || [];
+        changed = true;
+      }
+    });
+    [
+      'routine_formations',
+      'routine_positions',
+      'routine_assignments',
+      'routine_ai_suggestions',
+    ].forEach((table) => {
+      if (Array.isArray(existing[table]) && existing[table].length === 0 && (fresh[table] || []).length) {
+        existing[table] = fresh[table];
         changed = true;
       }
     });

@@ -163,7 +163,13 @@
     const countMaps = (cache.routine_count_maps || []).filter(m => m.routine_id === r.id);
     const licenses = (cache.music_licenses || []).filter(l => l.routine_id === r.id);
     const events = (cache.routine_events || []).filter(e => e.routine_id === r.id).sort((a,b) => (a.count_index || 0) - (b.count_index || 0));
-    return { ...r, sections: secs, audioAssets, countMaps, licenses, events };
+    const formations = (cache.routine_formations || []).filter(f => f.routine_id === r.id).sort((a,b) => (a.start_count || 0) - (b.start_count || 0));
+    const formationIds = new Set(formations.map(f => f.id));
+    const positions = (cache.routine_positions || []).filter(p => formationIds.has(p.formation_id));
+    const assignments = (cache.routine_assignments || []).filter(a => a.routine_id === r.id).sort((a,b) => (a.count_index || 0) - (b.count_index || 0));
+    const aiSuggestions = (cache.routine_ai_suggestions || []).filter(s => s.routine_id === r.id).sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    const exports = (cache.routine_exports || []).filter(e => e.routine_id === r.id).sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    return { ...r, sections: secs, audioAssets, countMaps, licenses, events, formations, positions, assignments, aiSuggestions, exports };
   }
 
   // USASF score sheet rows — same weights as iOS version
