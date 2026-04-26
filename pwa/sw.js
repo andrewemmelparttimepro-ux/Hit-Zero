@@ -6,7 +6,7 @@
      · Cross-origin (React, Babel CDN): stale-while-revalidate.
    Bump CACHE_VERSION any time you re-deploy to force clients to refresh. */
 
-const CACHE_VERSION = 'hz-v31-2026-04-26-supabase-persistence-sync';
+const CACHE_VERSION = 'hz-v32-2026-04-26-routine-builder-offer-ready';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting());

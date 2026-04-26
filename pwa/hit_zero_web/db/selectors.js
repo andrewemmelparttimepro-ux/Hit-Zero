@@ -12,6 +12,7 @@
       teams, athletes, skills, athlete_skills, sessions, attendance, routines, routine_sections,
       routine_audio_assets, music_licenses, routine_count_maps, routine_events,
       routine_formations, routine_positions, routine_assignments, routine_ai_suggestions, routine_exports,
+      routine_versions, routine_comments,
       celebrations, billing_accounts, billing_charges, announcements, profiles,
       // Tier 1 + Tier 2 additions
       message_threads, thread_members, messages, message_reads,
@@ -34,6 +35,7 @@
       q('attendance'), q('routines'), q('routine_sections'),
       q('routine_audio_assets'), q('music_licenses'), q('routine_count_maps'), q('routine_events'),
       q('routine_formations'), q('routine_positions'), q('routine_assignments'), q('routine_ai_suggestions'), q('routine_exports'),
+      q('routine_versions'), q('routine_comments'),
       q('celebrations'),
       q('billing_accounts'), q('billing_charges'), q('announcements'), q('profiles'),
       q('message_threads'), q('thread_members'), q('messages'), q('message_reads'),
@@ -55,6 +57,7 @@
       teams, athletes, skills, athlete_skills, sessions, attendance, routines, routine_sections,
       routine_audio_assets, music_licenses, routine_count_maps, routine_events,
       routine_formations, routine_positions, routine_assignments, routine_ai_suggestions, routine_exports,
+      routine_versions, routine_comments,
       celebrations, billing_accounts, billing_charges, announcements, profiles,
       message_threads, thread_members, messages, message_reads,
       session_availability, calendar_tokens,
@@ -169,7 +172,9 @@
     const assignments = (cache.routine_assignments || []).filter(a => a.routine_id === r.id).sort((a,b) => (a.count_index || 0) - (b.count_index || 0));
     const aiSuggestions = (cache.routine_ai_suggestions || []).filter(s => s.routine_id === r.id).sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
     const exports = (cache.routine_exports || []).filter(e => e.routine_id === r.id).sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
-    return { ...r, sections: secs, audioAssets, countMaps, licenses, events, formations, positions, assignments, aiSuggestions, exports };
+    const versions = (cache.routine_versions || []).filter(v => v.routine_id === r.id).sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    const comments = (cache.routine_comments || []).filter(c => c.routine_id === r.id).sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    return { ...r, sections: secs, audioAssets, countMaps, licenses, events, formations, positions, assignments, aiSuggestions, exports, versions, comments };
   }
 
   // USASF score sheet rows — same weights as iOS version

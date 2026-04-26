@@ -193,6 +193,8 @@
       routine_assignments: routineAssignments,
       routine_ai_suggestions: routineAiSuggestions,
       routine_exports: [],
+      routine_versions: [],
+      routine_comments: [],
       sessions,
       attendance,
       celebrations,
@@ -593,6 +595,7 @@
       'routine_audio_assets', 'music_licenses', 'routine_count_maps',
       'routine_events', 'routine_formations', 'routine_positions',
       'routine_assignments', 'routine_ai_suggestions', 'routine_exports',
+      'routine_versions', 'routine_comments',
     ].forEach((table) => {
       if (!Array.isArray(existing[table])) {
         existing[table] = fresh[table] || [];

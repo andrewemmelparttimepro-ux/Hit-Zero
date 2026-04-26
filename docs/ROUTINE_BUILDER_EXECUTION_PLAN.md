@@ -8,17 +8,21 @@ Build the routine builder as a coach-first choreography operating system, not a 
 
 ## Current Build Slice
 
-This slice is the practical V1 foundation:
+This slice is now the practical V1 product surface:
 
 - Count-first section timeline with drag/resize and editable section metadata.
 - Music mode/proof workflow for licensed upload, provider brief, or scratch-practice planning.
 - Count map inputs for BPM and count-one timing.
+- Local audio preview plus coach-facing loop/count-in/music-hit planning controls.
 - Formation board with draggable athlete dots.
 - Athlete assignment panel tied to the roster and team skill tree.
-- Persistent AI suggestion cards with accept/reject states.
-- Provider brief export that includes sections, formations, assignments, accepted AI notes, and music compliance status.
+- Persistent AI suggestion cards with accept/reject states and coach iteration modes: cleaner, visual, safer, harder, easier, teach it, and music cue.
+- Rules/safety/compliance validation panel with a simulated score range.
+- Export station for 8-count sheet, formation cards, athlete packet, practice plan, and provider brief.
+- Version snapshots, approval capture, and coach comments.
+- Live Supabase dual-write and PWA mock fallback are both wired for the routine builder tables.
 
-Known blocker: the Supabase migration exists locally but the remote DB push is blocked until the correct database password is available. The PWA mock data layer is fully wired so product work can continue safely while that is resolved.
+Supabase status: local and remote migration history are aligned as of 2026-04-26. `supabase db push --include-all --dry-run` should be used after each schema change as the guardrail before deployment.
 
 ## Phase 1: Make Coaches Comfortable Building
 
@@ -65,6 +69,8 @@ Acceptance:
 - Practice-only/scratch tracks are visibly labeled as not competition-ready.
 - Provider brief includes accurate timestamps from the count map.
 
+Current state: local audio preview, count-map editing, proof metadata, and planning UI exist. The remaining hard requirement is the server/audio worker that produces real waveform peaks, downbeat detection, slow-down, and resilient mobile playback from stored audio.
+
 ## Phase 3: Routine Intelligence
 
 Goal: AI becomes the coach's choreo mentor instead of a generic text generator.
@@ -101,6 +107,8 @@ Acceptance:
 - Coaches can print/share the routine without cleaning up the data manually.
 - Athletes see only the assignments and media relevant to them.
 - Practice plans update from routine weak spots.
+
+Current state: coach exports exist for count sheets, formation cards, athlete packets, practice plans, and provider briefs. Next step is routing those same artifacts into athlete/parent role-specific screens instead of only the coach builder.
 
 ## Phase 5: Provider And Compliance Workflow
 
@@ -145,4 +153,3 @@ The builder should be rescored after each phase against:
 - AI usefulness: are suggestions roster-aware, explainable, and actionable?
 - Reliability: do edits persist, deploy cleanly, and survive iPad/PWA use?
 - Export value: can the output be taught, shared, and sent to providers?
-

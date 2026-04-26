@@ -52,6 +52,16 @@ const ASSIGNMENT_ROLES = [
   { id: 'alternate', label: 'Alternate' },
 ];
 
+const AI_FLAVORS = [
+  { id: 'cleaner', label: 'Cleaner' },
+  { id: 'visual', label: 'Visual' },
+  { id: 'safer', label: 'Safer' },
+  { id: 'harder', label: 'Harder' },
+  { id: 'easier', label: 'Easier' },
+  { id: 'teach', label: 'Teach it' },
+  { id: 'music', label: 'Music cue' },
+];
+
 function routineUid(prefix) {
   if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -167,6 +177,86 @@ function routineDesignReadiness(routine, countMap, license) {
   return Math.max(0, Math.min(100, 28 + coverage * 20 + variety * 20 + formationCoverage * 10 + assignmentCoverage * 9 + countConfidence * 7 + compliance * 6));
 }
 
+function buildCountSheet({ routine, countMap, athletes, skills }) {
+  const nameFor = (id) => athletes.find(a => a.id === id)?.display_name || 'Open athlete';
+  const skillFor = (id) => skills.find(s => s.id === id)?.name || '';
+  const lines = [`${routine.name} - 8-count sheet`, ''];
+  [...(routine.sections || [])].sort((a, b) => a.start_count - b.start_count).forEach((sec) => {
+    const time = `${fmtTime(countToSeconds(sec.start_count, countMap))}-${fmtTime(countToSeconds(sec.end_count + 1, countMap))}`;
+    lines.push(`${sec.start_count}-${sec.end_count} | ${sec.label || sec.section_type} | ${time}`);
+    if (sec.notes) lines.push(`Coach: ${sec.notes}`);
+    (routine.assignments || []).filter(a => a.section_id === sec.id).forEach((a) => {
+      lines.push(`  - ${nameFor(a.athlete_id)}: ${a.role || 'role'}${skillFor(a.skill_id) ? ` / ${skillFor(a.skill_id)}` : ''}${a.notes ? ` / ${a.notes}` : ''}`);
+    });
+    lines.push('');
+  });
+  return lines.join('\n');
+}
+
+function buildAthletePacket({ routine, athletes, skills }) {
+  const skillFor = (id) => skills.find(s => s.id === id)?.name || '';
+  const lines = [`${routine.name} - athlete packets`, ''];
+  athletes.forEach((athlete) => {
+    const rows = (routine.assignments || []).filter(a => a.athlete_id === athlete.id);
+    if (!rows.length) return;
+    lines.push(`${athlete.display_name}`);
+    rows.forEach((a) => {
+      const sec = (routine.sections || []).find(s => s.id === a.section_id);
+      lines.push(`  Counts ${sec?.start_count || a.count_index}-${sec?.end_count || a.count_index}: ${a.role || 'role'}${skillFor(a.skill_id) ? ` - ${skillFor(a.skill_id)}` : ''}${a.notes ? ` (${a.notes})` : ''}`);
+    });
+    lines.push('');
+  });
+  return lines.join('\n');
+}
+
+function buildFormationCards({ routine, athletes }) {
+  const nameFor = (id) => athletes.find(a => a.id === id)?.display_name || 'Athlete';
+  const lines = [`${routine.name} - formation cards`, ''];
+  [...(routine.formations || [])].sort((a, b) => a.start_count - b.start_count).forEach((formation) => {
+    lines.push(`${formation.label || 'Formation'} | Counts ${formation.start_count}-${formation.end_count}`);
+    if (formation.notes) lines.push(`Coach note: ${formation.notes}`);
+    (routine.positions || []).filter(p => p.formation_id === formation.id).sort((a, b) => Number(a.y || 0) - Number(b.y || 0)).forEach((pos) => {
+      lines.push(`  - ${nameFor(pos.athlete_id)}: ${Math.round(Number(pos.x || 0.5) * 100)}% across / ${Math.round(Number(pos.y || 0.5) * 100)}% depth${pos.role ? ` / ${pos.role}` : ''}`);
+    });
+    lines.push('');
+  });
+  return lines.join('\n') || `${routine.name} - formation cards\n\nNo formations created yet.`;
+}
+
+function buildPracticePlan({ routine, predicted, validation }) {
+  const weakRows = [...(predicted?.rows || [])].sort((a, b) => (a.score / a.max) - (b.score / b.max)).slice(0, 3);
+  const lines = [`Practice plan from ${routine.name}`, ''];
+  lines.push('Warm-up: 12 min - jumps, motions, and count-in discipline.');
+  weakRows.forEach((row, i) => {
+    const section = (routine.sections || []).find(s => s.section_type === row.id || (row.id === 'routine' && s.section_type === 'transition'));
+    lines.push(`${i + 1}. ${row.label}: 15 min - ${section ? `counts ${section.start_count}-${section.end_count}` : 'build or clean this lane'} - target ${(row.score / row.max * 100).toFixed(0)}% readiness.`);
+  });
+  validation.slice(0, 3).forEach((issue, i) => lines.push(`Fix ${i + 1}: ${issue.title} - ${issue.body}`));
+  lines.push('Full-out close: 2 marked reps, 1 music rep, film the weakest section.');
+  return lines.join('\n');
+}
+
+function validateRoutinePlan({ routine, countMap, license, athletes }) {
+  const issues = [];
+  const sectionIdsWithFormations = new Set();
+  (routine.formations || []).forEach((f) => {
+    (routine.sections || []).forEach((s) => {
+      if (f.start_count <= s.end_count && f.end_count >= s.start_count) sectionIdsWithFormations.add(s.id);
+    });
+  });
+  (routine.sections || []).forEach((s) => {
+    if (!sectionIdsWithFormations.has(s.id)) issues.push({ severity: 'amber', title: `No formation for ${s.label || s.section_type}`, body: `Counts ${s.start_count}-${s.end_count} need a teachable floor picture.` });
+    if (!(routine.assignments || []).some(a => a.section_id === s.id)) issues.push({ severity: 'amber', title: `No athlete ownership`, body: `${s.label || s.section_type} has no role/skill assignments yet.` });
+  });
+  if ((license?.proof_status || 'needs_license_proof') !== 'competition_ready') issues.push({ severity: 'red', title: 'Music proof not competition-ready', body: 'Attach provider/license proof before calling this routine complete.' });
+  if (Number(countMap?.confidence || 0) < 0.6) issues.push({ severity: 'teal', title: 'Count map needs confirmation', body: 'Confirm BPM and count 1 so provider notes and teaching packets line up.' });
+  const byAthlete = {};
+  (routine.assignments || []).forEach(a => { byAthlete[a.athlete_id] = (byAthlete[a.athlete_id] || 0) + 1; });
+  const heavy = Object.entries(byAthlete).filter(([, n]) => n >= 4).map(([id]) => athletes.find(a => a.id === id)?.display_name || 'Athlete');
+  if (heavy.length) issues.push({ severity: 'amber', title: 'Fatigue watch', body: `${heavy.slice(0, 3).join(', ')} carry several moments. Check stamina and backup options.` });
+  return issues.slice(0, 8);
+}
+
 function RoutineBuilder({ snap, navigate, pushToast }) {
   const routine = React.useMemo(() => window.HZsel.routine(), [snap._tick]);
   const team = React.useMemo(() => window.HZsel.team(), [snap._tick]);
@@ -176,6 +266,9 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   const [dragging, setDragging] = React.useState(null);
   const [positionDrag, setPositionDrag] = React.useState(null);
   const [assignmentDraft, setAssignmentDraft] = React.useState({ athlete_id: '', role: 'tumbler', skill_id: '', notes: '' });
+  const [commentDraft, setCommentDraft] = React.useState('');
+  const [activeOutput, setActiveOutput] = React.useState('count_sheet');
+  const [loopingSection, setLoopingSection] = React.useState(false);
   const [audioPreviewUrl, setAudioPreviewUrl] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
@@ -551,6 +644,34 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
         delta: -0.1,
         payload: { action: 'safer', counts: `${selectedSection.start_count}-${selectedSection.end_count}` },
       },
+      harder: {
+        title: `Higher-difficulty option`,
+        body: `Add one controlled upgrade only after the entry hits clean: make the end picture sharper before increasing travel or release difficulty.`,
+        kind: 'score_note',
+        delta: 0.35,
+        payload: { action: 'harder', counts: `${selectedSection.start_count}-${selectedSection.end_count}` },
+      },
+      easier: {
+        title: `Easier first-teach version`,
+        body: `Keep the same counts but remove one transition layer so new athletes can learn the shape without panic.`,
+        kind: 'teaching_note',
+        delta: -0.15,
+        payload: { action: 'easier', counts: `${selectedSection.start_count}-${selectedSection.end_count}` },
+      },
+      teach: {
+        title: `Teaching progression`,
+        body: `Teach counts ${selectedSection.start_count}-${selectedSection.end_count} in three chunks: mark positions, add skills without music, then loop the section with count-in.`,
+        kind: 'teaching_note',
+        delta: 0,
+        payload: { action: 'teach', counts: `${selectedSection.start_count}-${selectedSection.end_count}` },
+      },
+      music: {
+        title: `Music hit cue`,
+        body: `Ask the provider for a clean accent at count ${selectedSection.start_count} and a lift/drop moment near count ${Math.min(selectedSection.end_count, selectedSection.start_count + 7)}.`,
+        kind: 'music_cue',
+        delta: 0.1,
+        payload: { action: 'music_cue', counts: `${selectedSection.start_count}-${selectedSection.end_count}` },
+      },
     };
     const idea = byFlavor[flavor] || byFlavor.cleaner;
     const res = await persistInsert('routine_ai_suggestions', {
@@ -595,6 +716,61 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
     }
   };
 
+  const saveExport = async (exportType, title, body) => {
+    const payload = {
+      id: routineUid('re'),
+      routine_id: routine.id,
+      export_type: exportType,
+      title,
+      payload: { body, generated_at: new Date().toISOString() },
+      created_at: new Date().toISOString(),
+    };
+    const res = await persistInsert('routine_exports', payload);
+    if (res.error) pushToast && pushToast({ kind: 'error', title: 'Export not saved', body: res.error.message });
+    else pushToast && pushToast({ kind: 'success', title: 'Artifact saved', body: `${title} is now attached to this routine.` });
+  };
+
+  const createVersionSnapshot = async (status = 'draft') => {
+    const nextNumber = (routine.versions || []).length + 1;
+    const payload = {
+      id: routineUid('rv'),
+      routine_id: routine.id,
+      title: `${routine.name} v${nextNumber}`,
+      version_number: nextNumber,
+      status,
+      payload: {
+        routine,
+        readiness: designReadiness,
+        created_from: 'routine_builder',
+      },
+      created_at: new Date().toISOString(),
+      approved_at: status === 'approved' ? new Date().toISOString() : null,
+    };
+    const res = await persistInsert('routine_versions', payload);
+    if (res.error) pushToast && pushToast({ kind: 'error', title: 'Version not saved', body: res.error.message });
+    else pushToast && pushToast({ kind: 'success', title: status === 'approved' ? 'Routine approved' : 'Version snapshot saved', body: `${payload.title} captured with sections, formations, assignments, and notes.` });
+  };
+
+  const addRoutineComment = async () => {
+    const body = commentDraft.trim();
+    if (!body) return;
+    const res = await persistInsert('routine_comments', {
+      id: routineUid('rc'),
+      routine_id: routine.id,
+      section_id: selectedSection?.id || null,
+      author_label: window.HZdb?.auth?._getSession?.()?.profile?.display_name || 'Coach',
+      body,
+      status: 'open',
+      created_at: new Date().toISOString(),
+    });
+    if (res.error) pushToast && pushToast({ kind: 'error', title: 'Comment not saved', body: res.error.message });
+    else setCommentDraft('');
+  };
+
+  const resolveComment = async (comment) => {
+    await persistUpdate('routine_comments', comment.id, { status: 'resolved', resolved_at: new Date().toISOString() });
+  };
+
   const selectedSection = routine.sections.find(s => s.id === selected);
   const selectedFormation = (routine.formations || []).find(f => f.id === selectedFormationId) || formationForSection(selectedSection) || (routine.formations || [])[0] || null;
   const selectedSectionAssignments = selectedSection ? (routine.assignments || []).filter(a => a.section_id === selectedSection.id) : [];
@@ -609,6 +785,21 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   const compositionRows = SECTION_TYPES
     .filter(t => !['opening', 'transition'].includes(t.id))
     .map(t => ({ ...t, count: byType[t.id] || 0 }));
+  const validationIssues = validateRoutinePlan({ routine, countMap, license, athletes });
+  const countSheet = buildCountSheet({ routine, countMap, athletes, skills });
+  const athletePacket = buildAthletePacket({ routine, athletes, skills });
+  const formationCards = buildFormationCards({ routine, athletes });
+  const practicePlan = buildPracticePlan({ routine, predicted, validation: validationIssues });
+  const outputMap = {
+    count_sheet: { title: 'Printable 8-count sheet', exportType: 'count_sheet', body: countSheet },
+    formation_cards: { title: 'Formation cards', exportType: 'formation_cards', body: formationCards },
+    athlete_packet: { title: 'Athlete packet', exportType: 'athlete_packet', body: athletePacket || 'No athlete assignments yet.' },
+    practice_plan: { title: 'Practice plan', exportType: 'practice_plan', body: practicePlan },
+    provider_brief: { title: 'Music provider brief', exportType: 'provider_brief', body: providerBrief },
+  };
+  const activeArtifact = outputMap[activeOutput] || outputMap.count_sheet;
+  const scoreLow = Math.max(0, predicted.total - validationIssues.length * 0.25 - (license?.proof_status === 'competition_ready' ? 0 : 0.75));
+  const scoreHigh = Math.min(100, predicted.total + designReadiness / 100 * 2.4);
 
   return (
     <div>
@@ -660,6 +851,25 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
               Upload an audio file to preview here. Until then, this routine can still be built as a provider brief.
             </div>
           )}
+
+          <div className="routine-music-console">
+            <div>
+              <div className="hz-eyebrow">Playback planning</div>
+              <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>
+                {selectedSection ? `Loop ${selectedSection.label || 'selected section'} at ${fmtTime(countToSeconds(selectedSection.start_count, countMap))}` : 'Select a section to loop, slow down, and teach against counts.'}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className={`hz-btn hz-btn-sm ${loopingSection ? 'hz-btn-primary' : ''}`} onClick={() => setLoopingSection(!loopingSection)} disabled={!selectedSection}>Loop section</button>
+              <button className="hz-btn hz-btn-sm" onClick={() => pushToast && pushToast({ kind: 'info', title: 'Count-in', body: 'Count-in/metronome is staged here; server/audio worker is the next infrastructure step.' })}>8-count in</button>
+              <button className="hz-btn hz-btn-sm" onClick={() => generateSectionIdea('music')} disabled={!selectedSection}>Mark music hit</button>
+            </div>
+            <div className="routine-waveform-strip">
+              {Array.from({ length: 48 }).map((_, i) => (
+                <span key={i} style={{ height: `${18 + ((i * 17) % 38)}px`, opacity: (i + 1) % 8 === 0 ? 0.95 : 0.42 }}/>
+              ))}
+            </div>
+          </div>
 
           <div ref={timelineRef} className="hz-scroll" style={{ overflowX: 'auto', paddingBottom: 8 }}>
             <div style={{ width: gridWidth, minWidth: '100%', position: 'relative' }}>
@@ -975,10 +1185,10 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
                 <div style={{ color: 'var(--hz-dim)', fontSize: 12, lineHeight: 1.45, marginTop: 5 }}>{idea.body}</div>
               </div>
             ))}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginTop: 12 }}>
-              <button className="hz-btn hz-btn-sm" onClick={() => generateSectionIdea('cleaner')}>Cleaner</button>
-              <button className="hz-btn hz-btn-sm" onClick={() => generateSectionIdea('visual')}>Visual</button>
-              <button className="hz-btn hz-btn-sm" onClick={() => generateSectionIdea('safer')}>Safer</button>
+            <div className="routine-ai-flavor-grid">
+              {AI_FLAVORS.map(f => (
+                <button key={f.id} className="hz-btn hz-btn-sm" onClick={() => generateSectionIdea(f.id)}>{f.label}</button>
+              ))}
             </div>
             <div style={{ marginTop: 14 }}>
               <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Saved AI ideas</div>
@@ -1002,6 +1212,67 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
                 ))}
                 {!activeSuggestions.length && <div style={{ color: 'var(--hz-dim)', fontSize: 12 }}>Generate a scoped idea after selecting a section.</div>}
               </div>
+            </div>
+          </div>
+
+          <div className="hz-card">
+            <div className="hz-eyebrow">Rules, safety, and score simulation</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 8 }}>
+              <div className="hz-display" style={{ fontSize: 42 }}>{scoreLow.toFixed(1)}-{scoreHigh.toFixed(1)}</div>
+              <div style={{ color: 'var(--hz-dim)', fontSize: 12 }}>projected if execution is clean</div>
+            </div>
+            <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+              {validationIssues.slice(0, 5).map((issue, i) => (
+                <div key={i} className={`routine-validation-row routine-validation-${issue.severity}`}>
+                  <b>{issue.title}</b>
+                  <span>{issue.body}</span>
+                </div>
+              ))}
+              {!validationIssues.length && <div className="routine-validation-row routine-validation-green"><b>Builder checks clean</b><span>Formations, ownership, count map, and compliance are in a strong place.</span></div>}
+            </div>
+          </div>
+
+          <div className="hz-card">
+            <div className="hz-eyebrow">Teach and export</div>
+            <div className="routine-output-tabs">
+              {Object.entries(outputMap).map(([key, value]) => (
+                <button key={key} className={activeOutput === key ? 'active' : ''} onClick={() => setActiveOutput(key)}>{value.title.replace('Printable ', '').replace('Music ', '')}</button>
+              ))}
+            </div>
+            <pre className="routine-output-preview">{activeArtifact.body}</pre>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <button className="hz-btn" onClick={async () => { try { await navigator.clipboard.writeText(activeArtifact.body); pushToast && pushToast({ kind: 'success', title: 'Copied', body: activeArtifact.title }); } catch (err) { pushToast && pushToast({ kind: 'error', title: 'Copy failed', body: err.message }); } }}><HZIcon name="copy" size={13}/> Copy</button>
+              <button className="hz-btn hz-btn-primary" onClick={() => saveExport(activeArtifact.exportType, activeArtifact.title, activeArtifact.body)}>Save artifact</button>
+            </div>
+          </div>
+
+          <div className="hz-card">
+            <div className="hz-eyebrow">Versions and coach review</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
+              <button className="hz-btn" onClick={() => createVersionSnapshot('draft')}>Snapshot v{(routine.versions || []).length + 1}</button>
+              <button className="hz-btn hz-btn-primary" onClick={() => createVersionSnapshot('approved')}>Approve routine</button>
+            </div>
+            <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+              {(routine.versions || []).slice(0, 3).map(v => (
+                <div key={v.id} className="routine-review-row">
+                  <b>{v.title}</b>
+                  <span>{v.status} - {new Date(v.created_at).toLocaleDateString()}</span>
+                </div>
+              ))}
+              {!(routine.versions || []).length && <div style={{ color: 'var(--hz-dim)', fontSize: 12 }}>No snapshots yet. Capture one before major edits.</div>}
+            </div>
+            <div style={{ marginTop: 14 }}>
+              <textarea className="hz-input" rows="2" placeholder={selectedSection ? `Comment on ${selectedSection.label}` : 'General coach comment'} value={commentDraft} onChange={e => setCommentDraft(e.target.value)}/>
+              <button className="hz-btn hz-btn-sm" style={{ marginTop: 8 }} onClick={addRoutineComment}>Add comment</button>
+            </div>
+            <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+              {(routine.comments || []).slice(0, 4).map(c => (
+                <div key={c.id} className={`routine-review-row ${c.status === 'resolved' ? 'resolved' : ''}`}>
+                  <b>{c.author_label}</b>
+                  <span>{c.body}</span>
+                  {c.status === 'open' && <button className="hz-btn hz-btn-xs" onClick={() => resolveComment(c)}>Resolve</button>}
+                </div>
+              ))}
             </div>
           </div>
 

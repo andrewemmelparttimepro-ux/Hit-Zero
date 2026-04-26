@@ -155,6 +155,8 @@
       ['routine_assignments', 'routine_id'],
       ['routine_ai_suggestions', 'routine_id'],
       ['routine_exports', 'routine_id'],
+      ['routine_versions', 'routine_id'],
+      ['routine_comments', 'routine_id'],
     ];
     const { data: routines } = await s.from('routines').select('*').in('team_id', ids).order('created_at');
     if (routines?.length) {
