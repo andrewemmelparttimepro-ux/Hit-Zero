@@ -141,6 +141,48 @@ async function createRoutineAudioSignedUpload(routineId, fileName) {
   return payload;
 }
 
+async function routineAuthAccessToken() {
+  const cached = window.HZdb?.auth?._getSession?.();
+  if (cached?.access_token) return cached.access_token;
+  if (!window.HZsupa?.auth) return null;
+  const { data, error } = await window.HZsupa.auth.getSession();
+  if (error) throw error;
+  return data?.session?.access_token || null;
+}
+
+async function createRoutineAudioPlaybackUrl(audio) {
+  if (!audio?.storage_path) return null;
+  let brokerError = null;
+  const token = await routineAuthAccessToken();
+  if (token && window.HZ_FN_BASE && window.HZ_ANON_KEY) {
+    try {
+      const res = await fetch(`${window.HZ_FN_BASE}/functions/v1/routine-audio-playback`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          apikey: window.HZ_ANON_KEY,
+        },
+        body: JSON.stringify({ audio_asset_id: audio.id, routine_id: audio.routine_id }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Audio playback broker failed with HTTP ${res.status}`);
+      if (payload.signed_url) return payload.signed_url;
+    } catch (err) {
+      brokerError = err;
+    }
+  }
+  if (!window.HZsupa) {
+    if (brokerError) throw brokerError;
+    return null;
+  }
+  const { data, error } = await window.HZsupa.storage
+    .from('routine-audio')
+    .createSignedUrl(audio.storage_path, 60 * 60 * 6);
+  if (error) throw brokerError || error;
+  return data?.signedUrl || data?.signedURL || null;
+}
+
 function fmtTime(seconds) {
   const n = Math.max(0, Number(seconds || 0));
   const m = Math.floor(n / 60);
@@ -447,6 +489,8 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
     provider_contact: '',
   });
   const [audioPreviewUrl, setAudioPreviewUrl] = React.useState(null);
+  const [activeAudioId, setActiveAudioId] = React.useState(null);
+  const [audioPlaybackStatus, setAudioPlaybackStatus] = React.useState({ kind: 'idle', body: '' });
   const [musicNotice, setMusicNotice] = React.useState(null);
   const [audioTime, setAudioTime] = React.useState(0);
   const [audioPlaying, setAudioPlaying] = React.useState(false);
@@ -457,15 +501,79 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   const [sectionEditorPulse, setSectionEditorPulse] = React.useState(false);
   const fileInputRef = React.useRef(null);
   const audioRef = React.useRef(null);
+  const sessionAudioUrlsRef = React.useRef(new Map());
   const timelineRef = React.useRef(null);
   const formationBoardRef = React.useRef(null);
   const liveStageRef = React.useRef(null);
   const sectionEditorRef = React.useRef(null);
   const sectionLabelInputRef = React.useRef(null);
 
+  const savedAudioAssets = React.useMemo(() => {
+    return [...(routine?.audioAssets || [])].sort((a, b) => {
+      const at = new Date(a.updated_at || a.created_at || 0).getTime();
+      const bt = new Date(b.updated_at || b.created_at || 0).getTime();
+      return bt - at;
+    });
+  }, [routine?.audioAssets]);
+
+  const activeAudio = React.useMemo(() => {
+    return savedAudioAssets.find(a => a.id === activeAudioId)
+      || savedAudioAssets.find(a => a.kind === 'primary_music')
+      || savedAudioAssets[0]
+      || null;
+  }, [savedAudioAssets, activeAudioId]);
+
   React.useEffect(() => () => {
-    if (audioPreviewUrl) URL.revokeObjectURL(audioPreviewUrl);
+    if (audioPreviewUrl?.startsWith('blob:')) URL.revokeObjectURL(audioPreviewUrl);
   }, [audioPreviewUrl]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const restorePlayback = async () => {
+      setAudioPlaying(false);
+      setAudioTime(0);
+      if (!activeAudio?.id) {
+        setAudioPreviewUrl(null);
+        setAudioPlaybackStatus({ kind: 'empty', body: 'No saved music is attached to this routine yet.' });
+        return;
+      }
+      const sessionUrl = sessionAudioUrlsRef.current.get(activeAudio.id);
+      if (sessionUrl) {
+        setAudioPreviewUrl(sessionUrl);
+        setAudioPlaybackStatus({ kind: 'local', body: 'Autosaved for this browser session. Cloud upload makes it survive exit/reload.' });
+        return;
+      }
+      if (activeAudio.storage_path && window.HZsupa) {
+        setAudioPreviewUrl(null);
+        setAudioPlaybackStatus({ kind: 'loading', body: 'Restoring saved music from cloud storage...' });
+        try {
+          const url = await createRoutineAudioPlaybackUrl(activeAudio);
+          if (cancelled) return;
+          if (url) {
+            setAudioPreviewUrl(url);
+            setAudioPlaybackStatus({ kind: 'restored', body: 'Autosaved. Restored from cloud storage.' });
+          } else {
+            setAudioPlaybackStatus({ kind: 'error', body: 'The track is saved, but playback could not be restored.' });
+          }
+        } catch (err) {
+          if (!cancelled) {
+            setAudioPreviewUrl(null);
+            setAudioPlaybackStatus({ kind: 'error', body: err.message || 'The saved track needs to be reattached.' });
+          }
+        }
+        return;
+      }
+      setAudioPreviewUrl(null);
+      setAudioPlaybackStatus({
+        kind: activeAudio.local_object_url ? 'local-expired' : 'metadata',
+        body: activeAudio.local_object_url
+          ? 'This track was saved as a local draft. Reattach it once so cloud playback can be restored after exit.'
+          : 'The track metadata is saved, but no playable cloud file is attached yet.',
+      });
+    };
+    restorePlayback();
+    return () => { cancelled = true; };
+  }, [activeAudio?.id, activeAudio?.storage_path, activeAudio?.local_object_url]);
 
   React.useEffect(() => {
     if (!audioPlaying) return undefined;
@@ -482,7 +590,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
 
   const predicted = window.HZsel.predictedScore();
   const comp = window.HZsel.daysToComp();
-  const audio = routine.audioAssets?.find(a => a.kind === 'primary_music') || routine.audioAssets?.[0] || null;
+  const audio = activeAudio;
   const license = routine.licenses?.find(l => !audio || l.audio_asset_id === audio.id) || routine.licenses?.[0] || null;
   const countMap = routine.countMaps?.find(m => !audio || m.audio_asset_id === audio.id) || routine.countMaps?.[0] || { bpm: routine.bpm || 144, first_count_seconds: 0, confidence: 0 };
   const athletes = snap.athletes || [];
@@ -663,8 +771,9 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
     try {
       const issues = [];
       const nextUrl = URL.createObjectURL(file);
-      if (audioPreviewUrl) URL.revokeObjectURL(audioPreviewUrl);
+      if (audioPreviewUrl?.startsWith('blob:')) URL.revokeObjectURL(audioPreviewUrl);
       setAudioPreviewUrl(nextUrl);
+      setAudioPlaybackStatus({ kind: 'local', body: 'Reading track locally and autosaving the routine record...' });
       const mime = routineAudioMime(file);
       const duration = await new Promise((resolve) => {
         const el = document.createElement('audio');
@@ -682,11 +791,15 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
         local_object_url: nextUrl,
         status: 'local_draft',
       }, { silent: true });
+      sessionAudioUrlsRef.current.set(savedAudio.id, nextUrl);
+      setActiveAudioId(savedAudio.id);
+      setAudioPlaybackStatus({ kind: 'local', body: 'Autosaved locally. Uploading to cloud so it can restore after exit...' });
+      const liveStorage = hasLiveSupabase();
       if (savedAudio._remoteError) issues.push(`metadata sync: ${savedAudio._remoteError.message || 'remote write failed'}`);
-      if (hasLiveSupabase() && file.size > 524288000) {
+      if (liveStorage && file.size > 524288000) {
         issues.push('storage upload: file is over the 500 MB routine-audio limit');
       }
-      if (hasLiveSupabase() && file.size <= 524288000) {
+      if (liveStorage && file.size <= 524288000) {
         const broker = await createRoutineAudioSignedUpload(routine.id, file.name);
         const storagePath = broker.path;
         const upload = await window.HZsupa.storage.from(broker.bucket || 'routine-audio').uploadToSignedUrl(storagePath, broker.token, file, {
@@ -694,10 +807,15 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
         });
         if (!upload.error) {
           const storageRes = await upsertAudio({ id: savedAudio.id, storage_path: storagePath, status: 'uploaded', mime_type: mime }, { silent: true });
+          setActiveAudioId(storageRes.id || savedAudio.id);
+          setAudioPlaybackStatus({ kind: 'restored', body: 'Autosaved to cloud. This track will repopulate after exit/reload.' });
           if (storageRes._remoteError) issues.push(`storage metadata sync: ${storageRes._remoteError.message || 'remote write failed'}`);
         } else {
           issues.push(`storage upload: ${upload.error.message}`);
         }
+      }
+      if (!liveStorage) {
+        setAudioPlaybackStatus({ kind: 'local', body: 'Autosaved in this browser session. Sign in/live sync is required for reload-safe cloud playback.' });
       }
       const licenseRes = await upsertLicense({ proof_status: 'needs_license_proof' }, savedAudio.id, { silent: true });
       if (licenseRes.remoteError) issues.push(`license sync: ${licenseRes.remoteError.message || 'remote write failed'}`);
@@ -1485,10 +1603,53 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
               onEnded={() => setAudioPlaying(false)}
             />
           ) : (
-            <div style={{ padding: 18, border: '1px dashed rgba(255,255,255,0.18)', borderRadius: 14, color: 'var(--hz-dim)', marginBottom: 16 }}>
-              Upload an audio file to preview here. Until then, this routine can still be built as a provider brief.
+            <div className="routine-audio-empty">
+              <b>{audioPlaybackStatus.kind === 'loading' ? 'Restoring saved music...' : audio?.original_filename ? 'Saved track needs playback restored' : 'No playable track attached yet'}</b>
+              <span>{audioPlaybackStatus.body || 'Upload an audio file to preview here. Until then, this routine can still be built as a provider brief.'}</span>
+              <button className="hz-btn" type="button" onClick={() => fileInputRef.current?.click()} disabled={saving}>
+                {audio?.original_filename ? 'Reattach music' : 'Upload music'}
+              </button>
             </div>
           )}
+
+          <div className="routine-jukebox">
+            <div className="routine-jukebox-head">
+              <div>
+                <div className="hz-eyebrow">Saved music / jukebox</div>
+                <div className="routine-jukebox-copy">Uploads autosave to this routine. The latest cloud-saved track repopulates here after exit or refresh.</div>
+              </div>
+              <span className={`routine-jukebox-status routine-jukebox-status-${audioPlaybackStatus.kind}`}>
+                {audioPlaybackStatus.kind === 'restored' ? 'Cloud saved'
+                  : audioPlaybackStatus.kind === 'loading' ? 'Restoring'
+                  : audioPlaybackStatus.kind === 'local' ? 'Local draft'
+                  : audioPlaybackStatus.kind === 'empty' ? 'Empty'
+                  : 'Needs attention'}
+              </span>
+            </div>
+            {savedAudioAssets.length ? (
+              <div className="routine-jukebox-list">
+                {savedAudioAssets.map(asset => (
+                  <button
+                    type="button"
+                    key={asset.id}
+                    className={`routine-jukebox-track ${asset.id === audio?.id ? 'active' : ''}`}
+                    onClick={() => setActiveAudioId(asset.id)}
+                  >
+                    <span>
+                      <b>{asset.original_filename || asset.track_title || 'Untitled track'}</b>
+                      <small>{fmtFileSize(asset.size_bytes)} {asset.duration_seconds ? `- ${fmtTime(asset.duration_seconds)}` : ''}</small>
+                    </span>
+                    <em>{asset.storage_path ? 'cloud playback' : asset.status === 'local_draft' ? 'local draft' : asset.status || asset.mode || 'saved'}</em>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <button type="button" className="routine-jukebox-empty" onClick={() => fileInputRef.current?.click()}>
+                Add the first song to this routine
+              </button>
+            )}
+            {audioPlaybackStatus.body ? <div className="routine-jukebox-note">{audioPlaybackStatus.body}</div> : null}
+          </div>
 
           <div className="routine-choreo-guide">
             <span><b>1</b> Click the waveform or a section block to choose the count.</span>
