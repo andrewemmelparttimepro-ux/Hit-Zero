@@ -1898,6 +1898,8 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   const validationIssues = validateRoutinePlan({ routine, countMap, license, athletes });
   const latestAnalysis = (routine.audioJobs || [])[0] || null;
   const latestRemixRequest = (routine.remixRequests || [])[0] || null;
+  const quickFloorPresets = [8, 12, 16, 20].filter(n => n <= athletes.length);
+  const quickFloorCount = Math.min(quickAthleteCount, athletes.length || quickAthleteCount);
   const countFromSeconds = (seconds) => {
     const bpm = Math.max(1, Number(countMap?.bpm || routine.bpm || 144));
     const first = Number(countMap?.first_count_seconds || 0);
@@ -1913,6 +1915,19 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
     if (!positionsByFormation.has(pos.formation_id)) positionsByFormation.set(pos.formation_id, []);
     positionsByFormation.get(pos.formation_id).push(pos);
   });
+  const addMergedPositions = (map, list = [], source = 'formation') => {
+    list.forEach((pos, index) => {
+      if (!pos?.athlete_id || map.has(pos.athlete_id)) return;
+      map.set(pos.athlete_id, {
+        ...pos,
+        id: pos.id || `${source}-${pos.athlete_id}`,
+        label: pos.label || athleteInitials(athletes.find(a => a.id === pos.athlete_id)),
+        role: pos.role || athletes.find(a => a.id === pos.athlete_id)?.role || 'athlete',
+        x: Number(pos.x ?? pos.motionX ?? quickSpot(index, Math.max(1, list.length)).x),
+        y: Number(pos.y ?? pos.motionY ?? quickSpot(index, Math.max(1, list.length)).y),
+      });
+    });
+  };
   const routeMotionFormations = [...(routine.formations || [])]
     .filter(f => (positionsByFormation.get(f.id) || []).length)
     .sort((a, b) => Number(a.start_count || 0) - Number(b.start_count || 0) || Number(a.end_count || 0) - Number(b.end_count || 0));
@@ -1926,14 +1941,47 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
     const n = Number(count || 1);
     return routeMotionFormations.find(f => f.id !== currentFormation?.id && Number(f.start_count || 0) > n) || null;
   };
+  const mergedFormationPositions = (formation, section, count, carryPositions = []) => {
+    const merged = new Map();
+    const n = Number(count || formation?.start_count || section?.start_count || 1);
+    addMergedPositions(merged, positionsByFormation.get(formation?.id) || [], 'current');
+    addMergedPositions(merged, carryPositions, 'carry');
+    const sectionFormation = formationForSection(section);
+    if (sectionFormation?.id !== formation?.id) {
+      addMergedPositions(merged, positionsByFormation.get(sectionFormation?.id) || [], 'section');
+    }
+    const previousFormations = routeMotionFormations.filter(f => f.id !== formation?.id && Number(f.start_count || 0) <= n).reverse();
+    const nextFormations = routeMotionFormations.filter(f => f.id !== formation?.id && Number(f.start_count || 0) > n);
+    previousFormations.forEach(f => addMergedPositions(merged, positionsByFormation.get(f.id) || [], 'previous'));
+    nextFormations.forEach(f => addMergedPositions(merged, positionsByFormation.get(f.id) || [], 'next'));
+    athletes.slice(0, quickFloorCount).forEach((athlete, index) => {
+      if (merged.has(athlete.id)) return;
+      const spot = quickSpot(index, Math.max(1, quickFloorCount));
+      merged.set(athlete.id, {
+        id: `fallback-${athlete.id}`,
+        formation_id: formation?.id || sectionFormation?.id || 'live-fallback',
+        athlete_id: athlete.id,
+        label: athleteInitials(athlete),
+        role: athlete.role || 'athlete',
+        x: spot.x,
+        y: spot.y,
+        fallback: true,
+      });
+    });
+    return [...merged.values()].sort((a, b) => {
+      const ai = athletes.findIndex(athlete => athlete.id === a.athlete_id);
+      const bi = athletes.findIndex(athlete => athlete.id === b.athlete_id);
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    });
+  };
   const liveFormation = audioPlaying ? formationForCount(liveDisplayCount, liveSection) : (formationForSection(liveSection) || formationForCount(liveDisplayCount, liveSection));
-  const liveFormationPositions = liveFormation ? (positionsByFormation.get(liveFormation.id) || []) : [];
+  const liveFormationPositions = liveFormation ? mergedFormationPositions(liveFormation, liveSection, liveDisplayCount) : [];
   const liveSectionIndex = motionSections.findIndex(s => s.id === liveSection?.id);
   const nextMotionSection = liveSectionIndex >= 0 ? motionSections[liveSectionIndex + 1] : null;
   const nextMotionFormation = audioPlaying
     ? (nextFormationAfterCount(liveDisplayCount, liveFormation) || formationForSection(nextMotionSection))
     : formationForSection(nextMotionSection);
-  const nextMotionPositions = nextMotionFormation ? (positionsByFormation.get(nextMotionFormation.id) || []) : [];
+  const nextMotionPositions = nextMotionFormation ? mergedFormationPositions(nextMotionFormation, nextMotionSection || liveSection, nextMotionFormation.start_count, liveFormationPositions) : [];
   const nextMotionByAthlete = new Map(nextMotionPositions.map(p => [p.athlete_id, p]));
   const liveMotionStartSeconds = countToSeconds(liveFormation?.start_count || liveSection?.start_count || liveCount, countMap);
   const liveMotionEndSeconds = countToSeconds(nextMotionFormation?.start_count || ((liveSection?.end_count || liveCount) + 1), countMap);
@@ -1978,8 +2026,6 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   };
   const liveMarkers = (countMap?.markers || latestAnalysis?.result_payload?.markers || []).filter(m => Math.abs(Number(m.count || 0) - liveDisplayCount) <= 1).slice(0, 3);
   const audioProgress = Math.max(0, Math.min(1, Number(audioTime || 0) / Math.max(1, Number(audio?.duration_seconds || countToSeconds(routine.length_counts + 1, countMap)))));
-  const quickFloorPresets = [8, 12, 16, 20].filter(n => n <= athletes.length);
-  const quickFloorCount = Math.min(quickAthleteCount, athletes.length || quickAthleteCount);
   const complianceChecklist = deriveComplianceChecks({ audio, license, remixRequest: latestRemixRequest });
   const countSheet = buildCountSheet({ routine, countMap, athletes, skills });
   const athletePacket = buildAthletePacket({ routine, athletes, skills });
