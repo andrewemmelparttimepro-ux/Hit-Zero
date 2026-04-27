@@ -451,6 +451,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   const [audioTime, setAudioTime] = React.useState(0);
   const [audioPlaying, setAudioPlaying] = React.useState(false);
   const [quickAthleteCount, setQuickAthleteCount] = React.useState(8);
+  const [autoMotion, setAutoMotion] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
   const [sectionEditorPulse, setSectionEditorPulse] = React.useState(false);
@@ -458,12 +459,24 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   const audioRef = React.useRef(null);
   const timelineRef = React.useRef(null);
   const formationBoardRef = React.useRef(null);
+  const liveStageRef = React.useRef(null);
   const sectionEditorRef = React.useRef(null);
   const sectionLabelInputRef = React.useRef(null);
 
   React.useEffect(() => () => {
     if (audioPreviewUrl) URL.revokeObjectURL(audioPreviewUrl);
   }, [audioPreviewUrl]);
+
+  React.useEffect(() => {
+    if (!audioPlaying) return undefined;
+    let raf = 0;
+    const tick = () => {
+      if (audioRef.current) setAudioTime(audioRef.current.currentTime || 0);
+      raf = window.requestAnimationFrame(tick);
+    };
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  }, [audioPlaying]);
 
   if (!routine) return <EmptyState icon="routine" title="No routine yet" body="Start a routine for Magic."/>;
 
@@ -524,7 +537,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   React.useEffect(() => {
     if (!positionDrag) return;
     const onMove = (e) => {
-      const board = formationBoardRef.current;
+      const board = positionDrag.board === 'live' ? liveStageRef.current : formationBoardRef.current;
       if (!board) return;
       const rect = board.getBoundingClientRect();
       const x = Math.max(0.03, Math.min(0.97, (e.clientX - rect.left) / Math.max(1, rect.width)));
@@ -1331,6 +1344,30 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   const liveDisplayCount = audioPlaying ? liveCount : Number(liveSection?.start_count || liveCount);
   const liveFormation = formationForSection(liveSection) || null;
   const liveFormationPositions = liveFormation ? (routine.positions || []).filter(p => p.formation_id === liveFormation.id) : [];
+  const motionSections = [...(routine.sections || [])].sort((a, b) => Number(a.start_count || 0) - Number(b.start_count || 0));
+  const liveSectionIndex = motionSections.findIndex(s => s.id === liveSection?.id);
+  const nextMotionSection = liveSectionIndex >= 0 ? motionSections[liveSectionIndex + 1] : null;
+  const nextMotionFormation = formationForSection(nextMotionSection);
+  const nextMotionPositions = nextMotionFormation ? (routine.positions || []).filter(p => p.formation_id === nextMotionFormation.id) : [];
+  const nextMotionByAthlete = new Map(nextMotionPositions.map(p => [p.athlete_id, p]));
+  const liveSectionStartSeconds = countToSeconds(liveSection?.start_count || liveCount, countMap);
+  const liveSectionEndSeconds = countToSeconds((liveSection?.end_count || liveCount) + 1, countMap);
+  const liveSectionProgress = Math.max(0, Math.min(1, (Number(audioTime || 0) - liveSectionStartSeconds) / Math.max(0.25, liveSectionEndSeconds - liveSectionStartSeconds)));
+  const liveMotionBlend = autoMotion && audioPlaying ? liveSectionProgress * liveSectionProgress * (3 - 2 * liveSectionProgress) : 0;
+  const liveMotionPositions = liveFormationPositions.map((pos, index) => {
+    const next = nextMotionByAthlete.get(pos.athlete_id);
+    const baseX = Number(pos.x || 0.5);
+    const baseY = Number(pos.y || 0.5);
+    const targetX = next ? Number(next.x || baseX) : baseX;
+    const targetY = next ? Number(next.y || baseY) : baseY;
+    const ripple = autoMotion && audioPlaying ? Math.sin((Number(audioTime || 0) * 3.2) + index * 0.85) * 0.012 : 0;
+    const lift = autoMotion && audioPlaying ? Math.cos((Number(audioTime || 0) * 2.6) + index * 0.65) * 0.009 : 0;
+    return {
+      ...pos,
+      motionX: Math.max(0.04, Math.min(0.96, baseX + (targetX - baseX) * liveMotionBlend + ripple)),
+      motionY: Math.max(0.06, Math.min(0.94, baseY + (targetY - baseY) * liveMotionBlend + lift)),
+    };
+  });
   const liveMarkers = (countMap?.markers || latestAnalysis?.result_payload?.markers || []).filter(m => Math.abs(Number(m.count || 0) - liveDisplayCount) <= 1).slice(0, 3);
   const audioProgress = Math.max(0, Math.min(1, Number(audioTime || 0) / Math.max(1, Number(audio?.duration_seconds || countToSeconds(routine.length_counts + 1, countMap)))));
   const quickFloorPresets = [8, 12, 16, 20].filter(n => n <= athletes.length);
@@ -1456,6 +1493,12 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
                 </select>
               </div>
               <div>
+                <div className="hz-label" style={{ color: 'var(--hz-dim)', marginBottom: 6 }}>Auto</div>
+                <button className={`hz-btn routine-auto-motion-btn ${autoMotion ? 'hz-btn-primary' : ''}`} onClick={() => setAutoMotion(!autoMotion)}>
+                  {autoMotion ? 'Ferro-flow on' : 'Motion off'}
+                </button>
+              </div>
+              <div>
                 <div className="hz-label" style={{ color: 'var(--hz-dim)', marginBottom: 6 }}>Quick floor</div>
                 <div className="routine-quick-counts">
                   {quickFloorPresets.map(n => (
@@ -1473,17 +1516,19 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
                 </button>
               </div>
             </div>
-            <div className="routine-live-stage">
+            <div ref={liveStageRef} className="routine-live-stage">
               <div className="routine-formation-centerline"/>
               <div className="routine-formation-front">Front / judges</div>
-              {liveFormationPositions.map((pos) => {
+              {liveMotionPositions.map((pos) => {
                 const athlete = athletes.find(a => a.id === pos.athlete_id);
+                const active = selectedPositionId === pos.id;
                 return (
                   <button
                     key={pos.id}
-                    className="routine-athlete-dot routine-athlete-dot-live"
+                    className={`routine-athlete-dot routine-athlete-dot-live ${active ? 'active' : ''} ${autoMotion && audioPlaying ? 'is-flowing' : ''}`}
                     onClick={() => { setSelectedFormationId(liveFormation.id); setSelectedPositionId(pos.id); }}
-                    style={{ left: `${Number(pos.x || 0.5) * 100}%`, top: `${Number(pos.y || 0.5) * 100}%` }}
+                    onPointerDown={(e) => { e.preventDefault(); setSelectedFormationId(liveFormation.id); setSelectedPositionId(pos.id); setPositionDrag({ positionId: pos.id, board: 'live' }); }}
+                    style={{ left: `${Number(pos.motionX || pos.x || 0.5) * 100}%`, top: `${Number(pos.motionY || pos.y || 0.5) * 100}%` }}
                     title={`${athleteName(pos.athlete_id)} - ${pos.role || 'athlete'}`}
                   >
                     {pos.label || athleteInitials(athlete)}
@@ -1801,7 +1846,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
                         key={pos.id}
                         className={`routine-athlete-dot ${active ? 'active' : ''}`}
                         onClick={() => setSelectedPositionId(pos.id)}
-                        onPointerDown={(e) => { e.preventDefault(); setSelectedPositionId(pos.id); setPositionDrag({ positionId: pos.id }); }}
+                        onPointerDown={(e) => { e.preventDefault(); setSelectedPositionId(pos.id); setPositionDrag({ positionId: pos.id, board: 'formation' }); }}
                         style={{ left: `${Number(pos.x || 0.5) * 100}%`, top: `${Number(pos.y || 0.5) * 100}%` }}
                         title={`${athleteName(pos.athlete_id)} - ${pos.role || 'athlete'}`}
                       >
