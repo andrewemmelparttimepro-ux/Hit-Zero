@@ -107,20 +107,37 @@ function routineStorageProgramId(team) {
 
 async function invokeRoutineAudioWorker(jobId) {
   if (!window.HZ_FN_BASE || !window.HZ_ANON_KEY) throw new Error('Audio worker endpoint is not configured.');
-  const { data: authData, error: authError } = await window.HZsupa.auth.getSession();
-  if (authError) throw authError;
-  const token = authData?.session?.access_token || window.HZ_ANON_KEY;
   const res = await fetch(`${window.HZ_FN_BASE}/functions/v1/routine-audio-worker`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${window.HZ_ANON_KEY}`,
       apikey: window.HZ_ANON_KEY,
     },
     body: JSON.stringify({ job_id: jobId }),
   });
   const payload = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(payload.error || `Audio worker failed with HTTP ${res.status}`);
+  return payload;
+}
+
+async function createRoutineAudioSignedUpload(routineId, fileName) {
+  if (!window.HZ_FN_BASE || !window.HZ_ANON_KEY) throw new Error('Audio upload broker is not configured.');
+  const { data: authData, error: authError } = await window.HZsupa.auth.getSession();
+  if (authError) throw authError;
+  const token = authData?.session?.access_token;
+  if (!token) throw new Error('Your sign-in session expired. Sign in again and retry the upload.');
+  const res = await fetch(`${window.HZ_FN_BASE}/functions/v1/routine-audio-upload`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      apikey: window.HZ_ANON_KEY,
+    },
+    body: JSON.stringify({ routine_id: routineId, file_name: fileName }),
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(payload.error || `Audio upload broker failed with HTTP ${res.status}`);
   return payload;
 }
 
@@ -431,9 +448,11 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   });
   const [audioPreviewUrl, setAudioPreviewUrl] = React.useState(null);
   const [musicNotice, setMusicNotice] = React.useState(null);
+  const [audioTime, setAudioTime] = React.useState(0);
   const [saving, setSaving] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
   const fileInputRef = React.useRef(null);
+  const audioRef = React.useRef(null);
   const timelineRef = React.useRef(null);
   const formationBoardRef = React.useRef(null);
 
@@ -468,7 +487,6 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
       .filter(f => f.start_count <= section.end_count && f.end_count >= section.start_count)
       .sort((a, b) => (b.end_count - b.start_count) - (a.end_count - a.start_count))[0] || null;
   };
-
   React.useEffect(() => {
     if (!dragging) return;
     const onMove = (e) => {
@@ -647,19 +665,14 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
         status: 'local_draft',
       }, { silent: true });
       if (savedAudio._remoteError) issues.push(`metadata sync: ${savedAudio._remoteError.message || 'remote write failed'}`);
-      const storageProgramId = routineStorageProgramId(team);
-      if (hasLiveSupabase() && !storageProgramId) {
-        issues.push('storage upload: no valid program id was available for the private bucket path');
-      }
-      if (hasLiveSupabase() && storageProgramId && file.size > 524288000) {
+      if (hasLiveSupabase() && file.size > 524288000) {
         issues.push('storage upload: file is over the 500 MB routine-audio limit');
       }
-      if (hasLiveSupabase() && storageProgramId && file.size <= 524288000) {
-        const safeName = file.name.replace(/[^a-z0-9._-]+/gi, '-').toLowerCase();
-        const storagePath = `${storageProgramId}/${routine.id}/${Date.now()}-${safeName}`;
-        const upload = await window.HZsupa.storage.from('routine-audio').upload(storagePath, file, {
+      if (hasLiveSupabase() && file.size <= 524288000) {
+        const broker = await createRoutineAudioSignedUpload(routine.id, file.name);
+        const storagePath = broker.path;
+        const upload = await window.HZsupa.storage.from(broker.bucket || 'routine-audio').uploadToSignedUrl(storagePath, broker.token, file, {
           contentType: mime,
-          upsert: true,
         });
         if (!upload.error) {
           const storageRes = await upsertAudio({ id: savedAudio.id, storage_path: storagePath, status: 'uploaded', mime_type: mime }, { silent: true });
@@ -1097,6 +1110,17 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   const validationIssues = validateRoutinePlan({ routine, countMap, license, athletes });
   const latestAnalysis = (routine.audioJobs || [])[0] || null;
   const latestRemixRequest = (routine.remixRequests || [])[0] || null;
+  const countFromSeconds = (seconds) => {
+    const bpm = Math.max(1, Number(countMap?.bpm || routine.bpm || 144));
+    const first = Number(countMap?.first_count_seconds || 0);
+    return Math.max(1, Math.min(routine.length_counts || 1, Math.floor((Number(seconds || 0) - first) / (8 * (60 / bpm))) + 1));
+  };
+  const liveCount = countFromSeconds(audioTime);
+  const liveSection = (routine.sections || []).find(s => liveCount >= s.start_count && liveCount <= s.end_count) || selectedSection || (routine.sections || [])[0] || null;
+  const liveFormation = formationForSection(liveSection) || selectedFormation || null;
+  const liveFormationPositions = liveFormation ? (routine.positions || []).filter(p => p.formation_id === liveFormation.id) : [];
+  const liveMarkers = (countMap?.markers || latestAnalysis?.result_payload?.markers || []).filter(m => Math.abs(Number(m.count || 0) - liveCount) <= 1).slice(0, 3);
+  const audioProgress = Math.max(0, Math.min(1, Number(audioTime || 0) / Math.max(1, Number(audio?.duration_seconds || countToSeconds(routine.length_counts + 1, countMap)))));
   const complianceChecklist = deriveComplianceChecks({ audio, license, remixRequest: latestRemixRequest });
   const countSheet = buildCountSheet({ routine, countMap, athletes, skills });
   const athletePacket = buildAthletePacket({ routine, athletes, skills });
@@ -1163,12 +1187,68 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
           </div>
 
           {audioPreviewUrl ? (
-            <audio controls src={audioPreviewUrl} style={{ width: '100%', marginBottom: 16 }}/>
+            <audio
+              ref={audioRef}
+              controls
+              src={audioPreviewUrl}
+              style={{ width: '100%', marginBottom: 16 }}
+              onTimeUpdate={e => setAudioTime(e.currentTarget.currentTime || 0)}
+              onSeeked={e => setAudioTime(e.currentTarget.currentTime || 0)}
+              onLoadedMetadata={e => setAudioTime(e.currentTarget.currentTime || 0)}
+            />
           ) : (
             <div style={{ padding: 18, border: '1px dashed rgba(255,255,255,0.18)', borderRadius: 14, color: 'var(--hz-dim)', marginBottom: 16 }}>
               Upload an audio file to preview here. Until then, this routine can still be built as a provider brief.
             </div>
           )}
+
+          <div className="routine-live-visualizer">
+            <div className="routine-live-head">
+              <div>
+                <div className="hz-eyebrow">Live formation visualizer</div>
+                <div className="routine-live-title">
+                  Count {liveCount} · {liveSection?.label || 'No section selected'}
+                </div>
+                <div className="routine-live-sub">
+                  {liveFormation ? `${liveFormation.label || 'Formation'} · ${liveFormationPositions.length} athletes on mat` : 'Create a formation below, then this mat follows the music.'}
+                </div>
+              </div>
+              <div className="routine-live-clock">
+                <b>{fmtTime(audioTime)}</b>
+                <span>{Math.round(audioProgress * 100)}%</span>
+              </div>
+            </div>
+            <div className="routine-live-progress">
+              <span style={{ width: `${audioProgress * 100}%` }}/>
+            </div>
+            <div className="routine-live-stage">
+              <div className="routine-formation-centerline"/>
+              <div className="routine-formation-front">Front / judges</div>
+              {liveFormationPositions.map((pos) => {
+                const athlete = athletes.find(a => a.id === pos.athlete_id);
+                return (
+                  <button
+                    key={pos.id}
+                    className="routine-athlete-dot routine-athlete-dot-live"
+                    onClick={() => { setSelectedFormationId(liveFormation.id); setSelectedPositionId(pos.id); }}
+                    style={{ left: `${Number(pos.x || 0.5) * 100}%`, top: `${Number(pos.y || 0.5) * 100}%` }}
+                    title={`${athleteName(pos.athlete_id)} - ${pos.role || 'athlete'}`}
+                  >
+                    {pos.label || athleteInitials(athlete)}
+                  </button>
+                );
+              })}
+              {!liveFormationPositions.length && (
+                <div className="routine-live-empty">
+                  Select a section and add athletes to its formation board. This space becomes the coach view for where every girl should be on the music.
+                </div>
+              )}
+            </div>
+            <div className="routine-live-footer">
+              <span>{liveMarkers.length ? liveMarkers.map(m => `${m.kind || 'hit'} @ ${fmtTime(m.seconds || countToSeconds(m.count, countMap))}`).join(' · ') : 'No music hit marker on this count yet.'}</span>
+              <button className="hz-btn hz-btn-xs" onClick={() => liveSection && setSelected(liveSection.id)}>Edit this section</button>
+            </div>
+          </div>
 
           {musicNotice && (
             <div className={`routine-upload-notice routine-upload-notice-${musicNotice.kind}`} style={{ marginBottom: 16 }}>
