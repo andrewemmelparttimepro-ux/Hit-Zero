@@ -453,10 +453,13 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   const [quickAthleteCount, setQuickAthleteCount] = React.useState(8);
   const [saving, setSaving] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
+  const [sectionEditorPulse, setSectionEditorPulse] = React.useState(false);
   const fileInputRef = React.useRef(null);
   const audioRef = React.useRef(null);
   const timelineRef = React.useRef(null);
   const formationBoardRef = React.useRef(null);
+  const sectionEditorRef = React.useRef(null);
+  const sectionLabelInputRef = React.useRef(null);
 
   React.useEffect(() => () => {
     if (audioPreviewUrl) URL.revokeObjectURL(audioPreviewUrl);
@@ -871,6 +874,24 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
     setSelectedFormationId(payload.id);
     pushToast && pushToast({ kind: 'success', title: 'Formation added', body: 'Now drop athletes onto the mat and drag them into place.' });
     return payload;
+  };
+
+  const openSectionEditor = (section = selectedSection || liveSection) => {
+    if (!section) {
+      pushToast && pushToast({ kind: 'info', title: 'Pick a section first', body: 'Choose a section before editing its counts and notes.' });
+      return;
+    }
+    setAudioPlaying(false);
+    setSelected(section.id);
+    const existing = formationForSection(section);
+    setSelectedFormationId(existing?.id || '');
+    setSectionEditorPulse(true);
+    window.setTimeout(() => {
+      sectionEditorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      sectionEditorRef.current?.focus?.({ preventScroll: true });
+      window.setTimeout(() => sectionLabelInputRef.current?.focus?.({ preventScroll: true }), 260);
+      window.setTimeout(() => setSectionEditorPulse(false), 1400);
+    }, 0);
   };
 
   const updateFormation = async (id, patch) => {
@@ -1477,7 +1498,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
             </div>
             <div className="routine-live-footer">
               <span>{liveMarkers.length ? liveMarkers.map(m => `${m.kind || 'hit'} @ ${fmtTime(m.seconds || countToSeconds(m.count, countMap))}`).join(' · ') : 'No music hit marker on this count yet.'}</span>
-              <button className="hz-btn hz-btn-xs" onClick={() => liveSection && setSelected(liveSection.id)}>Edit this section</button>
+              <button className="hz-btn hz-btn-xs" onClick={() => openSectionEditor(liveSection)}>Edit this section</button>
             </div>
           </div>
 
@@ -1669,7 +1690,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
 
       <div className="routine-builder-main">
         <div style={{ display: 'grid', gap: 18, alignContent: 'start' }}>
-        <div className="hz-card">
+        <div ref={sectionEditorRef} tabIndex={-1} className={`hz-card routine-section-editor-card ${sectionEditorPulse ? 'routine-section-editor-card-active' : ''}`} data-testid="routine-section-editor">
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'center', marginBottom: 16 }}>
             <div>
               <div className="hz-eyebrow">Section editor</div>
@@ -1683,7 +1704,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
               <div className="routine-builder-section-form" style={{ marginBottom: 16 }}>
                 <div>
                   <div className="hz-label" style={{ color: 'var(--hz-dim)', marginBottom: 6 }}>Label</div>
-                  <input className="hz-input" value={selectedSection.label || ''} onChange={e => updateSection(selectedSection.id, { label: e.target.value })}/>
+                  <input ref={sectionLabelInputRef} className="hz-input" value={selectedSection.label || ''} onChange={e => updateSection(selectedSection.id, { label: e.target.value })}/>
                 </div>
                 <div>
                   <div className="hz-label" style={{ color: 'var(--hz-dim)', marginBottom: 6 }}>Type</div>
