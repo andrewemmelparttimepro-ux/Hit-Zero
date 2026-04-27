@@ -494,6 +494,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   const [selectedPositionId, setSelectedPositionId] = React.useState(null);
   const [dragging, setDragging] = React.useState(null);
   const [positionDrag, setPositionDrag] = React.useState(null);
+  const [liveRouteDraft, setLiveRouteDraft] = React.useState(null);
   const [assignmentDraft, setAssignmentDraft] = React.useState({ athlete_id: '', role: 'tumbler', skill_id: '', notes: '' });
   const [commentDraft, setCommentDraft] = React.useState('');
   const [activeOutput, setActiveOutput] = React.useState('count_sheet');
@@ -670,20 +671,42 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
 
   React.useEffect(() => {
     if (!positionDrag) return;
+    let lastSpot = null;
+    let finished = false;
     const onMove = (e) => {
+      const point = e.touches?.[0] || e.changedTouches?.[0] || e;
       const board = positionDrag.board === 'live' ? liveStageRef.current : formationBoardRef.current;
       if (!board) return;
       const rect = board.getBoundingClientRect();
-      const x = Math.max(0.03, Math.min(0.97, (e.clientX - rect.left) / Math.max(1, rect.width)));
-      const y = Math.max(0.05, Math.min(0.95, (e.clientY - rect.top) / Math.max(1, rect.height)));
-      persistUpdate('routine_positions', positionDrag.positionId, { x, y });
+      const x = Math.max(0.03, Math.min(0.97, (point.clientX - rect.left) / Math.max(1, rect.width)));
+      const y = Math.max(0.05, Math.min(0.95, (point.clientY - rect.top) / Math.max(1, rect.height)));
+      lastSpot = { x, y };
+      if (positionDrag.captureRoute) {
+        setLiveRouteDraft({ positionId: positionDrag.positionId, athleteId: positionDrag.athleteId, x, y, count: positionDrag.playheadCount });
+      } else {
+        persistUpdate('routine_positions', positionDrag.positionId, { x, y });
+      }
     };
-    const onUp = () => setPositionDrag(null);
+    const onUp = () => {
+      if (finished) return;
+      finished = true;
+      if (positionDrag.captureRoute && lastSpot) captureLiveRouteWaypoint(positionDrag, lastSpot);
+      setLiveRouteDraft(null);
+      setPositionDrag(null);
+    };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onUp);
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onUp);
     };
   }, [positionDrag]);
 
@@ -1088,6 +1111,91 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   const updateFormation = async (id, patch) => {
     const res = await persistUpdate('routine_formations', id, { ...patch, updated_at: new Date().toISOString() });
     if (res.error) pushToast && pushToast({ kind: 'error', title: 'Formation not saved', body: res.error.message });
+  };
+
+  const routeFormationAtCount = (count) => {
+    const n = Number(count || 1);
+    return (routine.formations || [])
+      .filter(f => Number(f.start_count) === n && Number(f.end_count) === n && /route keyframe/i.test(String(f.notes || f.label || '')))
+      .sort((a, b) => new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0))[0] || null;
+  };
+
+  const ensureRouteFormationAtCount = async (section, count, sourceFormation) => {
+    const safeCount = Math.max(1, Math.min(Number(count || 1), Number(routine.length_counts || 1)));
+    const existing = routeFormationAtCount(safeCount);
+    if (existing) return existing;
+    const payload = {
+      id: routineUid('rf'),
+      routine_id: routine.id,
+      label: `${section?.label || sourceFormation?.label || 'Live route'} @ count ${safeCount}`,
+      start_count: safeCount,
+      end_count: safeCount,
+      floor_width: sourceFormation?.floor_width || 54,
+      floor_depth: sourceFormation?.floor_depth || 42,
+      notes: `Route keyframe captured from live drag at count ${safeCount}.`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const res = await persistInsert('routine_formations', payload);
+    if (res.error) throw res.error;
+    return payload;
+  };
+
+  const upsertRoutePosition = async (formation, snapshot, overrideSpot = null) => {
+    const athleteId = snapshot.athlete_id;
+    if (!formation || !athleteId) return null;
+    const existing = (routine.positions || []).find(p => p.formation_id === formation.id && p.athlete_id === athleteId);
+    const patch = {
+      athlete_id: athleteId,
+      label: snapshot.label || athleteInitials(athletes.find(a => a.id === athleteId)),
+      role: snapshot.role || athletes.find(a => a.id === athleteId)?.role || 'athlete',
+      x: Math.max(0.04, Math.min(0.96, Number(overrideSpot?.x ?? snapshot.x ?? 0.5))),
+      y: Math.max(0.06, Math.min(0.94, Number(overrideSpot?.y ?? snapshot.y ?? 0.5))),
+    };
+    if (existing) {
+      await persistUpdate('routine_positions', existing.id, patch, { silent: true });
+      return existing.id;
+    }
+    const payload = {
+      id: routineUid('rp'),
+      formation_id: formation.id,
+      ...patch,
+      created_at: new Date().toISOString(),
+    };
+    const res = await persistInsert('routine_positions', payload, { silent: true });
+    if (res.error) throw res.error;
+    return payload.id;
+  };
+
+  const captureLiveRouteWaypoint = async (drag, spot) => {
+    if (!drag?.captureRoute || !drag?.athleteId) return;
+    try {
+      const count = Math.max(1, Math.min(Number(drag.playheadCount || liveDisplayCount || 1), Number(routine.length_counts || 1)));
+      const section = (routine.sections || []).find(s => s.id === drag.sectionId) || sectionForCount(count);
+      const sourceFormation = (routine.formations || []).find(f => f.id === drag.formationId) || formationForSection(section);
+      const routeFormation = await ensureRouteFormationAtCount(section, count, sourceFormation);
+      const baseSnapshots = Array.isArray(drag.routeSnapshot) && drag.routeSnapshot.length
+        ? drag.routeSnapshot
+        : (routine.positions || []).filter(p => p.formation_id === sourceFormation?.id).map(p => ({
+            athlete_id: p.athlete_id,
+            label: p.label,
+            role: p.role,
+            x: Number(p.x || 0.5),
+            y: Number(p.y || 0.5),
+          }));
+      for (const snapshot of baseSnapshots) {
+        await upsertRoutePosition(routeFormation, snapshot, snapshot.athlete_id === drag.athleteId ? spot : null);
+      }
+      setSelected(section?.id || selected);
+      setSelectedFormationId(routeFormation.id);
+      pushToast && pushToast({
+        kind: 'success',
+        title: 'Route captured',
+        body: `${athleteName(drag.athleteId)} now has a saved path point at count ${count}. Replay the music to see the new route.`,
+      });
+    } catch (err) {
+      pushToast && pushToast({ kind: 'error', title: 'Route capture failed', body: err.message || 'Could not save that live drag point.' });
+    }
   };
 
   const addAthleteToFormation = async (athlete) => {
@@ -1760,17 +1868,37 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   const playheadSection = (routine.sections || []).find(s => liveCount >= s.start_count && liveCount <= s.end_count) || (routine.sections || [])[0] || null;
   const liveSection = audioPlaying ? playheadSection : (selectedSection || playheadSection);
   const liveDisplayCount = audioPlaying ? liveCount : Number(liveSection?.start_count || liveCount);
-  const liveFormation = formationForSection(liveSection) || null;
-  const liveFormationPositions = liveFormation ? (routine.positions || []).filter(p => p.formation_id === liveFormation.id) : [];
   const motionSections = [...(routine.sections || [])].sort((a, b) => Number(a.start_count || 0) - Number(b.start_count || 0));
+  const positionsByFormation = new Map();
+  (routine.positions || []).forEach((pos) => {
+    if (!positionsByFormation.has(pos.formation_id)) positionsByFormation.set(pos.formation_id, []);
+    positionsByFormation.get(pos.formation_id).push(pos);
+  });
+  const routeMotionFormations = [...(routine.formations || [])]
+    .filter(f => (positionsByFormation.get(f.id) || []).length)
+    .sort((a, b) => Number(a.start_count || 0) - Number(b.start_count || 0) || Number(a.end_count || 0) - Number(b.end_count || 0));
+  const formationForCount = (count, section = null) => {
+    const n = Number(count || 1);
+    const previous = routeMotionFormations.filter(f => Number(f.start_count || 0) <= n);
+    if (previous.length) return previous[previous.length - 1];
+    return formationForSection(section) || routeMotionFormations[0] || null;
+  };
+  const nextFormationAfterCount = (count, currentFormation = null) => {
+    const n = Number(count || 1);
+    return routeMotionFormations.find(f => f.id !== currentFormation?.id && Number(f.start_count || 0) > n) || null;
+  };
+  const liveFormation = audioPlaying ? formationForCount(liveDisplayCount, liveSection) : (formationForSection(liveSection) || formationForCount(liveDisplayCount, liveSection));
+  const liveFormationPositions = liveFormation ? (positionsByFormation.get(liveFormation.id) || []) : [];
   const liveSectionIndex = motionSections.findIndex(s => s.id === liveSection?.id);
   const nextMotionSection = liveSectionIndex >= 0 ? motionSections[liveSectionIndex + 1] : null;
-  const nextMotionFormation = formationForSection(nextMotionSection);
-  const nextMotionPositions = nextMotionFormation ? (routine.positions || []).filter(p => p.formation_id === nextMotionFormation.id) : [];
+  const nextMotionFormation = audioPlaying
+    ? (nextFormationAfterCount(liveDisplayCount, liveFormation) || formationForSection(nextMotionSection))
+    : formationForSection(nextMotionSection);
+  const nextMotionPositions = nextMotionFormation ? (positionsByFormation.get(nextMotionFormation.id) || []) : [];
   const nextMotionByAthlete = new Map(nextMotionPositions.map(p => [p.athlete_id, p]));
-  const liveSectionStartSeconds = countToSeconds(liveSection?.start_count || liveCount, countMap);
-  const liveSectionEndSeconds = countToSeconds((liveSection?.end_count || liveCount) + 1, countMap);
-  const liveSectionProgress = Math.max(0, Math.min(1, (Number(audioTime || 0) - liveSectionStartSeconds) / Math.max(0.25, liveSectionEndSeconds - liveSectionStartSeconds)));
+  const liveMotionStartSeconds = countToSeconds(liveFormation?.start_count || liveSection?.start_count || liveCount, countMap);
+  const liveMotionEndSeconds = countToSeconds(nextMotionFormation?.start_count || ((liveSection?.end_count || liveCount) + 1), countMap);
+  const liveSectionProgress = Math.max(0, Math.min(1, (Number(audioTime || 0) - liveMotionStartSeconds) / Math.max(0.25, liveMotionEndSeconds - liveMotionStartSeconds)));
   const liveMotionBlend = autoMotion && audioPlaying ? liveSectionProgress * liveSectionProgress * (3 - 2 * liveSectionProgress) : 0;
   const liveMotionPositions = liveFormationPositions.map((pos, index) => {
     const next = nextMotionByAthlete.get(pos.athlete_id);
@@ -1780,12 +1908,35 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
     const targetY = next ? Number(next.y || baseY) : baseY;
     const ripple = autoMotion && audioPlaying ? Math.sin((Number(audioTime || 0) * 3.2) + index * 0.85) * 0.012 : 0;
     const lift = autoMotion && audioPlaying ? Math.cos((Number(audioTime || 0) * 2.6) + index * 0.65) * 0.009 : 0;
+    const draft = liveRouteDraft && (liveRouteDraft.positionId === pos.id || liveRouteDraft.athleteId === pos.athlete_id) ? liveRouteDraft : null;
     return {
       ...pos,
-      motionX: Math.max(0.04, Math.min(0.96, baseX + (targetX - baseX) * liveMotionBlend + ripple)),
-      motionY: Math.max(0.06, Math.min(0.94, baseY + (targetY - baseY) * liveMotionBlend + lift)),
+      motionX: draft ? draft.x : Math.max(0.04, Math.min(0.96, baseX + (targetX - baseX) * liveMotionBlend + ripple)),
+      motionY: draft ? draft.y : Math.max(0.06, Math.min(0.94, baseY + (targetY - baseY) * liveMotionBlend + lift)),
     };
   });
+  const routeKeyframeCount = routeMotionFormations.filter(f => /route keyframe/i.test(String(f.notes || f.label || ''))).length;
+  const beginLivePositionDrag = (event, pos) => {
+    event.preventDefault();
+    setSelectedFormationId(liveFormation.id);
+    setSelectedPositionId(pos.id);
+    setPositionDrag({
+      positionId: pos.id,
+      board: 'live',
+      captureRoute: !!audioPlaying,
+      playheadCount: liveDisplayCount,
+      sectionId: liveSection?.id || null,
+      formationId: liveFormation?.id || null,
+      athleteId: pos.athlete_id,
+      routeSnapshot: liveMotionPositions.map(p => ({
+        athlete_id: p.athlete_id,
+        label: p.label,
+        role: p.role,
+        x: Number(p.motionX || p.x || 0.5),
+        y: Number(p.motionY || p.y || 0.5),
+      })),
+    });
+  };
   const liveMarkers = (countMap?.markers || latestAnalysis?.result_payload?.markers || []).filter(m => Math.abs(Number(m.count || 0) - liveDisplayCount) <= 1).slice(0, 3);
   const audioProgress = Math.max(0, Math.min(1, Number(audioTime || 0) / Math.max(1, Number(audio?.duration_seconds || countToSeconds(routine.length_counts + 1, countMap)))));
   const quickFloorPresets = [8, 12, 16, 20].filter(n => n <= athletes.length);
@@ -1976,7 +2127,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
                   Count {liveDisplayCount} · {liveSection?.label || 'No section selected'}
                 </div>
                 <div className="routine-live-sub">
-                  {liveFormation ? `Drag dots here. ${liveFormation.label || 'Formation'} · ${liveFormationPositions.length} athletes on mat` : 'Pick a section, then Auto-place or Auto-flow to create the first floor picture.'}
+                  {liveFormation ? `Drag dots here. ${liveFormation.label || 'Formation'} · ${liveFormationPositions.length} athletes on mat · ${routeKeyframeCount} route keyframes` : 'Pick a section, then Auto-place or Auto-flow to create the first floor picture.'}
                 </div>
               </div>
               <div className="routine-live-clock">
@@ -2026,7 +2177,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
               <div className="routine-formation-front">Front / judges</div>
               {!!liveMotionPositions.length && (
                 <div className="routine-live-drag-hint">
-                  Drag athletes here. Play the track to watch travel.
+                  {audioPlaying ? `Drag while playing to record a route point at count ${liveDisplayCount}.` : 'Drag athletes here. Press play, then drag to record route points.'}
                 </div>
               )}
               {liveMotionPositions.map((pos) => {
@@ -2035,9 +2186,10 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
                 return (
                   <button
                     key={pos.id}
-                    className={`routine-athlete-dot routine-athlete-dot-live ${active ? 'active' : ''} ${autoMotion && audioPlaying ? 'is-flowing' : ''}`}
+                    className={`routine-athlete-dot routine-athlete-dot-live ${active ? 'active' : ''} ${autoMotion && audioPlaying ? 'is-flowing' : ''} ${liveRouteDraft?.athleteId === pos.athlete_id ? 'is-routing' : ''}`}
                     onClick={() => { setSelectedFormationId(liveFormation.id); setSelectedPositionId(pos.id); }}
-                    onPointerDown={(e) => { e.preventDefault(); setSelectedFormationId(liveFormation.id); setSelectedPositionId(pos.id); setPositionDrag({ positionId: pos.id, board: 'live' }); }}
+                    onMouseDown={(e) => beginLivePositionDrag(e, pos)}
+                    onTouchStart={(e) => beginLivePositionDrag(e, pos)}
                     style={{ left: `${Number(pos.motionX || pos.x || 0.5) * 100}%`, top: `${Number(pos.motionY || pos.y || 0.5) * 100}%` }}
                     title={`${athleteName(pos.athlete_id)} - ${pos.role || 'athlete'}`}
                   >
@@ -2052,7 +2204,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
               )}
             </div>
             <div className="routine-live-footer">
-              <span>{liveMarkers.length ? liveMarkers.map(m => `${m.kind || 'hit'} @ ${fmtTime(m.seconds || countToSeconds(m.count, countMap))}`).join(' · ') : 'No music hit marker on this count yet.'}</span>
+              <span>{audioPlaying ? `Route capture armed · drag a dot to save count ${liveDisplayCount}` : (liveMarkers.length ? liveMarkers.map(m => `${m.kind || 'hit'} @ ${fmtTime(m.seconds || countToSeconds(m.count, countMap))}`).join(' · ') : 'No music hit marker on this count yet.')}</span>
               <button className="hz-btn hz-btn-xs" onClick={() => openSectionEditor(liveSection)}>Edit this section</button>
             </div>
           </div>
