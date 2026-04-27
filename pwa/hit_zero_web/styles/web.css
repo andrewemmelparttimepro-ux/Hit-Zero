@@ -492,14 +492,19 @@ body {
   box-shadow: 0 0 0 8px rgba(39,207,215,0.18), 0 18px 36px rgba(0,0,0,0.45);
 }
 .routine-athlete-dot-live {
+  left: 0;
+  top: 0;
   width: 38px;
   height: 38px;
   font-size: 11px;
   cursor: grab;
-  transition: left 120ms linear, top 120ms linear, transform 160ms ease, box-shadow 160ms ease;
+  transform: translate3d(calc(var(--live-x, 0px) - 50%), calc(var(--live-y, 0px) - 50%), 0);
+  transition: box-shadow 160ms ease, outline-color 160ms ease;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 .routine-athlete-dot-live:hover {
-  transform: translate(-50%, -50%) scale(1.08);
+  transform: translate3d(calc(var(--live-x, 0px) - 50%), calc(var(--live-y, 0px) - 50%), 0) scale(1.08);
 }
 .routine-athlete-dot-live.is-flowing {
   box-shadow: 0 0 0 5px rgba(39,207,215,0.09), 0 14px 30px rgba(0,0,0,0.35);

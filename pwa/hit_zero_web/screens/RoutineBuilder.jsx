@@ -521,6 +521,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   const [musicNotice, setMusicNotice] = React.useState(null);
   const [audioTime, setAudioTime] = React.useState(0);
   const [audioPlaying, setAudioPlaying] = React.useState(false);
+  const [liveStageSize, setLiveStageSize] = React.useState({ width: 0, height: 0 });
   const [quickAthleteCount, setQuickAthleteCount] = React.useState(8);
   const [autoMotion, setAutoMotion] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
@@ -528,6 +529,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   const [sectionEditorPulse, setSectionEditorPulse] = React.useState(false);
   const fileInputRef = React.useRef(null);
   const audioRef = React.useRef(null);
+  const playbackClockRef = React.useRef({ anchorAudio: 0, anchorNow: 0, playbackRate: 1 });
   const sessionAudioUrlsRef = React.useRef(new Map());
   const timelineRef = React.useRef(null);
   const formationBoardRef = React.useRef(null);
@@ -603,10 +605,47 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   }, [activeAudio?.id, activeAudio?.storage_path, activeAudio?.local_object_url]);
 
   React.useEffect(() => {
+    const node = liveStageRef.current;
+    if (!node) return undefined;
+    const updateSize = () => {
+      const rect = node.getBoundingClientRect();
+      setLiveStageSize(prev => {
+        const width = Math.max(1, rect.width || 0);
+        const height = Math.max(1, rect.height || 0);
+        return Math.abs(prev.width - width) > 0.5 || Math.abs(prev.height - height) > 0.5 ? { width, height } : prev;
+      });
+    };
+    updateSize();
+    if (window.ResizeObserver) {
+      const observer = new ResizeObserver(updateSize);
+      observer.observe(node);
+      return () => observer.disconnect();
+    }
+    window.addEventListener('resize', updateSize);
+    return () => window.removeEventListener('resize', updateSize);
+  }, []);
+
+  const syncAudioClock = (media) => {
+    if (!media) return;
+    playbackClockRef.current = {
+      anchorAudio: media.currentTime || 0,
+      anchorNow: performance.now(),
+      playbackRate: media.playbackRate || 1,
+    };
+    setAudioTime(media.currentTime || 0);
+  };
+
+  React.useEffect(() => {
     if (!audioPlaying) return undefined;
     let raf = 0;
     const tick = () => {
-      if (audioRef.current) setAudioTime(audioRef.current.currentTime || 0);
+      const media = audioRef.current;
+      if (media) {
+        const clock = playbackClockRef.current;
+        const rawTime = media.currentTime || 0;
+        const projectedTime = clock.anchorAudio + ((performance.now() - clock.anchorNow) / 1000) * (media.playbackRate || clock.playbackRate || 1);
+        setAudioTime(Math.abs(projectedTime - rawTime) > 0.2 ? rawTime : projectedTime);
+      }
       raf = window.requestAnimationFrame(tick);
     };
     raf = window.requestAnimationFrame(tick);
@@ -2012,10 +2051,13 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
               controls
               src={audioPreviewUrl}
               style={{ width: '100%', marginBottom: 16 }}
-              onTimeUpdate={e => setAudioTime(e.currentTarget.currentTime || 0)}
-              onSeeked={e => setAudioTime(e.currentTarget.currentTime || 0)}
-              onLoadedMetadata={e => setAudioTime(e.currentTarget.currentTime || 0)}
-              onPlay={() => setAudioPlaying(true)}
+              onTimeUpdate={e => syncAudioClock(e.currentTarget)}
+              onSeeked={e => syncAudioClock(e.currentTarget)}
+              onLoadedMetadata={e => syncAudioClock(e.currentTarget)}
+              onPlay={(e) => {
+                syncAudioClock(e.currentTarget);
+                setAudioPlaying(true);
+              }}
               onPause={() => setAudioPlaying(false)}
               onEnded={() => setAudioPlaying(false)}
             />
@@ -2183,6 +2225,11 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
               {liveMotionPositions.map((pos) => {
                 const athlete = athletes.find(a => a.id === pos.athlete_id);
                 const active = selectedPositionId === pos.id;
+                const motionX = Number(pos.motionX || pos.x || 0.5);
+                const motionY = Number(pos.motionY || pos.y || 0.5);
+                const hasMeasuredStage = liveStageSize.width > 1 && liveStageSize.height > 1;
+                const liveX = motionX * liveStageSize.width;
+                const liveY = motionY * liveStageSize.height;
                 return (
                   <button
                     key={pos.id}
@@ -2190,7 +2237,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
                     onClick={() => { setSelectedFormationId(liveFormation.id); setSelectedPositionId(pos.id); }}
                     onMouseDown={(e) => beginLivePositionDrag(e, pos)}
                     onTouchStart={(e) => beginLivePositionDrag(e, pos)}
-                    style={{ left: `${Number(pos.motionX || pos.x || 0.5) * 100}%`, top: `${Number(pos.motionY || pos.y || 0.5) * 100}%` }}
+                    style={hasMeasuredStage ? { '--live-x': `${liveX}px`, '--live-y': `${liveY}px` } : { left: `${motionX * 100}%`, top: `${motionY * 100}%` }}
                     title={`${athleteName(pos.athlete_id)} - ${pos.role || 'athlete'}`}
                   >
                     {pos.label || athleteInitials(athlete)}
