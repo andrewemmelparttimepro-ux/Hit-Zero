@@ -4,6 +4,19 @@ Last updated: 2026-04-27
 
 This document is for the agent building the public marketing website. The goal is to integrate the website with Hit Zero without creating duplicate gym/user/payment logic.
 
+## Product Intent
+
+The public website is the front door, not the product.
+
+The long-term product vision is that every gym, coach, parent, and athlete who signs up should live their entire cheer life inside Hit Zero:
+
+- Coaches build routines, manage skills, track attendance, communicate, and review AI scoring inside Hit Zero.
+- Athletes use Hit Zero as their daily cheer profile, skill tracker, pin/social game, video home, and team hub.
+- Parents use Hit Zero for schedules, billing, registration, waivers, updates, volunteer jobs, and athlete progress.
+- Gym owners use Hit Zero as the operating system for roster, leads, billing, staff, teams, and growth.
+
+The website should therefore sell, explain, route, and onboard. It should not become a second dashboard. Once a person expresses interest, registers, pays, or signs in, the flow should push them into Hit Zero with the right gym, role, roster relationship, and next action already set.
+
 ## Core Rule
 
 The gym/program is the top of the hierarchy.
