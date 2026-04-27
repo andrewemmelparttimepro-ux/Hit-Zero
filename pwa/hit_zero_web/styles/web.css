@@ -298,6 +298,22 @@ body {
   background: linear-gradient(90deg, var(--hz-teal), var(--hz-pink));
   transition: width 180ms linear;
 }
+.routine-live-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(150px, 0.65fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+.routine-quick-counts {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.routine-live-build-btn {
+  min-height: 41px;
+  white-space: nowrap;
+}
 .routine-live-stage {
   position: relative;
   min-height: 330px;
@@ -878,6 +894,7 @@ body {
   .routine-position-inspector,
   .routine-assignment-row,
   .routine-live-head,
+  .routine-live-controls,
   .routine-live-footer,
   .routine-ai-flavor-grid,
   .routine-compliance-grid {

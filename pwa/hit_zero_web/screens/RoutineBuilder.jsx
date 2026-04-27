@@ -449,6 +449,8 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   const [audioPreviewUrl, setAudioPreviewUrl] = React.useState(null);
   const [musicNotice, setMusicNotice] = React.useState(null);
   const [audioTime, setAudioTime] = React.useState(0);
+  const [audioPlaying, setAudioPlaying] = React.useState(false);
+  const [quickAthleteCount, setQuickAthleteCount] = React.useState(8);
   const [saving, setSaving] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
   const fileInputRef = React.useRef(null);
@@ -838,12 +840,13 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
     else setSelected(null);
   };
 
-  const addFormationFromSection = async () => {
-    if (!selectedSection) {
+  const addFormationFromSection = async (section = selectedSection) => {
+    if (!section) {
       pushToast && pushToast({ kind: 'info', title: 'Pick a section first', body: 'Select a timeline block, then create a formation for those counts.' });
       return null;
     }
-    const existing = formationForSection(selectedSection);
+    setSelected(section.id);
+    const existing = formationForSection(section);
     if (existing) {
       setSelectedFormationId(existing.id);
       return existing;
@@ -851,9 +854,9 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
     const payload = {
       id: routineUid('rf'),
       routine_id: routine.id,
-      label: `${selectedSection.label || 'Section'} formation`,
-      start_count: selectedSection.start_count,
-      end_count: selectedSection.end_count,
+      label: `${section.label || 'Section'} formation`,
+      start_count: section.start_count,
+      end_count: section.end_count,
       floor_width: 54,
       floor_depth: 42,
       notes: '',
@@ -898,6 +901,57 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
       created_at: new Date().toISOString(),
     });
     if (res.error) pushToast && pushToast({ kind: 'error', title: 'Athlete not placed', body: res.error.message });
+  };
+
+  const quickSpot = (index, total) => {
+    const columns = Math.min(6, Math.max(3, Math.ceil(Math.sqrt(total))));
+    const rows = Math.max(1, Math.ceil(total / columns));
+    const col = index % columns;
+    const row = Math.floor(index / columns);
+    const stagger = row % 2 ? 0.5 / columns : 0;
+    return {
+      x: Math.max(0.09, Math.min(0.91, (col + 1 + stagger) / (columns + 1))),
+      y: Math.max(0.12, Math.min(0.88, (row + 1) / (rows + 1))),
+    };
+  };
+
+  const autoPopulateFormation = async (count = quickAthleteCount, section = selectedSection || liveSection) => {
+    if (!section) {
+      pushToast && pushToast({ kind: 'info', title: 'Pick a section first', body: 'Choose which part of the routine this floor picture belongs to.' });
+      return;
+    }
+    setSaving(true);
+    try {
+      const formation = await addFormationFromSection(section);
+      if (!formation) return;
+      const existing = new Set((routine.positions || []).filter(p => p.formation_id === formation.id).map(p => p.athlete_id).filter(Boolean));
+      const existingCount = existing.size;
+      const chosen = athletes.filter(a => !existing.has(a.id)).slice(0, Math.max(0, Math.min(Number(count || 0), athletes.length) - existingCount));
+      if (!chosen.length) {
+        pushToast && pushToast({ kind: 'info', title: 'Formation already filled', body: `${formation.label || 'This formation'} already has ${existingCount} athletes on the mat.` });
+        return;
+      }
+      for (let i = 0; i < chosen.length; i += 1) {
+        const athlete = chosen[i];
+        const spot = quickSpot(existingCount + i, Math.max(Number(count || 0), existingCount + chosen.length));
+        const res = await persistInsert('routine_positions', {
+          id: routineUid('rp'),
+          formation_id: formation.id,
+          athlete_id: athlete.id,
+          label: athleteInitials(athlete),
+          x: spot.x,
+          y: spot.y,
+          role: athlete.role || 'athlete',
+          created_at: new Date().toISOString(),
+        });
+        if (res.error) throw res.error;
+      }
+      pushToast && pushToast({ kind: 'success', title: 'Floor picture created', body: `${Math.min(Number(count || 0), athletes.length)} athletes are staged for ${section.label || 'this section'}. Drag dots to fine-tune.` });
+    } catch (err) {
+      pushToast && pushToast({ kind: 'error', title: 'Formation not populated', body: err.message || 'Could not auto-place athletes.' });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const updatePosition = async (id, patch) => {
@@ -1116,11 +1170,14 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
     return Math.max(1, Math.min(routine.length_counts || 1, Math.floor((Number(seconds || 0) - first) / (8 * (60 / bpm))) + 1));
   };
   const liveCount = countFromSeconds(audioTime);
-  const liveSection = (routine.sections || []).find(s => liveCount >= s.start_count && liveCount <= s.end_count) || selectedSection || (routine.sections || [])[0] || null;
-  const liveFormation = formationForSection(liveSection) || selectedFormation || null;
+  const playheadSection = (routine.sections || []).find(s => liveCount >= s.start_count && liveCount <= s.end_count) || (routine.sections || [])[0] || null;
+  const liveSection = audioPlaying ? playheadSection : (selectedSection || playheadSection);
+  const liveFormation = formationForSection(liveSection) || (!audioPlaying ? selectedFormation : null) || null;
   const liveFormationPositions = liveFormation ? (routine.positions || []).filter(p => p.formation_id === liveFormation.id) : [];
   const liveMarkers = (countMap?.markers || latestAnalysis?.result_payload?.markers || []).filter(m => Math.abs(Number(m.count || 0) - liveCount) <= 1).slice(0, 3);
   const audioProgress = Math.max(0, Math.min(1, Number(audioTime || 0) / Math.max(1, Number(audio?.duration_seconds || countToSeconds(routine.length_counts + 1, countMap)))));
+  const quickFloorPresets = [8, 12, 16, 20].filter(n => n <= athletes.length);
+  const quickFloorCount = Math.min(quickAthleteCount, athletes.length || quickAthleteCount);
   const complianceChecklist = deriveComplianceChecks({ audio, license, remixRequest: latestRemixRequest });
   const countSheet = buildCountSheet({ routine, countMap, athletes, skills });
   const athletePacket = buildAthletePacket({ routine, athletes, skills });
@@ -1195,6 +1252,9 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
               onTimeUpdate={e => setAudioTime(e.currentTarget.currentTime || 0)}
               onSeeked={e => setAudioTime(e.currentTarget.currentTime || 0)}
               onLoadedMetadata={e => setAudioTime(e.currentTarget.currentTime || 0)}
+              onPlay={() => setAudioPlaying(true)}
+              onPause={() => setAudioPlaying(false)}
+              onEnded={() => setAudioPlaying(false)}
             />
           ) : (
             <div style={{ padding: 18, border: '1px dashed rgba(255,255,255,0.18)', borderRadius: 14, color: 'var(--hz-dim)', marginBottom: 16 }}>
@@ -1220,6 +1280,36 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
             </div>
             <div className="routine-live-progress">
               <span style={{ width: `${audioProgress * 100}%` }}/>
+            </div>
+            <div className="routine-live-controls">
+              <div>
+                <div className="hz-label" style={{ color: 'var(--hz-dim)', marginBottom: 6 }}>Build this section</div>
+                <select className="hz-input" value={liveSection?.id || ''} onChange={e => {
+                  setAudioPlaying(false);
+                  setSelected(e.target.value);
+                  const next = (routine.sections || []).find(s => s.id === e.target.value);
+                  const existing = formationForSection(next);
+                  if (existing) setSelectedFormationId(existing.id);
+                  if (next && audioRef.current) {
+                    audioRef.current.currentTime = countToSeconds(next.start_count, countMap);
+                    setAudioTime(audioRef.current.currentTime || 0);
+                  }
+                }}>
+                  {(routine.sections || []).map(s => <option key={s.id} value={s.id}>{s.label || s.section_type} · counts {s.start_count}-{s.end_count}</option>)}
+                </select>
+              </div>
+              <div>
+                <div className="hz-label" style={{ color: 'var(--hz-dim)', marginBottom: 6 }}>Quick floor</div>
+                <div className="routine-quick-counts">
+                  {quickFloorPresets.map(n => (
+                    <button key={n} className={`hz-btn hz-btn-xs ${quickAthleteCount === n ? 'hz-btn-primary' : ''}`} onClick={() => setQuickAthleteCount(n)}>{n}</button>
+                  ))}
+                  <button className={`hz-btn hz-btn-xs ${quickAthleteCount === athletes.length ? 'hz-btn-primary' : ''}`} onClick={() => setQuickAthleteCount(athletes.length)}>{quickFloorPresets.length ? 'All' : Math.max(athletes.length, 1)}</button>
+                </div>
+              </div>
+              <button className="hz-btn hz-btn-primary routine-live-build-btn" onClick={() => autoPopulateFormation(quickAthleteCount, liveSection)} disabled={saving || !liveSection}>
+                Auto-place {quickFloorCount}
+              </button>
             </div>
             <div className="routine-live-stage">
               <div className="routine-formation-centerline"/>
