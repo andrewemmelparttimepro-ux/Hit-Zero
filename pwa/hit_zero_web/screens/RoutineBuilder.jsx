@@ -52,6 +52,42 @@ const ASSIGNMENT_ROLES = [
   { id: 'alternate', label: 'Alternate' },
 ];
 
+const MCA_SHOWCASE_PICTURES = [
+  { id: 'm', letter: 'M', count: 2, label: 'MCA opening M', sectionType: 'opening', note: 'Opening music hit: athletes spell M for Magic.' },
+  { id: 'c', letter: 'C', count: 19, label: 'MCA jump C', sectionType: 'jumps', note: 'Mid-routine hit: athletes curve into C for City.' },
+  { id: 'a', letter: 'A', count: 41, label: 'MCA finale A', sectionType: 'dance', note: 'Final dance picture: athletes snap into A for Allstars.' },
+];
+
+const mcaLetterSpot = (letter, index, total) => {
+  const n = Math.max(1, total || 1);
+  const t = n === 1 ? 0.5 : index / (n - 1);
+  if (letter === 'M') {
+    const segment = Math.min(3, Math.floor(t * 4));
+    const local = (t * 4) - segment;
+    const points = [
+      [[0.14, 0.82], [0.14, 0.20]],
+      [[0.14, 0.20], [0.38, 0.52]],
+      [[0.38, 0.52], [0.62, 0.20]],
+      [[0.62, 0.20], [0.86, 0.82]],
+    ];
+    const [a, b] = points[segment];
+    return { x: a[0] + (b[0] - a[0]) * local, y: a[1] + (b[1] - a[1]) * local };
+  }
+  if (letter === 'C') {
+    const angle = (-115 + 230 * t) * Math.PI / 180;
+    return { x: 0.56 + Math.cos(angle) * 0.36, y: 0.50 + Math.sin(angle) * 0.34 };
+  }
+  const segment = Math.min(2, Math.floor(t * 3));
+  const local = (t * 3) - segment;
+  const points = [
+    [[0.18, 0.84], [0.50, 0.18]],
+    [[0.50, 0.18], [0.82, 0.84]],
+    [[0.34, 0.58], [0.66, 0.58]],
+  ];
+  const [a, b] = points[segment];
+  return { x: a[0] + (b[0] - a[0]) * local, y: a[1] + (b[1] - a[1]) * local };
+};
+
 const AI_FLAVORS = [
   { id: 'cleaner', label: 'Cleaner' },
   { id: 'visual', label: 'Visual' },
@@ -536,6 +572,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   const liveStageRef = React.useRef(null);
   const sectionEditorRef = React.useRef(null);
   const sectionLabelInputRef = React.useRef(null);
+  const mcaShowcaseEnsureRef = React.useRef(new Set());
 
   const savedAudioAssets = React.useMemo(() => {
     return [...(routine?.audioAssets || [])].sort((a, b) => {
@@ -651,6 +688,85 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
     raf = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(raf);
   }, [audioPlaying]);
+
+  React.useEffect(() => {
+    if (!routine?.id || !window.HZdb) return undefined;
+    const showcaseAthletes = (snap.athletes || []).filter(a => a?.id).slice(0, 20);
+    if (!showcaseAthletes.length) return undefined;
+    const key = `${routine.id}:${showcaseAthletes.map(a => a.id).join(',')}`;
+    if (mcaShowcaseEnsureRef.current.has(key)) return undefined;
+    mcaShowcaseEnsureRef.current.add(key);
+
+    let cancelled = false;
+    const initialsFor = (athlete) => athlete?.initials || String(athlete?.display_name || athlete?.name || '?').split(/\s+/).map(x => x[0]).join('').slice(0, 2).toUpperCase();
+    const sectionForCount = (count) => (routine.sections || []).find(s => count >= s.start_count && count <= s.end_count);
+    const remoteInsert = async (table, rows) => {
+      if (!rows.length || !window.HZsupa || window.HZdb?.auth?._getSession?.()?.mode !== 'live') return;
+      try {
+        const cleanRows = rows.map(row => table === 'routine_positions' ? Object.fromEntries(Object.entries(row).filter(([k]) => k !== 'updated_at')) : row);
+        await window.HZsupa.from(table).upsert(cleanRows, { onConflict: 'id' });
+      } catch (err) {
+        console.warn(`[HZ] MCA showcase sync failed for ${table}`, err);
+      }
+    };
+
+    const ensureShowcase = async () => {
+      const formationIds = MCA_SHOWCASE_PICTURES.map(p => `rf_mca_showcase_${p.id}`);
+      const existingFormationRows = (await window.HZdb.from('routine_formations').select('*').in('id', formationIds)).data || [];
+      const existingFormationIds = new Set(existingFormationRows.map(f => f.id));
+      const now = new Date().toISOString();
+      const formations = MCA_SHOWCASE_PICTURES
+        .filter(p => !existingFormationIds.has(`rf_mca_showcase_${p.id}`))
+        .map((p) => {
+          const safeCount = Math.max(1, Math.min(Number(p.count || 1), Number(routine.length_counts || 46)));
+          const section = sectionForCount(safeCount);
+          return {
+            id: `rf_mca_showcase_${p.id}`,
+            routine_id: routine.id,
+            label: p.label,
+            start_count: safeCount,
+            end_count: safeCount,
+            floor_width: 54,
+            floor_depth: 42,
+            notes: `${p.note} Timed at count ${safeCount}${section ? ` during ${section.label || section.section_type}` : ''}.`,
+            created_at: now,
+            updated_at: now,
+          };
+        });
+      if (cancelled) return;
+      if (formations.length) {
+        await window.HZdb.from('routine_formations').insert(formations);
+        await remoteInsert('routine_formations', formations);
+      }
+
+      const existingPositions = (await window.HZdb.from('routine_positions').select('*').in('formation_id', formationIds)).data || [];
+      const existingPositionIds = new Set(existingPositions.map(p => p.id));
+      const positions = MCA_SHOWCASE_PICTURES.flatMap((picture) => {
+        const formationId = `rf_mca_showcase_${picture.id}`;
+        return showcaseAthletes.map((athlete, index) => {
+          const spot = mcaLetterSpot(picture.letter, index, showcaseAthletes.length);
+          return {
+            id: `rp_mca_showcase_${picture.id}_${athlete.id}`,
+            formation_id: formationId,
+            athlete_id: athlete.id,
+            label: initialsFor(athlete),
+            x: Math.max(0.06, Math.min(0.94, spot.x)),
+            y: Math.max(0.08, Math.min(0.92, spot.y)),
+            role: `MCA ${picture.letter}`,
+            created_at: now,
+          };
+        });
+      }).filter(row => !existingPositionIds.has(row.id));
+      if (cancelled) return;
+      if (positions.length) {
+        await window.HZdb.from('routine_positions').insert(positions);
+        await remoteInsert('routine_positions', positions);
+      }
+    };
+
+    ensureShowcase().catch(err => console.warn('[HZ] MCA showcase seed failed', err));
+    return () => { cancelled = true; };
+  }, [routine?.id, routine?.length_counts, snap._tick]);
 
   if (!routine) return <EmptyState icon="routine" title="No routine yet" body="Start a routine for Magic."/>;
 

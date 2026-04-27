@@ -128,10 +128,57 @@
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }] : [];
+    const mcaShowcasePictures = [
+      { id: 'm', letter: 'M', count: 2, label: 'MCA opening M', sectionType: 'opening', note: 'Opening music hit: athletes spell M for Magic.' },
+      { id: 'c', letter: 'C', count: 19, label: 'MCA jump C', sectionType: 'jumps', note: 'Mid-routine hit: athletes curve into C for City.' },
+      { id: 'a', letter: 'A', count: 41, label: 'MCA finale A', sectionType: 'dance', note: 'Final dance picture: athletes snap into A for Allstars.' },
+    ];
+    const mcaLetterSpot = (letter, index, total) => {
+      const n = Math.max(1, total || 1);
+      const t = n === 1 ? 0.5 : index / (n - 1);
+      if (letter === 'M') {
+        const segment = Math.min(3, Math.floor(t * 4));
+        const local = (t * 4) - segment;
+        const points = [
+          [[0.14, 0.82], [0.14, 0.20]],
+          [[0.14, 0.20], [0.38, 0.52]],
+          [[0.38, 0.52], [0.62, 0.20]],
+          [[0.62, 0.20], [0.86, 0.82]],
+        ];
+        const [a, b] = points[segment];
+        return { x: a[0] + (b[0] - a[0]) * local, y: a[1] + (b[1] - a[1]) * local };
+      }
+      if (letter === 'C') {
+        const angle = (-115 + 230 * t) * Math.PI / 180;
+        return { x: 0.56 + Math.cos(angle) * 0.36, y: 0.50 + Math.sin(angle) * 0.34 };
+      }
+      const segment = Math.min(2, Math.floor(t * 3));
+      const local = (t * 3) - segment;
+      const points = [
+        [[0.18, 0.84], [0.50, 0.18]],
+        [[0.50, 0.18], [0.82, 0.84]],
+        [[0.34, 0.58], [0.66, 0.58]],
+      ];
+      const [a, b] = points[segment];
+      return { x: a[0] + (b[0] - a[0]) * local, y: a[1] + (b[1] - a[1]) * local };
+    };
+    const showcaseAthletes = roster.filter(a => a?.id).slice(0, 20);
     const routineFormations = routine ? [
       { id: 'rf_demo_opening', routine_id: routine.id, label: 'Opening windows', start_count: 1, end_count: 8, floor_width: 54, floor_depth: 42, notes: 'Keep Arlowe/Kenzie visible in the front window.', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
       { id: 'rf_demo_stunts', routine_id: routine.id, label: 'Stunt pods', start_count: 25, end_count: 40, floor_width: 54, floor_depth: 42, notes: 'Three clean pods with space for safe transitions.', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
       { id: 'rf_demo_pyramid', routine_id: routine.id, label: 'Pyramid picture', start_count: 49, end_count: 64, floor_width: 54, floor_depth: 42, notes: 'Center pyramid, outside groups frame the hit.', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      ...mcaShowcasePictures.map((picture) => ({
+        id: `rf_mca_showcase_${picture.id}`,
+        routine_id: routine.id,
+        label: picture.label,
+        start_count: Math.max(1, Math.min(picture.count, routine.length_counts || 46)),
+        end_count: Math.max(1, Math.min(picture.count, routine.length_counts || 46)),
+        floor_width: 54,
+        floor_depth: 42,
+        notes: `${picture.note} Timed to count ${Math.max(1, Math.min(picture.count, routine.length_counts || 46))}.`,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })),
     ] : [];
     const openingSpots = [
       [0.18, 0.28], [0.32, 0.42], [0.46, 0.28], [0.60, 0.42],
@@ -150,6 +197,19 @@
       ...openingSpots.map((p, i) => ({ id: `rp_open_${i + 1}`, formation_id: 'rf_demo_opening', athlete_id: roster[i]?.id || null, label: roster[i]?.initials || String(i + 1), x: p[0], y: p[1], role: i < 5 ? 'front' : 'back', created_at: new Date().toISOString() })),
       ...stuntSpots.map((p, i) => ({ id: `rp_stunt_${i + 1}`, formation_id: 'rf_demo_stunts', athlete_id: roster[i]?.id || null, label: roster[i]?.initials || String(i + 1), x: p[0], y: p[1], role: roleForSpot(i), created_at: new Date().toISOString() })),
       ...pyramidSpots.map((p, i) => ({ id: `rp_pyramid_${i + 1}`, formation_id: 'rf_demo_pyramid', athlete_id: roster[i]?.id || null, label: roster[i]?.initials || String(i + 1), x: p[0], y: p[1], role: roleForSpot(i), created_at: new Date().toISOString() })),
+      ...mcaShowcasePictures.flatMap(picture => showcaseAthletes.map((athlete, index) => {
+        const spot = mcaLetterSpot(picture.letter, index, showcaseAthletes.length);
+        return {
+          id: `rp_mca_showcase_${picture.id}_${athlete.id}`,
+          formation_id: `rf_mca_showcase_${picture.id}`,
+          athlete_id: athlete.id,
+          label: athlete.initials || String(index + 1),
+          x: Math.max(0.06, Math.min(0.94, spot.x)),
+          y: Math.max(0.08, Math.min(0.92, spot.y)),
+          role: `MCA ${picture.letter}`,
+          created_at: new Date().toISOString(),
+        };
+      })),
     ] : [];
     const sectionByType = (type) => routineSections.find(s => s.section_type === type) || routineSections[0];
     const routineAssignments = routine ? [
@@ -614,6 +674,15 @@
     ].forEach((table) => {
       if (Array.isArray(existing[table]) && existing[table].length === 0 && (fresh[table] || []).length) {
         existing[table] = fresh[table];
+        changed = true;
+      }
+    });
+    ['routine_formations', 'routine_positions'].forEach((table) => {
+      const existingIds = new Set((existing[table] || []).map(row => row.id));
+      const missingShowcaseRows = (fresh[table] || [])
+        .filter(row => String(row.id || '').includes('_mca_showcase_') && !existingIds.has(row.id));
+      if (missingShowcaseRows.length) {
+        existing[table] = [...(existing[table] || []), ...missingShowcaseRows];
         changed = true;
       }
     });
