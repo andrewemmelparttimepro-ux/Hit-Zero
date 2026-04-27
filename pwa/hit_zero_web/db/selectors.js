@@ -9,12 +9,12 @@
   async function snapshot() {
     const q = (t) => (async () => (await window.HZdb.from(t).select('*')).data || [])();
     const [
-      teams, athletes, skills, athlete_skills, sessions, attendance, routines, routine_sections,
+      programs, teams, athletes, skills, athlete_skills, sessions, attendance, routines, routine_sections,
       routine_audio_assets, music_licenses, routine_count_maps, routine_events,
       routine_formations, routine_positions, routine_assignments, routine_ai_suggestions, routine_exports,
       routine_versions, routine_comments,
       routine_audio_analysis_jobs, routine_remix_requests, routine_music_compliance_checks,
-      celebrations, billing_accounts, billing_charges, announcements, profiles,
+      celebrations, billing_accounts, billing_charges, program_payment_settings, announcements, profiles,
       // Tier 1 + Tier 2 additions
       message_threads, thread_members, messages, message_reads,
       session_availability, calendar_tokens,
@@ -32,14 +32,14 @@
       routine_analyses, analysis_elements, analysis_deductions,
       analysis_feedback, analysis_skill_updates,
     ] = await Promise.all([
-      q('teams'), q('athletes'), q('skills'), q('athlete_skills'), q('sessions'),
+      q('programs'), q('teams'), q('athletes'), q('skills'), q('athlete_skills'), q('sessions'),
       q('attendance'), q('routines'), q('routine_sections'),
       q('routine_audio_assets'), q('music_licenses'), q('routine_count_maps'), q('routine_events'),
       q('routine_formations'), q('routine_positions'), q('routine_assignments'), q('routine_ai_suggestions'), q('routine_exports'),
       q('routine_versions'), q('routine_comments'),
       q('routine_audio_analysis_jobs'), q('routine_remix_requests'), q('routine_music_compliance_checks'),
       q('celebrations'),
-      q('billing_accounts'), q('billing_charges'), q('announcements'), q('profiles'),
+      q('billing_accounts'), q('billing_charges'), q('program_payment_settings'), q('announcements'), q('profiles'),
       q('message_threads'), q('thread_members'), q('messages'), q('message_reads'),
       q('session_availability'), q('calendar_tokens'),
       q('registration_windows'), q('registrations'),
@@ -56,12 +56,12 @@
       q('analysis_feedback'), q('analysis_skill_updates'),
     ]);
     cache = {
-      teams, athletes, skills, athlete_skills, sessions, attendance, routines, routine_sections,
+      programs, teams, athletes, skills, athlete_skills, sessions, attendance, routines, routine_sections,
       routine_audio_assets, music_licenses, routine_count_maps, routine_events,
       routine_formations, routine_positions, routine_assignments, routine_ai_suggestions, routine_exports,
       routine_versions, routine_comments,
       routine_audio_analysis_jobs, routine_remix_requests, routine_music_compliance_checks,
-      celebrations, billing_accounts, billing_charges, announcements, profiles,
+      celebrations, billing_accounts, billing_charges, program_payment_settings, announcements, profiles,
       message_threads, thread_members, messages, message_reads,
       session_availability, calendar_tokens,
       registration_windows, registrations,
@@ -85,6 +85,8 @@
 
   function athleteById(id) { return cache?.athletes.find(a => a.id === id); }
   function skillById(id) { return cache?.skills.find(s => s.id === id); }
+  function programProfile() { return cache?.programs?.[0] || null; }
+  function programPaymentSettings() { return cache?.program_payment_settings?.[0] || null; }
   function team() { return cache?.teams?.[0]; }
 
   // Per-athlete skill map { skillId: status }
@@ -532,7 +534,7 @@
     team, athleteById, skillById, routine,
     athleteSkills, athleteReadiness, teamReadiness, categoryReadiness,
     athleteAttendance, teamAttendance, athleteSkillsSummary,
-    predictedScore, daysToComp, needsWorkQueue, programBilling, athleteBilling,
+    predictedScore, daysToComp, needsWorkQueue, programProfile, programPaymentSettings, programBilling, athleteBilling,
     // Tier 1/2
     inboxThreads, threadMessages, threadMembers,
     sessionRsvp, upcomingSessions,

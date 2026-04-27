@@ -929,16 +929,21 @@ window.Announcements = Announcements;
 
 // ─── Admin / Program Console ───
 function AdminConsole({ snap, navigate }) {
+  const program = window.HZsel.programProfile?.() || (snap.programs || [])[0] || {};
+  const paymentSettings = window.HZsel.programPaymentSettings?.() || (snap.program_payment_settings || [])[0] || {};
   const bill = window.HZsel.programBilling();
   const readiness = window.HZsel.teamReadiness();
   const attendance = window.HZsel.teamAttendance();
   const leads = window.HZsel.leadSummary();
   const regs = window.HZsel.registrationSummary();
   const cashPct = bill.total ? Math.max(0, Math.min(100, (bill.paid / bill.total) * 100)) : 0;
+  const programName = program.public_name || program.brand_name || program.name || 'Your gym';
+  const programLocation = [program.city, program.state].filter(Boolean).join(', ') || program.city || 'Location not set';
+  const directoryUrl = program.slug ? `/gyms/${program.slug}` : 'Slug not set';
 
   return (
     <div>
-      <SectionHeading eyebrow="Owner · Magic City Allstars" title="Program." trailing={
+      <SectionHeading eyebrow={`Owner · ${programName}`} title="Program." trailing={
         <button className="hz-btn hz-btn-danger" onClick={() => { if (confirm('Reset all demo data?')) { window.HZdb._reset(); location.reload(); } }}><HZIcon name="trash" size={13}/> Reset demo data</button>
       }/>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
@@ -946,6 +951,25 @@ function AdminConsole({ snap, navigate }) {
         <StatTile label="Ready" value={`${Math.round(readiness*100)}%`} accent="var(--hz-teal)"/>
         <StatTile label="Leads Open" value={leads.active} sub={`${leads.converted} converted`} accent="var(--hz-pink)"/>
         <StatTile label="Admissions" value={regs.pending} sub={`${regs.accepted} accepted`} accent={regs.pending ? 'var(--hz-amber)' : 'var(--hz-green)'}/>
+      </div>
+      <div className="hz-card" style={{ marginBottom: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.35fr 1fr 1fr', gap: 18, alignItems: 'stretch' }}>
+          <div>
+            <div className="hz-eyebrow" style={{ marginBottom: 10 }}>Gym identity · top of hierarchy</div>
+            <div className="hz-display" style={{ fontSize: 34, marginBottom: 8 }}>{programName}</div>
+            <div style={{ color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.5 }}>
+              {program.description || 'This is the business record that owns teams, roster, billing, leads, registrations, and processor connections.'}
+            </div>
+          </div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <MiniStat label="Directory" value={program.is_public ? 'Public' : 'Hidden'} sub={`${directoryUrl} · ${programLocation}`} accent={program.is_public ? 'var(--hz-teal)' : 'var(--hz-amber)'}/>
+            <MiniStat label="Lead intake" value={program.is_accepting_leads ? 'Open' : 'Closed'} sub="website forms attach to program_id" accent={program.is_accepting_leads ? 'var(--hz-green)' : 'var(--hz-dim)'}/>
+          </div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <MiniStat label="Payment owner" value={(paymentSettings.default_provider || 'square').toUpperCase()} sub={`program_id ${String(program.id || 'unset').slice(0, 8)}`} accent="var(--hz-pink)"/>
+            <MiniStat label="Checkout mode" value={(paymentSettings.checkout_mode || 'manual_invoice').replace(/_/g, ' ')} sub={paymentSettings.public_checkout_enabled ? 'public checkout enabled' : 'owner-gated until ready'} accent={paymentSettings.public_checkout_enabled ? 'var(--hz-green)' : 'var(--hz-amber)'}/>
+          </div>
+        </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
         <div className="hz-card">
@@ -1026,11 +1050,12 @@ window.AdminConsole = AdminConsole;
 // ─── Billing ───
 function Billing({ snap, session, openAthlete }) {
   const bill = window.HZsel.programBilling();
+  const program = window.HZsel.programProfile?.() || (snap.programs || [])[0] || {};
   const isParent = session.profile.role === 'parent';
   const accounts = (snap.billing_accounts || []).map(acc => ({ ...acc, athlete: snap.athletes.find(a => a.id === acc.athlete_id) }));
   const programRef = {
-    program_id: (snap.teams || [])[0]?.program_id || (snap.programs || [])[0]?.id || null,
-    program_slug: 'mca',
+    program_id: (snap.teams || [])[0]?.program_id || program.id || null,
+    program_slug: program.slug || 'mca',
   };
 
   return (

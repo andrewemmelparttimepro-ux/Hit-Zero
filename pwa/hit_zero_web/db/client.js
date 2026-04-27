@@ -264,9 +264,56 @@
       { id: 'rai_demo_1', routine_id: routine.id, section_id: sectionByType('stunts')?.id || null, kind: 'section_alt', prompt: 'Make this safer and cleaner.', title: 'Safer stunt option', body: 'Use a prep-level picture on the first attempt, then upgrade the release once the group hits it clean twice in practice.', payload: { action: 'simplify', counts: '25-40', reason: 'confidence before difficulty' }, score_delta: -0.2, status: 'proposed', created_at: new Date().toISOString() },
       { id: 'rai_demo_2', routine_id: routine.id, section_id: sectionByType('pyramid')?.id || null, kind: 'formation_alt', prompt: 'Make the pyramid more visual.', title: 'Bigger pyramid picture', body: 'Hold the center picture two counts longer and let the outside groups travel downstage to frame the hit.', payload: { action: 'formation_frame', counts: '49-64' }, score_delta: 0.35, status: 'proposed', created_at: new Date().toISOString() },
     ] : [];
+    const program = {
+      id: 'p_mca',
+      slug: 'mca',
+      name: 'Magic City Allstars',
+      public_name: 'Magic City Allstars',
+      legal_name: 'Magic City Allstars',
+      brand_name: 'Magic City Allstars',
+      city: 'Minot',
+      state: 'ND',
+      country: 'US',
+      timezone: 'America/Chicago',
+      description: 'All-star cheer gym in Minot, ND. Hit Zero treats this gym as the top-level business object for teams, roster, billing, leads, registrations, and Square.',
+      website_url: 'https://hit-zero.vercel.app',
+      public_email: 'info@magiccityallstars.com',
+      public_phone: '',
+      address_line1: 'Minot, ND',
+      address_line2: '',
+      postal_code: '',
+      logo_url: '/icons/icon-192.png',
+      latitude: null,
+      longitude: null,
+      directory_tags: ['all-star cheer', 'tumbling', 'youth athletics'],
+      age_range_min: 4,
+      age_range_max: 18,
+      is_public: true,
+      is_accepting_leads: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const programPaymentSettings = [{
+      id: 'pps_mca',
+      program_id: program.id,
+      default_provider: 'square',
+      currency: 'USD',
+      tuition_model: 'season_account',
+      public_checkout_enabled: false,
+      checkout_mode: 'manual_invoice',
+      registration_deposit_cents: 0,
+      monthly_tuition_cents: 0,
+      routine_builder_fee_cents: 0,
+      provider_connection_id: null,
+      public_payment_note: 'Square is connected at the gym level. Public checkout stays off until the owner turns it on.',
+      metadata: { hierarchy: 'program-owned' },
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }];
 
     return {
-      programs: [{ id: 'p_mca', name: 'Magic City Allstars', city: 'Minot, ND' }],
+      programs: [program],
+      program_payment_settings: programPaymentSettings,
       teams: [{ id: team.id, program_id: 'p_mca', name: team.name, division: team.division, level: team.level, season_start: team.seasonStart }],
       profiles: [
         { id: 'u_coach', program_id: 'p_mca', role: 'coach', display_name: 'Coach Brynn', email: 'brynn@magiccityallstars.com' },
@@ -703,12 +750,40 @@
       'routine_assignments', 'routine_ai_suggestions', 'routine_exports',
       'routine_versions', 'routine_comments',
       'routine_audio_analysis_jobs', 'routine_remix_requests', 'routine_music_compliance_checks',
+      'program_payment_settings',
     ].forEach((table) => {
       if (!Array.isArray(existing[table])) {
         existing[table] = fresh[table] || [];
         changed = true;
       }
     });
+    existing.programs = (existing.programs || fresh.programs || []).map((program, index) => {
+      const base = (fresh.programs || [])[index] || (fresh.programs || [])[0] || {};
+      const next = { ...base, ...program };
+      if (!next.slug) next.slug = base.slug || 'mca';
+      if (!next.public_name) next.public_name = next.name || base.public_name;
+      if (!next.brand_name) next.brand_name = next.public_name || next.name;
+      if (String(next.city || '').includes(',')) {
+        const parts = String(next.city).split(',').map(s => s.trim());
+        next.city = parts[0] || next.city;
+        next.state = next.state || parts[1] || '';
+      }
+      next.state = next.state || base.state || 'ND';
+      next.country = next.country || base.country || 'US';
+      next.timezone = next.timezone || base.timezone || 'America/Chicago';
+      next.directory_tags = Array.isArray(next.directory_tags) && next.directory_tags.length ? next.directory_tags : (base.directory_tags || []);
+      next.age_range_min = next.age_range_min ?? base.age_range_min ?? 4;
+      next.age_range_max = next.age_range_max ?? base.age_range_max ?? 18;
+      next.is_public = next.is_public ?? true;
+      next.is_accepting_leads = next.is_accepting_leads ?? true;
+      next.updated_at = next.updated_at || new Date().toISOString();
+      if (JSON.stringify(next) !== JSON.stringify(program)) changed = true;
+      return next;
+    });
+    if (!existing.program_payment_settings?.length && fresh.program_payment_settings?.length) {
+      existing.program_payment_settings = fresh.program_payment_settings;
+      changed = true;
+    }
     [
       'routine_formations',
       'routine_positions',

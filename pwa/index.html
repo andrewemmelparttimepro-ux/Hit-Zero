@@ -126,6 +126,13 @@
     const d = window.HZdb && window.HZdb._raw && window.HZdb._raw();
     if (!d || !window.HZsupa) return;
     const s = window.HZsupa;
+    const { data: programs } = await s.from('programs').select('*').is('deleted_at', null).order('created_at');
+    if (programs?.length) {
+      d.programs = programs;
+      const programIds = programs.map(p => p.id);
+      const paymentSettings = await s.from('program_payment_settings').select('*').in('program_id', programIds);
+      if (!paymentSettings.error) d.program_payment_settings = paymentSettings.data || [];
+    }
     const { data: teams } = await s.from('teams').select('*').is('deleted_at', null).order('created_at');
     if (!teams || !teams.length) return;
     d.teams = teams;
