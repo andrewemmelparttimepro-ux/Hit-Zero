@@ -52,40 +52,86 @@ const ASSIGNMENT_ROLES = [
   { id: 'alternate', label: 'Alternate' },
 ];
 
-const MCA_SHOWCASE_PICTURES = [
-  { id: 'm', letter: 'M', count: 2, label: 'MCA opening M', sectionType: 'opening', note: 'Opening music hit: athletes spell M for Magic.' },
-  { id: 'c', letter: 'C', count: 19, label: 'MCA jump C', sectionType: 'jumps', note: 'Mid-routine hit: athletes curve into C for City.' },
-  { id: 'a', letter: 'A', count: 41, label: 'MCA finale A', sectionType: 'dance', note: 'Final dance picture: athletes snap into A for Allstars.' },
+const MCA_SHOWCASE_SEQUENCE = [
+  { id: 'm', formationId: 'rf_mca_showcase_m', letter: 'M', count: 1, label: 'MCA 1 - opening M', variant: 'wide', note: 'Opening 8-count: snap into a clean wide M for Magic.' },
+  { id: 'c', formationId: 'rf_mca_showcase_c', letter: 'C', count: 5, label: 'MCA 2 - standing C', variant: 'front', note: 'Standing tumbling phrase: travel into a clear C for City.' },
+  { id: 'a', formationId: 'rf_mca_showcase_a', letter: 'A', count: 11, label: 'MCA 3 - stunt A', variant: 'triangle', note: 'Stunt entry phrase: hit an A-shaped triangle for Allstars.' },
+  { id: 'm2', formationId: 'rf_mca_showcase_m2', letter: 'M', count: 19, label: 'MCA 4 - jump M', variant: 'compact', note: 'Jump phrase: reset into a tighter M so the floor breathes.' },
+  { id: 'c2', formationId: 'rf_mca_showcase_c2', letter: 'C', count: 23, label: 'MCA 5 - running C', variant: 'low', note: 'Running tumbling phrase: sweep into a lower C pathway.' },
+  { id: 'a2', formationId: 'rf_mca_showcase_a2', letter: 'A', count: 29, label: 'MCA 6 - stunt A', variant: 'wide', note: 'Second stunt phrase: widen the A base for a bigger judges picture.' },
+  { id: 'm3', formationId: 'rf_mca_showcase_m3', letter: 'M', count: 35, label: 'MCA 7 - pyramid M', variant: 'tall', note: 'Pyramid phrase: make the M taller, like a mountain behind the stunt picture.' },
+  { id: 'c3', formationId: 'rf_mca_showcase_c3', letter: 'C', count: 41, label: 'MCA 8 - dance C', variant: 'dance', note: 'Dance phrase: curve into a stage-left C before the final reveal.' },
+  { id: 'a3', formationId: 'rf_mca_showcase_a3', letter: 'A', count: 45, label: 'MCA 9 - finale A', variant: 'finale', note: 'Final 8-count: finish in a crisp A with a center apex.' },
 ];
 
-const mcaLetterSpot = (letter, index, total) => {
-  const n = Math.max(1, total || 1);
-  const t = n === 1 ? 0.5 : index / (n - 1);
+const mcaFormationId = (picture) => picture.formationId || `rf_mca_showcase_${picture.id}`;
+const mcaPositionId = (picture, athleteId) => `rp_mca_showcase_${picture.id}_${athleteId}`;
+
+const mcaLetterSegments = (letter, variant = 'wide') => {
   if (letter === 'M') {
-    const segment = Math.min(3, Math.floor(t * 4));
-    const local = (t * 4) - segment;
-    const points = [
-      [[0.14, 0.82], [0.14, 0.20]],
-      [[0.14, 0.20], [0.38, 0.52]],
-      [[0.38, 0.52], [0.62, 0.20]],
-      [[0.62, 0.20], [0.86, 0.82]],
+    const compact = variant === 'compact';
+    const tall = variant === 'tall';
+    const left = compact ? 0.22 : 0.14;
+    const right = compact ? 0.78 : 0.86;
+    const top = tall ? 0.14 : 0.20;
+    const bottom = tall ? 0.88 : 0.82;
+    const midY = compact ? 0.60 : 0.54;
+    return [
+      [[left, bottom], [left, top]],
+      [[left, top], [0.50, midY]],
+      [[0.50, midY], [right, top]],
+      [[right, top], [right, bottom]],
     ];
-    const [a, b] = points[segment];
-    return { x: a[0] + (b[0] - a[0]) * local, y: a[1] + (b[1] - a[1]) * local };
   }
   if (letter === 'C') {
-    const angle = (-115 + 230 * t) * Math.PI / 180;
-    return { x: 0.56 + Math.cos(angle) * 0.36, y: 0.50 + Math.sin(angle) * 0.34 };
+    const low = variant === 'low';
+    const dance = variant === 'dance';
+    const centerX = dance ? 0.50 : 0.56;
+    const centerY = low ? 0.56 : 0.50;
+    const radiusX = dance ? 0.32 : 0.36;
+    const radiusY = low ? 0.28 : 0.34;
+    const points = [];
+    for (let i = 0; i <= 18; i += 1) {
+      const t = i / 18;
+      const angle = (-55 - 250 * t) * Math.PI / 180;
+      points.push([centerX + Math.cos(angle) * radiusX, centerY + Math.sin(angle) * radiusY]);
+    }
+    return points.slice(0, -1).map((point, index) => [point, points[index + 1]]);
   }
-  const segment = Math.min(2, Math.floor(t * 3));
-  const local = (t * 3) - segment;
-  const points = [
-    [[0.18, 0.84], [0.50, 0.18]],
-    [[0.50, 0.18], [0.82, 0.84]],
-    [[0.34, 0.58], [0.66, 0.58]],
+  const wide = variant === 'wide' || variant === 'finale';
+  const baseY = variant === 'finale' ? 0.86 : 0.84;
+  const apexY = variant === 'finale' ? 0.14 : 0.18;
+  const left = wide ? 0.14 : 0.18;
+  const right = wide ? 0.86 : 0.82;
+  const barY = variant === 'finale' ? 0.56 : 0.58;
+  return [
+    [[left, baseY], [0.50, apexY]],
+    [[0.50, apexY], [right, baseY]],
+    [[0.32, barY], [0.68, barY]],
   ];
-  const [a, b] = points[segment];
-  return { x: a[0] + (b[0] - a[0]) * local, y: a[1] + (b[1] - a[1]) * local };
+};
+
+const pointOnSegments = (segments, progress) => {
+  const lengths = segments.map(([a, b]) => Math.hypot(b[0] - a[0], b[1] - a[1]));
+  const totalLength = lengths.reduce((sum, length) => sum + length, 0) || 1;
+  let distance = Math.max(0, Math.min(1, progress)) * totalLength;
+  for (let i = 0; i < segments.length; i += 1) {
+    const length = lengths[i] || 0;
+    if (distance <= length || i === segments.length - 1) {
+      const [a, b] = segments[i];
+      const local = length ? distance / length : 0;
+      return { x: a[0] + (b[0] - a[0]) * local, y: a[1] + (b[1] - a[1]) * local };
+    }
+    distance -= length;
+  }
+  const last = segments[segments.length - 1]?.[1] || [0.5, 0.5];
+  return { x: last[0], y: last[1] };
+};
+
+const mcaLetterSpot = (letter, index, total, variant) => {
+  const n = Math.max(1, total || 1);
+  const t = n === 1 ? 0.5 : index / (n - 1);
+  return pointOnSegments(mcaLetterSegments(letter, variant), t);
 };
 
 const AI_FLAVORS = [
@@ -711,55 +757,54 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
     };
 
     const ensureShowcase = async () => {
-      const formationIds = MCA_SHOWCASE_PICTURES.map(p => `rf_mca_showcase_${p.id}`);
-      const existingFormationRows = (await window.HZdb.from('routine_formations').select('*').in('id', formationIds)).data || [];
-      const existingFormationIds = new Set(existingFormationRows.map(f => f.id));
+      const formationIds = MCA_SHOWCASE_SEQUENCE.map(mcaFormationId);
       const now = new Date().toISOString();
-      const formations = MCA_SHOWCASE_PICTURES
-        .filter(p => !existingFormationIds.has(`rf_mca_showcase_${p.id}`))
-        .map((p) => {
-          const safeCount = Math.max(1, Math.min(Number(p.count || 1), Number(routine.length_counts || 46)));
+      const formations = MCA_SHOWCASE_SEQUENCE
+        .map((picture) => {
+          const safeCount = Math.max(1, Math.min(Number(picture.count || 1), Number(routine.length_counts || 46)));
           const section = sectionForCount(safeCount);
           return {
-            id: `rf_mca_showcase_${p.id}`,
+            id: mcaFormationId(picture),
             routine_id: routine.id,
-            label: p.label,
+            label: picture.label,
             start_count: safeCount,
             end_count: safeCount,
             floor_width: 54,
             floor_depth: 42,
-            notes: `${p.note} Timed at count ${safeCount}${section ? ` during ${section.label || section.section_type}` : ''}.`,
+            notes: `${picture.note} Timed exactly to 8-count ${safeCount}${section ? ` during ${section.label || section.section_type}` : ''}.`,
             created_at: now,
             updated_at: now,
           };
         });
       if (cancelled) return;
       if (formations.length) {
-        await window.HZdb.from('routine_formations').insert(formations);
+        await window.HZdb.from('routine_formations').upsert(formations, { onConflict: 'id' });
         await remoteInsert('routine_formations', formations);
       }
 
       const existingPositions = (await window.HZdb.from('routine_positions').select('*').in('formation_id', formationIds)).data || [];
-      const existingPositionIds = new Set(existingPositions.map(p => p.id));
-      const positions = MCA_SHOWCASE_PICTURES.flatMap((picture) => {
-        const formationId = `rf_mca_showcase_${picture.id}`;
+      const existingById = new Map(existingPositions.map(p => [p.id, p]));
+      const positions = MCA_SHOWCASE_SEQUENCE.flatMap((picture) => {
+        const formationId = mcaFormationId(picture);
         return showcaseAthletes.map((athlete, index) => {
-          const spot = mcaLetterSpot(picture.letter, index, showcaseAthletes.length);
+          const id = mcaPositionId(picture, athlete.id);
+          const spot = mcaLetterSpot(picture.letter, index, showcaseAthletes.length, picture.variant);
+          const existing = existingById.get(id);
           return {
-            id: `rp_mca_showcase_${picture.id}_${athlete.id}`,
+            id,
             formation_id: formationId,
             athlete_id: athlete.id,
             label: initialsFor(athlete),
             x: Math.max(0.06, Math.min(0.94, spot.x)),
             y: Math.max(0.08, Math.min(0.92, spot.y)),
             role: `MCA ${picture.letter}`,
-            created_at: now,
+            created_at: existing?.created_at || now,
           };
         });
-      }).filter(row => !existingPositionIds.has(row.id));
+      });
       if (cancelled) return;
       if (positions.length) {
-        await window.HZdb.from('routine_positions').insert(positions);
+        await window.HZdb.from('routine_positions').upsert(positions, { onConflict: 'id' });
         await remoteInsert('routine_positions', positions);
       }
     };

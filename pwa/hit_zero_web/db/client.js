@@ -128,54 +128,97 @@
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }] : [];
-    const mcaShowcasePictures = [
-      { id: 'm', letter: 'M', count: 2, label: 'MCA opening M', sectionType: 'opening', note: 'Opening music hit: athletes spell M for Magic.' },
-      { id: 'c', letter: 'C', count: 19, label: 'MCA jump C', sectionType: 'jumps', note: 'Mid-routine hit: athletes curve into C for City.' },
-      { id: 'a', letter: 'A', count: 41, label: 'MCA finale A', sectionType: 'dance', note: 'Final dance picture: athletes snap into A for Allstars.' },
+    const mcaShowcaseSequence = [
+      { id: 'm', formationId: 'rf_mca_showcase_m', letter: 'M', count: 1, label: 'MCA 1 - opening M', variant: 'wide', note: 'Opening 8-count: snap into a clean wide M for Magic.' },
+      { id: 'c', formationId: 'rf_mca_showcase_c', letter: 'C', count: 5, label: 'MCA 2 - standing C', variant: 'front', note: 'Standing tumbling phrase: travel into a clear C for City.' },
+      { id: 'a', formationId: 'rf_mca_showcase_a', letter: 'A', count: 11, label: 'MCA 3 - stunt A', variant: 'triangle', note: 'Stunt entry phrase: hit an A-shaped triangle for Allstars.' },
+      { id: 'm2', formationId: 'rf_mca_showcase_m2', letter: 'M', count: 19, label: 'MCA 4 - jump M', variant: 'compact', note: 'Jump phrase: reset into a tighter M so the floor breathes.' },
+      { id: 'c2', formationId: 'rf_mca_showcase_c2', letter: 'C', count: 23, label: 'MCA 5 - running C', variant: 'low', note: 'Running tumbling phrase: sweep into a lower C pathway.' },
+      { id: 'a2', formationId: 'rf_mca_showcase_a2', letter: 'A', count: 29, label: 'MCA 6 - stunt A', variant: 'wide', note: 'Second stunt phrase: widen the A base for a bigger judges picture.' },
+      { id: 'm3', formationId: 'rf_mca_showcase_m3', letter: 'M', count: 35, label: 'MCA 7 - pyramid M', variant: 'tall', note: 'Pyramid phrase: make the M taller, like a mountain behind the stunt picture.' },
+      { id: 'c3', formationId: 'rf_mca_showcase_c3', letter: 'C', count: 41, label: 'MCA 8 - dance C', variant: 'dance', note: 'Dance phrase: curve into a stage-left C before the final reveal.' },
+      { id: 'a3', formationId: 'rf_mca_showcase_a3', letter: 'A', count: 45, label: 'MCA 9 - finale A', variant: 'finale', note: 'Final 8-count: finish in a crisp A with a center apex.' },
     ];
-    const mcaLetterSpot = (letter, index, total) => {
-      const n = Math.max(1, total || 1);
-      const t = n === 1 ? 0.5 : index / (n - 1);
+    const mcaFormationId = (picture) => picture.formationId || `rf_mca_showcase_${picture.id}`;
+    const mcaPositionId = (picture, athleteId) => `rp_mca_showcase_${picture.id}_${athleteId}`;
+    const mcaLetterSegments = (letter, variant = 'wide') => {
       if (letter === 'M') {
-        const segment = Math.min(3, Math.floor(t * 4));
-        const local = (t * 4) - segment;
-        const points = [
-          [[0.14, 0.82], [0.14, 0.20]],
-          [[0.14, 0.20], [0.38, 0.52]],
-          [[0.38, 0.52], [0.62, 0.20]],
-          [[0.62, 0.20], [0.86, 0.82]],
+        const compact = variant === 'compact';
+        const tall = variant === 'tall';
+        const left = compact ? 0.22 : 0.14;
+        const right = compact ? 0.78 : 0.86;
+        const top = tall ? 0.14 : 0.20;
+        const bottom = tall ? 0.88 : 0.82;
+        const midY = compact ? 0.60 : 0.54;
+        return [
+          [[left, bottom], [left, top]],
+          [[left, top], [0.50, midY]],
+          [[0.50, midY], [right, top]],
+          [[right, top], [right, bottom]],
         ];
-        const [a, b] = points[segment];
-        return { x: a[0] + (b[0] - a[0]) * local, y: a[1] + (b[1] - a[1]) * local };
       }
       if (letter === 'C') {
-        const angle = (-115 + 230 * t) * Math.PI / 180;
-        return { x: 0.56 + Math.cos(angle) * 0.36, y: 0.50 + Math.sin(angle) * 0.34 };
+        const low = variant === 'low';
+        const dance = variant === 'dance';
+        const centerX = dance ? 0.50 : 0.56;
+        const centerY = low ? 0.56 : 0.50;
+        const radiusX = dance ? 0.32 : 0.36;
+        const radiusY = low ? 0.28 : 0.34;
+        const points = [];
+        for (let i = 0; i <= 18; i += 1) {
+          const t = i / 18;
+          const angle = (-55 - 250 * t) * Math.PI / 180;
+          points.push([centerX + Math.cos(angle) * radiusX, centerY + Math.sin(angle) * radiusY]);
+        }
+        return points.slice(0, -1).map((point, index) => [point, points[index + 1]]);
       }
-      const segment = Math.min(2, Math.floor(t * 3));
-      const local = (t * 3) - segment;
-      const points = [
-        [[0.18, 0.84], [0.50, 0.18]],
-        [[0.50, 0.18], [0.82, 0.84]],
-        [[0.34, 0.58], [0.66, 0.58]],
+      const wide = variant === 'wide' || variant === 'finale';
+      const baseY = variant === 'finale' ? 0.86 : 0.84;
+      const apexY = variant === 'finale' ? 0.14 : 0.18;
+      const left = wide ? 0.14 : 0.18;
+      const right = wide ? 0.86 : 0.82;
+      const barY = variant === 'finale' ? 0.56 : 0.58;
+      return [
+        [[left, baseY], [0.50, apexY]],
+        [[0.50, apexY], [right, baseY]],
+        [[0.32, barY], [0.68, barY]],
       ];
-      const [a, b] = points[segment];
-      return { x: a[0] + (b[0] - a[0]) * local, y: a[1] + (b[1] - a[1]) * local };
+    };
+    const pointOnSegments = (segments, progress) => {
+      const lengths = segments.map(([a, b]) => Math.hypot(b[0] - a[0], b[1] - a[1]));
+      const totalLength = lengths.reduce((sum, length) => sum + length, 0) || 1;
+      let distance = Math.max(0, Math.min(1, progress)) * totalLength;
+      for (let i = 0; i < segments.length; i += 1) {
+        const length = lengths[i] || 0;
+        if (distance <= length || i === segments.length - 1) {
+          const [a, b] = segments[i];
+          const local = length ? distance / length : 0;
+          return { x: a[0] + (b[0] - a[0]) * local, y: a[1] + (b[1] - a[1]) * local };
+        }
+        distance -= length;
+      }
+      const last = segments[segments.length - 1]?.[1] || [0.5, 0.5];
+      return { x: last[0], y: last[1] };
+    };
+    const mcaLetterSpot = (letter, index, total, variant) => {
+      const n = Math.max(1, total || 1);
+      const t = n === 1 ? 0.5 : index / (n - 1);
+      return pointOnSegments(mcaLetterSegments(letter, variant), t);
     };
     const showcaseAthletes = roster.filter(a => a?.id).slice(0, 20);
     const routineFormations = routine ? [
       { id: 'rf_demo_opening', routine_id: routine.id, label: 'Opening windows', start_count: 1, end_count: 8, floor_width: 54, floor_depth: 42, notes: 'Keep Arlowe/Kenzie visible in the front window.', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
       { id: 'rf_demo_stunts', routine_id: routine.id, label: 'Stunt pods', start_count: 25, end_count: 40, floor_width: 54, floor_depth: 42, notes: 'Three clean pods with space for safe transitions.', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
       { id: 'rf_demo_pyramid', routine_id: routine.id, label: 'Pyramid picture', start_count: 49, end_count: 64, floor_width: 54, floor_depth: 42, notes: 'Center pyramid, outside groups frame the hit.', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-      ...mcaShowcasePictures.map((picture) => ({
-        id: `rf_mca_showcase_${picture.id}`,
+      ...mcaShowcaseSequence.map((picture) => ({
+        id: mcaFormationId(picture),
         routine_id: routine.id,
         label: picture.label,
         start_count: Math.max(1, Math.min(picture.count, routine.length_counts || 46)),
         end_count: Math.max(1, Math.min(picture.count, routine.length_counts || 46)),
         floor_width: 54,
         floor_depth: 42,
-        notes: `${picture.note} Timed to count ${Math.max(1, Math.min(picture.count, routine.length_counts || 46))}.`,
+        notes: `${picture.note} Timed exactly to 8-count ${Math.max(1, Math.min(picture.count, routine.length_counts || 46))}.`,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })),
@@ -197,11 +240,11 @@
       ...openingSpots.map((p, i) => ({ id: `rp_open_${i + 1}`, formation_id: 'rf_demo_opening', athlete_id: roster[i]?.id || null, label: roster[i]?.initials || String(i + 1), x: p[0], y: p[1], role: i < 5 ? 'front' : 'back', created_at: new Date().toISOString() })),
       ...stuntSpots.map((p, i) => ({ id: `rp_stunt_${i + 1}`, formation_id: 'rf_demo_stunts', athlete_id: roster[i]?.id || null, label: roster[i]?.initials || String(i + 1), x: p[0], y: p[1], role: roleForSpot(i), created_at: new Date().toISOString() })),
       ...pyramidSpots.map((p, i) => ({ id: `rp_pyramid_${i + 1}`, formation_id: 'rf_demo_pyramid', athlete_id: roster[i]?.id || null, label: roster[i]?.initials || String(i + 1), x: p[0], y: p[1], role: roleForSpot(i), created_at: new Date().toISOString() })),
-      ...mcaShowcasePictures.flatMap(picture => showcaseAthletes.map((athlete, index) => {
-        const spot = mcaLetterSpot(picture.letter, index, showcaseAthletes.length);
+      ...mcaShowcaseSequence.flatMap(picture => showcaseAthletes.map((athlete, index) => {
+        const spot = mcaLetterSpot(picture.letter, index, showcaseAthletes.length, picture.variant);
         return {
-          id: `rp_mca_showcase_${picture.id}_${athlete.id}`,
-          formation_id: `rf_mca_showcase_${picture.id}`,
+          id: mcaPositionId(picture, athlete.id),
+          formation_id: mcaFormationId(picture),
           athlete_id: athlete.id,
           label: athlete.initials || String(index + 1),
           x: Math.max(0.06, Math.min(0.94, spot.x)),
@@ -678,11 +721,18 @@
       }
     });
     ['routine_formations', 'routine_positions'].forEach((table) => {
-      const existingIds = new Set((existing[table] || []).map(row => row.id));
-      const missingShowcaseRows = (fresh[table] || [])
-        .filter(row => String(row.id || '').includes('_mca_showcase_') && !existingIds.has(row.id));
-      if (missingShowcaseRows.length) {
-        existing[table] = [...(existing[table] || []), ...missingShowcaseRows];
+      const showcaseRows = (fresh[table] || []).filter(row => String(row.id || '').includes('_mca_showcase_'));
+      if (showcaseRows.length) {
+        const freshById = new Map(showcaseRows.map(row => [row.id, row]));
+        const seen = new Set();
+        existing[table] = (existing[table] || []).map((row) => {
+          if (!freshById.has(row.id)) return row;
+          seen.add(row.id);
+          return { ...row, ...freshById.get(row.id), created_at: row.created_at || freshById.get(row.id).created_at };
+        });
+        showcaseRows.forEach((row) => {
+          if (!seen.has(row.id)) existing[table].push(row);
+        });
         changed = true;
       }
     });
