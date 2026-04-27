@@ -195,6 +195,34 @@ body {
   box-shadow: 0 0 0 1px rgba(39,207,215,0.28), 0 0 36px rgba(39,207,215,0.12);
   transform: translateY(-2px);
 }
+.routine-choreo-guide {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: -4px 0 14px;
+}
+.routine-choreo-guide span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.035);
+  color: var(--hz-dim);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.routine-choreo-guide b {
+  display: grid;
+  place-items: center;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  color: #030306;
+  background: linear-gradient(135deg, var(--hz-teal), var(--hz-pink));
+}
 .routine-formation-board {
   position: relative;
   min-height: 360px;
@@ -350,6 +378,25 @@ body {
     linear-gradient(180deg, rgba(255,255,255,0.03), rgba(0,0,0,0.16));
   background-size: 12.5% 12.5%, 12.5% 12.5%, auto;
 }
+.routine-live-drag-hint {
+  position: absolute;
+  left: 14px;
+  top: 12px;
+  z-index: 1;
+  max-width: calc(100% - 28px);
+  padding: 7px 10px;
+  border: 1px solid rgba(39,207,215,0.22);
+  border-radius: 999px;
+  background: rgba(0,0,0,0.32);
+  color: rgba(255,255,255,0.72);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+.routine-board-drag-hint {
+  border-color: rgba(255,255,255,0.14);
+}
 .routine-live-empty {
   position: absolute;
   inset: 24px;
@@ -371,6 +418,31 @@ body {
   margin-top: 12px;
   color: var(--hz-dim);
   font-size: 12px;
+}
+.routine-waveform-bar {
+  width: 7px;
+  align-self: end;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  background: linear-gradient(180deg, var(--hz-teal), var(--hz-pink));
+  transition: transform 120ms ease, opacity 120ms ease, box-shadow 120ms ease;
+}
+.routine-waveform-bar:hover,
+.routine-waveform-bar.active {
+  opacity: 1 !important;
+  transform: translateY(-3px) scaleX(1.18);
+  box-shadow: 0 0 0 4px rgba(39,207,215,0.12);
+}
+.routine-section-block-hint {
+  margin-top: 4px;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.72);
+  white-space: nowrap;
 }
 .routine-roster-tray {
   display: flex;
@@ -913,6 +985,7 @@ body {
   .routine-builder-setup,
   .routine-builder-main,
   .routine-builder-music-grid,
+  .routine-choreo-guide,
   .routine-builder-section-form,
   .routine-builder-assignment-form,
   .routine-position-inspector,

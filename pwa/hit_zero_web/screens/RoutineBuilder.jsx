@@ -889,15 +889,49 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
     return payload;
   };
 
+  const sectionForCount = (count) => (routine.sections || []).find(s => Number(count) >= s.start_count && Number(count) <= s.end_count) || (routine.sections || [])[0] || null;
+
+  const selectChoreoSection = (section, { seek = true, focus = 'live' } = {}) => {
+    if (!section) return;
+    setAudioPlaying(false);
+    setSelected(section.id);
+    const existing = formationForSection(section);
+    setSelectedFormationId(existing?.id || '');
+    if (seek && audioRef.current) {
+      audioRef.current.currentTime = countToSeconds(section.start_count, countMap);
+      setAudioTime(audioRef.current.currentTime || 0);
+    } else if (seek) {
+      setAudioTime(countToSeconds(section.start_count, countMap));
+    }
+    window.setTimeout(() => {
+      if (focus === 'live') liveStageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (focus === 'editor') sectionEditorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+  };
+
+  const jumpToCount = (count, { focus = 'live' } = {}) => {
+    const section = sectionForCount(count);
+    setAudioPlaying(false);
+    const seconds = countToSeconds(count, countMap);
+    if (audioRef.current) audioRef.current.currentTime = seconds;
+    setAudioTime(seconds);
+    if (section) {
+      setSelected(section.id);
+      const existing = formationForSection(section);
+      setSelectedFormationId(existing?.id || '');
+    }
+    window.setTimeout(() => {
+      if (focus === 'live') liveStageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (focus === 'editor') sectionEditorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+  };
+
   const openSectionEditor = (section = selectedSection || liveSection) => {
     if (!section) {
       pushToast && pushToast({ kind: 'info', title: 'Pick a section first', body: 'Choose a section before editing its counts and notes.' });
       return;
     }
-    setAudioPlaying(false);
-    setSelected(section.id);
-    const existing = formationForSection(section);
-    setSelectedFormationId(existing?.id || '');
+    selectChoreoSection(section, { seek: false, focus: 'editor' });
     setSectionEditorPulse(true);
     window.setTimeout(() => {
       sectionEditorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1456,15 +1490,21 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
             </div>
           )}
 
+          <div className="routine-choreo-guide">
+            <span><b>1</b> Click the waveform or a section block to choose the count.</span>
+            <span><b>2</b> Drag dots on the mat to set the picture.</span>
+            <span><b>3</b> Press play with Ferro-flow on to preview travel.</span>
+          </div>
+
           <div className="routine-live-visualizer">
             <div className="routine-live-head">
               <div>
-                <div className="hz-eyebrow">Live formation visualizer</div>
+                <div className="hz-eyebrow">Movement editor · live preview</div>
                 <div className="routine-live-title">
                   Count {liveDisplayCount} · {liveSection?.label || 'No section selected'}
                 </div>
                 <div className="routine-live-sub">
-                  {liveFormation ? `${liveFormation.label || 'Formation'} · ${liveFormationPositions.length} athletes on mat` : 'Create a formation below, then this mat follows the music.'}
+                  {liveFormation ? `Drag dots here. ${liveFormation.label || 'Formation'} · ${liveFormationPositions.length} athletes on mat` : 'Pick a section, then Auto-place or Auto-flow to create the first floor picture.'}
                 </div>
               </div>
               <div className="routine-live-clock">
@@ -1479,15 +1519,8 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
               <div>
                 <div className="hz-label" style={{ color: 'var(--hz-dim)', marginBottom: 6 }}>Build this section</div>
                 <select className="hz-input" value={liveSection?.id || ''} onChange={e => {
-                  setAudioPlaying(false);
-                  setSelected(e.target.value);
                   const next = (routine.sections || []).find(s => s.id === e.target.value);
-                  const existing = formationForSection(next);
-                  setSelectedFormationId(existing?.id || '');
-                  if (next && audioRef.current) {
-                    audioRef.current.currentTime = countToSeconds(next.start_count, countMap);
-                    setAudioTime(audioRef.current.currentTime || 0);
-                  }
+                  selectChoreoSection(next, { seek: true, focus: 'live' });
                 }}>
                   {(routine.sections || []).map(s => <option key={s.id} value={s.id}>{s.label || s.section_type} · counts {s.start_count}-{s.end_count}</option>)}
                 </select>
@@ -1519,6 +1552,11 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
             <div ref={liveStageRef} className="routine-live-stage">
               <div className="routine-formation-centerline"/>
               <div className="routine-formation-front">Front / judges</div>
+              {!!liveMotionPositions.length && (
+                <div className="routine-live-drag-hint">
+                  Drag athletes here. Play the track to watch travel.
+                </div>
+              )}
               {liveMotionPositions.map((pos) => {
                 const athlete = athletes.find(a => a.id === pos.athlete_id);
                 const active = selectedPositionId === pos.id;
@@ -1556,9 +1594,9 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
 
           <div className="routine-music-console">
             <div>
-              <div className="hz-eyebrow">Playback planning</div>
+              <div className="hz-eyebrow">Music timeline · click to edit movement</div>
               <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>
-                {selectedSection ? `Loop ${selectedSection.label || 'selected section'} at ${fmtTime(countToSeconds(selectedSection.start_count, countMap))}` : 'Select a section to loop, slow down, and teach against counts.'}
+                {selectedSection ? `Editing ${selectedSection.label || 'selected section'} at ${fmtTime(countToSeconds(selectedSection.start_count, countMap))}. Click bars or routine blocks below to jump the mat.` : 'Click a count bar or routine block below to load that movement onto the mat.'}
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -1568,9 +1606,20 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
               <button className="hz-btn hz-btn-sm hz-btn-primary" onClick={() => runAudioAnalysis('beat_map')} disabled={saving}>Audio map</button>
             </div>
             <div className="routine-waveform-strip">
-              {Array.from({ length: 48 }).map((_, i) => (
-                <span key={i} style={{ height: `${18 + ((i * 17) % 38)}px`, opacity: (i + 1) % 8 === 0 ? 0.95 : 0.42 }}/>
-              ))}
+              {Array.from({ length: 48 }).map((_, i) => {
+                const count = Math.min(routine.length_counts, i + 1);
+                const active = count === liveDisplayCount || count === selectedSection?.start_count;
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    className={`routine-waveform-bar ${active ? 'active' : ''}`}
+                    onClick={() => jumpToCount(count, { focus: 'live' })}
+                    title={`Jump to count ${count}`}
+                    style={{ height: `${18 + ((i * 17) % 38)}px`, opacity: (i + 1) % 8 === 0 ? 0.95 : 0.42 }}
+                  />
+                );
+              })}
             </div>
           </div>
 
@@ -1608,8 +1657,8 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
                       key={s.id}
                       role="button"
                       tabIndex={0}
-                      onClick={() => setSelected(s.id)}
-                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSelected(s.id); }}
+                      onClick={() => selectChoreoSection(s, { seek: true, focus: 'live' })}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') selectChoreoSection(s, { seek: true, focus: 'live' }); }}
                       style={{
                         position: 'absolute',
                         left, width, top: 8, bottom: 8,
@@ -1629,6 +1678,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
                       <div style={{ fontSize: 9, fontFamily: 'var(--hz-mono)', color: 'var(--hz-dim)', whiteSpace: 'nowrap' }}>
                         8-counts {s.start_count}-{s.end_count} - {timeRange}
                       </div>
+                      <div className="routine-section-block-hint">Click to edit movement</div>
                       <div onPointerDown={(e) => { e.stopPropagation(); setDragging({ sectionId: s.id, edge: 'start', startX: e.clientX, startCount: s.start_count }); }}
                         style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 9, cursor: 'ew-resize', touchAction: 'none' }}/>
                       <div onPointerDown={(e) => { e.stopPropagation(); setDragging({ sectionId: s.id, edge: 'end', startX: e.clientX, startCount: s.end_count }); }}
@@ -1786,7 +1836,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
               {[...routine.sections].sort((a,b) => a.start_count - b.start_count).map(s => {
                 const color = SECTION_COLORS[s.section_type] || SECTION_COLORS.transition;
                 return (
-                  <button key={s.id} onClick={() => setSelected(s.id)} className="hz-btn" style={{
+                  <button key={s.id} onClick={() => selectChoreoSection(s, { seek: true, focus: 'live' })} className="hz-btn" style={{
                     display: 'grid', gridTemplateColumns: '8px 118px 1fr 104px', alignItems: 'center', gap: 12,
                     padding: '10px 12px', borderRadius: 10, width: '100%', textAlign: 'left',
                     background: selected === s.id ? 'rgba(255,255,255,0.06)' : 'transparent',
@@ -1807,9 +1857,9 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
           <div className="hz-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'center', marginBottom: 16 }}>
               <div>
-                <div className="hz-eyebrow">Formation board</div>
+                <div className="hz-eyebrow">Detailed movement editor</div>
                 <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>
-                  {selectedFormation ? `Counts ${selectedFormation.start_count}-${selectedFormation.end_count} - ${formationPositions.length} athletes placed` : 'Create a formation from the selected section.'}
+                  {selectedFormation ? `Same dots as the live mat. Drag here for precision · counts ${selectedFormation.start_count}-${selectedFormation.end_count} · ${formationPositions.length} athletes placed` : 'Create a formation from the selected section.'}
                 </div>
               </div>
               <button className="hz-btn hz-btn-sm" onClick={addFormationFromSection}><HZIcon name="plus" size={12}/> Formation</button>
@@ -1838,6 +1888,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
                 >
                   <div className="routine-formation-centerline"/>
                   <div className="routine-formation-front">Front / judges</div>
+                  <div className="routine-live-drag-hint routine-board-drag-hint">Precision edit: drag dots. Changes update the live preview.</div>
                   {formationPositions.map((pos) => {
                     const athlete = athletes.find(a => a.id === pos.athlete_id);
                     const active = selectedPositionId === pos.id;
