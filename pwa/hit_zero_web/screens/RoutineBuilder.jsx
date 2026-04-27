@@ -183,6 +183,24 @@ async function createRoutineAudioPlaybackUrl(audio) {
   return data?.signedUrl || data?.signedURL || null;
 }
 
+async function invokeRoutineCoachHelper({ routineId, prompt, selectedSectionId, context }) {
+  if (!window.HZ_FN_BASE || !window.HZ_ANON_KEY) throw new Error('Coach helper endpoint is not configured.');
+  const token = await routineAuthAccessToken();
+  if (!token) throw new Error('Your sign-in session expired. Sign in again and retry the coach helper.');
+  const res = await fetch(`${window.HZ_FN_BASE}/functions/v1/routine-coach-helper`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      apikey: window.HZ_ANON_KEY,
+    },
+    body: JSON.stringify({ routine_id: routineId, prompt, selected_section_id: selectedSectionId || null, context }),
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(payload.error || `Coach helper failed with HTTP ${res.status}`);
+  return payload.plan;
+}
+
 function fmtTime(seconds) {
   const n = Math.max(0, Number(seconds || 0));
   const m = Math.floor(n / 60);
@@ -488,6 +506,14 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
     provider_name: '',
     provider_contact: '',
   });
+  const [coachHelperPrompt, setCoachHelperPrompt] = React.useState('');
+  const [coachHelperBusy, setCoachHelperBusy] = React.useState(false);
+  const [coachHelperMessages, setCoachHelperMessages] = React.useState([
+    {
+      role: 'assistant',
+      body: 'Tell me what to move in plain English. Example: “Move Arlowe front center in dance” or “make opener staggered windows for all 8.”',
+    },
+  ]);
   const [audioPreviewUrl, setAudioPreviewUrl] = React.useState(null);
   const [activeAudioId, setActiveAudioId] = React.useState(null);
   const [audioPlaybackStatus, setAudioPlaybackStatus] = React.useState({ kind: 'idle', body: '' });
@@ -1275,6 +1301,246 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
     }
   };
 
+  const matchCoachHelperSection = (text = '') => {
+    const raw = String(text || '').toLowerCase();
+    const countMatch = raw.match(/\b(?:count|counts)\s*(\d{1,3})(?:\s*[-–]\s*(\d{1,3}))?/);
+    if (countMatch) {
+      const count = Number(countMatch[1]);
+      const hit = (routine.sections || []).find(s => count >= Number(s.start_count) && count <= Number(s.end_count));
+      if (hit) return hit;
+    }
+    return (routine.sections || []).find(s => {
+      const label = String(s.label || '').toLowerCase();
+      const type = String(s.section_type || '').toLowerCase();
+      return (label && raw.includes(label)) || (type && raw.includes(type)) || label.split(/\s+/).some(w => w.length > 4 && raw.includes(w));
+    }) || selectedSection || liveSection || (routine.sections || [])[0] || null;
+  };
+
+  const matchCoachHelperAthletes = (text = '') => {
+    const raw = String(text || '').toLowerCase();
+    const matched = athletes.filter(a => {
+      const name = String(a.display_name || a.name || '').toLowerCase();
+      const first = name.split(/\s+/)[0];
+      const initials = String(a.initials || '').toLowerCase();
+      return (name && raw.includes(name)) || (first.length > 2 && raw.includes(first)) || (initials && raw.includes(initials));
+    });
+    if (matched.length) return matched;
+    if (/\b(all|everyone|everybody|team|kids|girls|athletes)\b/i.test(text)) return athletes;
+    return athletes.slice(0, Math.min(quickAthleteCount || 8, athletes.length));
+  };
+
+  const localCoachHelperSpot = (text, index, total, section) => {
+    const raw = String(text || '').toLowerCase();
+    if (raw.includes('diagonal')) {
+      return clampSpot({ x: 0.18 + index * (0.64 / Math.max(1, total - 1)), y: 0.24 + index * (0.54 / Math.max(1, total - 1)) });
+    }
+    if (raw.includes('line')) {
+      return clampSpot({ x: 0.14 + index * (0.72 / Math.max(1, total - 1)), y: raw.includes('front') ? 0.74 : raw.includes('back') ? 0.26 : 0.5 });
+    }
+    if (raw.includes('window') || raw.includes('stagger')) {
+      const cols = Math.min(5, Math.max(3, Math.ceil(total / 2)));
+      return clampSpot({ x: 0.16 + (index % cols) * (0.68 / Math.max(1, cols - 1)), y: 0.34 + Math.floor(index / cols) * 0.24 + (index % 2 ? 0.06 : 0) });
+    }
+    if (raw.includes('front') && raw.includes('center') && total === 1) return { x: 0.5, y: 0.76 };
+    if (raw.includes('back') && raw.includes('center') && total === 1) return { x: 0.5, y: 0.24 };
+    if (raw.includes('left') && total === 1) return { x: 0.25, y: raw.includes('front') ? 0.74 : 0.5 };
+    if (raw.includes('right') && total === 1) return { x: 0.75, y: raw.includes('front') ? 0.74 : 0.5 };
+    return cheerFlowSpot(index, total, section?.section_type);
+  };
+
+  const buildLocalCoachHelperPlan = (prompt) => {
+    const section = matchCoachHelperSection(prompt);
+    const chosen = matchCoachHelperAthletes(prompt);
+    if (!section) {
+      return {
+        summary: 'I need a routine section before I can move athletes.',
+        coach_message: 'Try naming opener, dance, pyramid, stunt, or a count range.',
+        safety_flags: [],
+        changes: [],
+        source: 'local_fallback',
+      };
+    }
+    const changes = [{
+      type: 'ensure_formation',
+      section_id: section.id,
+      label: `${section.label || section.section_type || 'Section'} helper formation`,
+      start_count: section.start_count,
+      end_count: section.end_count,
+      notes: `Coach helper: ${prompt}`,
+    }];
+    chosen.forEach((athlete, index) => {
+      const spot = localCoachHelperSpot(prompt, index, chosen.length, section);
+      changes.push({
+        type: 'move_athlete',
+        section_id: section.id,
+        athlete_id: athlete.id,
+        athlete_name: athleteName(athlete.id),
+        x: spot.x,
+        y: spot.y,
+        role: athlete.role || athleteRoleForSection(athlete, section) || 'athlete',
+        note: `Coach helper: ${prompt}`,
+      });
+    });
+    changes.push({ type: 'section_note', section_id: section.id, body: `Coach helper applied: ${prompt}` });
+    return {
+      summary: `I moved ${chosen.length} athlete${chosen.length === 1 ? '' : 's'} for ${section.label || section.section_type}.`,
+      coach_message: `Applied to counts ${section.start_count}-${section.end_count}. Drag dots to fine tune exact spacing.`,
+      safety_flags: [],
+      changes,
+      source: 'local_fallback',
+    };
+  };
+
+  const ensureCoachHelperFormation = async (section, change = {}) => {
+    const existing = formationForSection(section);
+    if (existing) {
+      const patch = {};
+      if (change.label && existing.label !== change.label) patch.label = change.label;
+      if (change.notes && !String(existing.notes || '').includes(change.notes)) patch.notes = `${existing.notes || ''}${existing.notes ? '\n' : ''}${change.notes}`;
+      if (Object.keys(patch).length) await updateFormation(existing.id, patch);
+      setSelectedFormationId(existing.id);
+      return { ...existing, ...patch };
+    }
+    const payload = {
+      id: routineUid('rf'),
+      routine_id: routine.id,
+      label: change.label || `${section.label || section.section_type || 'Section'} helper formation`,
+      start_count: section.start_count,
+      end_count: section.end_count,
+      floor_width: 54,
+      floor_depth: 42,
+      notes: change.notes || '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const res = await persistInsert('routine_formations', payload);
+    if (res.error) throw res.error;
+    setSelectedFormationId(payload.id);
+    return payload;
+  };
+
+  const applyCoachHelperPlan = async (plan, prompt) => {
+    const changes = Array.isArray(plan?.changes) ? plan.changes : [];
+    const formationsBySection = new Map();
+    let touchedSection = null;
+    let moved = 0;
+    for (const change of changes) {
+      const section = (routine.sections || []).find(s => s.id === change.section_id) || matchCoachHelperSection(`${change.section_label || ''} ${prompt}`);
+      if (!section) continue;
+      touchedSection = touchedSection || section;
+      if (change.type === 'ensure_formation') {
+        const formation = await ensureCoachHelperFormation(section, change);
+        formationsBySection.set(section.id, formation);
+      }
+      if (change.type === 'move_athlete') {
+        const athlete = athletes.find(a => a.id === change.athlete_id)
+          || athletes.find(a => String(a.display_name || a.name || '').toLowerCase() === String(change.athlete_name || '').toLowerCase());
+        if (!athlete) continue;
+        let formation = formationsBySection.get(section.id) || formationForSection(section);
+        if (!formation) formation = await ensureCoachHelperFormation(section, change);
+        formationsBySection.set(section.id, formation);
+        const existing = (routine.positions || []).find(p => p.formation_id === formation.id && p.athlete_id === athlete.id);
+        const patch = {
+          x: Math.max(0.04, Math.min(0.96, Number(change.x || 0.5))),
+          y: Math.max(0.06, Math.min(0.94, Number(change.y || 0.5))),
+          role: change.role || athlete.role || athleteRoleForSection(athlete, section) || 'athlete',
+          label: athleteInitials(athlete),
+        };
+        if (existing) {
+          await updatePosition(existing.id, patch);
+          setSelectedPositionId(existing.id);
+        } else {
+          const payload = {
+            id: routineUid('rp'),
+            formation_id: formation.id,
+            athlete_id: athlete.id,
+            ...patch,
+            created_at: new Date().toISOString(),
+          };
+          const res = await persistInsert('routine_positions', payload);
+          if (res.error) throw res.error;
+          setSelectedPositionId(payload.id);
+        }
+        moved += 1;
+      }
+      if (change.type === 'section_note') {
+        const body = String(change.body || '').trim();
+        if (body && !String(section.notes || '').includes(body)) {
+          await updateSection(section.id, { notes: `${section.notes || ''}${section.notes ? '\n' : ''}${body}` });
+        }
+      }
+    }
+    if (touchedSection) {
+      setSelected(touchedSection.id);
+      const formation = formationsBySection.get(touchedSection.id) || formationForSection(touchedSection);
+      if (formation) setSelectedFormationId(formation.id);
+      window.setTimeout(() => liveStageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0);
+    }
+    const suggestion = {
+      id: routineUid('rai'),
+      routine_id: routine.id,
+      section_id: touchedSection?.id || null,
+      kind: 'formation_alt',
+      prompt,
+      title: 'Coach helper applied',
+      body: plan?.summary || `Moved ${moved} athletes from a coach helper request.`,
+      payload: { ...plan, applied_changes: changes.length, moved },
+      score_delta: 0,
+      status: 'accepted',
+      created_at: new Date().toISOString(),
+      resolved_at: new Date().toISOString(),
+    };
+    await persistInsert('routine_ai_suggestions', suggestion, { silent: true });
+    return { moved, touchedSection };
+  };
+
+  const askCoachHelper = async (rawPrompt = coachHelperPrompt) => {
+    const prompt = String(rawPrompt || '').trim();
+    if (!prompt || coachHelperBusy) return;
+    setCoachHelperPrompt('');
+    setCoachHelperBusy(true);
+    setCoachHelperMessages(prev => [...prev, { role: 'coach', body: prompt }]);
+    try {
+      let plan;
+      try {
+        plan = await invokeRoutineCoachHelper({
+          routineId: routine.id,
+          prompt,
+          selectedSectionId: selectedSection?.id || liveSection?.id || null,
+          context: {
+            routine: { id: routine.id, name: routine.name, length_counts: routine.length_counts, bpm: routine.bpm },
+            team: team ? { id: team.id, name: team.name, division: team.division, level: team.level, program_id: team.program_id } : null,
+            sections: routine.sections || [],
+            formations: routine.formations || [],
+            positions: routine.positions || [],
+            assignments: routine.assignments || [],
+            athletes: athletes.map(a => ({ id: a.id, display_name: a.display_name, name: a.name, initials: a.initials, role: a.role })),
+          },
+        });
+      } catch (err) {
+        console.warn('[HZ] coach helper function fallback', err);
+        plan = buildLocalCoachHelperPlan(prompt);
+      }
+      if (!Array.isArray(plan?.changes) || !plan.changes.some(change => change?.type === 'move_athlete')) {
+        plan = buildLocalCoachHelperPlan(prompt);
+      }
+      const applied = await applyCoachHelperPlan(plan, prompt);
+      const safety = (plan.safety_flags || []).length ? ` Safety notes: ${plan.safety_flags.join(' ')}` : '';
+      setCoachHelperMessages(prev => [...prev, {
+        role: 'assistant',
+        body: `${plan.summary || 'Coach helper applied.'} ${plan.coach_message || ''}${safety}`.trim(),
+        meta: `${applied.moved} athlete move${applied.moved === 1 ? '' : 's'} applied${plan.source ? ` · ${plan.source}` : ''}`,
+      }]);
+      pushToast && pushToast({ kind: 'success', title: 'Coach helper applied', body: `${applied.moved} athlete move${applied.moved === 1 ? '' : 's'} saved to the routine.` });
+    } catch (err) {
+      const body = err.message || 'Could not apply the coach helper request.';
+      setCoachHelperMessages(prev => [...prev, { role: 'assistant', body }]);
+      pushToast && pushToast({ kind: 'error', title: 'Coach helper failed', body, duration: 12000 });
+    } finally {
+      setCoachHelperBusy(false);
+    }
+  };
+
   const updatePosition = async (id, patch) => {
     const res = await persistUpdate('routine_positions', id, patch);
     if (res.error) pushToast && pushToast({ kind: 'error', title: 'Position not saved', body: res.error.message });
@@ -1655,6 +1921,51 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
             <span><b>1</b> Click the waveform or a section block to choose the count.</span>
             <span><b>2</b> Drag dots on the mat to set the picture.</span>
             <span><b>3</b> Press play with Ferro-flow on to preview travel.</span>
+          </div>
+
+          <div className="routine-coach-helper">
+            <div className="routine-coach-helper-head">
+              <div>
+                <div className="hz-eyebrow">Coach helper chat</div>
+                <div className="routine-coach-helper-title">Tell the floor what to do.</div>
+                <div className="routine-coach-helper-copy">
+                  Plain English in, formation edits out. Try “move Arlowe front center in dance” or “make opener staggered windows for all 8.”
+                </div>
+              </div>
+              <span>{coachHelperBusy ? 'Thinking' : 'Auto-applies'}</span>
+            </div>
+            <div className="routine-coach-helper-log">
+              {coachHelperMessages.slice(-5).map((msg, i) => (
+                <div key={`${msg.role}-${i}-${msg.body.slice(0, 12)}`} className={`routine-coach-helper-msg routine-coach-helper-msg-${msg.role}`}>
+                  <b>{msg.role === 'coach' ? 'Coach' : 'Hit Zero'}</b>
+                  <p>{msg.body}</p>
+                  {msg.meta ? <small>{msg.meta}</small> : null}
+                </div>
+              ))}
+            </div>
+            <form className="routine-coach-helper-form" onSubmit={(e) => { e.preventDefault(); askCoachHelper(); }}>
+              <input
+                className="hz-input"
+                value={coachHelperPrompt}
+                onChange={e => setCoachHelperPrompt(e.target.value)}
+                placeholder="Move Arlowe front center for dance, then put everyone else in a window..."
+                disabled={coachHelperBusy}
+              />
+              <button className="hz-btn hz-btn-primary" type="submit" disabled={coachHelperBusy || !coachHelperPrompt.trim()}>
+                {coachHelperBusy ? 'Applying...' : 'Ask + apply'}
+              </button>
+            </form>
+            <div className="routine-coach-helper-pills">
+              {[
+                'Make opener staggered windows for all 8',
+                'Move Arlowe front center in dance',
+                'Put stunt groups into clean pods',
+              ].map(example => (
+                <button key={example} type="button" className="hz-btn hz-btn-xs" disabled={coachHelperBusy} onClick={() => askCoachHelper(example)}>
+                  {example}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="routine-live-visualizer">
