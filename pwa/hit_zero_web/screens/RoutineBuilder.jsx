@@ -915,6 +915,141 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
     };
   };
 
+  const clampSpot = (spot) => ({
+    x: Math.max(0.08, Math.min(0.92, Number(spot.x || 0.5))),
+    y: Math.max(0.10, Math.min(0.90, Number(spot.y || 0.5))),
+  });
+
+  const cheerFlowSpot = (index, total, sectionType = 'transition') => {
+    const type = String(sectionType || '').toLowerCase();
+    if (type.includes('stunt') || type.includes('basket')) {
+      const podSize = 4;
+      const pod = Math.floor(index / podSize);
+      const slot = index % podSize;
+      const pods = Math.max(1, Math.ceil(total / podSize));
+      const podX = (pod + 1) / (pods + 1);
+      const podOffsets = [
+        { x: 0, y: -0.09 },
+        { x: -0.055, y: 0.035 },
+        { x: 0.055, y: 0.035 },
+        { x: 0, y: 0.13 },
+      ];
+      return clampSpot({
+        x: podX + podOffsets[slot].x,
+        y: 0.43 + podOffsets[slot].y + (pod % 2 ? 0.05 : 0),
+      });
+    }
+    if (type.includes('pyramid')) {
+      const center = Math.floor(total / 2);
+      const side = index - center;
+      const row = Math.min(3, Math.abs(side));
+      return clampSpot({
+        x: 0.5 + side * 0.07,
+        y: 0.30 + row * 0.12 + (index % 2 ? 0.02 : 0),
+      });
+    }
+    if (type.includes('tumbling')) {
+      const columns = Math.min(6, Math.max(3, Math.ceil(total / 2)));
+      const lane = index % columns;
+      const wave = Math.floor(index / columns);
+      return clampSpot({
+        x: 0.12 + lane * (0.76 / Math.max(1, columns - 1)),
+        y: type.includes('running') ? 0.25 + wave * 0.18 + (lane % 2 ? 0.08 : 0) : 0.30 + wave * 0.16,
+      });
+    }
+    if (type.includes('jump')) {
+      const columns = Math.min(7, Math.max(3, total));
+      return clampSpot({
+        x: 0.12 + (index % columns) * (0.76 / Math.max(1, columns - 1)),
+        y: 0.44 + (index % 2 ? 0.14 : -0.06) + Math.floor(index / columns) * 0.12,
+      });
+    }
+    const columns = Math.min(6, Math.max(3, Math.ceil(Math.sqrt(total))));
+    const row = Math.floor(index / columns);
+    const col = index % columns;
+    const centered = col - (columns - 1) / 2;
+    const vShape = Math.abs(centered) * 0.045;
+    return clampSpot({
+      x: 0.5 + centered * 0.13 + (row % 2 ? 0.055 : 0),
+      y: 0.28 + row * 0.16 + vShape,
+    });
+  };
+
+  const athleteRoleForSection = (athlete, section) => {
+    const assignment = (routine.assignments || []).find(a => a.section_id === section?.id && a.athlete_id === athlete?.id);
+    return String(assignment?.role || athlete?.role || 'athlete').toLowerCase();
+  };
+
+  const sectionRoleRank = (athlete, section) => {
+    const role = athleteRoleForSection(athlete, section);
+    const type = String(section?.section_type || '').toLowerCase();
+    if (type.includes('stunt') || type.includes('basket') || type.includes('pyramid')) {
+      if (role.includes('fly')) return 0;
+      if (role.includes('back')) return 1;
+      if (role.includes('base')) return 2;
+      return 3;
+    }
+    if (type.includes('tumbling')) {
+      if (role.includes('tumb')) return 0;
+      if (role.includes('jump')) return 1;
+      return 2;
+    }
+    return role.includes('dance') ? 0 : role.includes('jump') ? 1 : 2;
+  };
+
+  const pickOpenCheerSpot = (candidateIndex, projectedTotal, section, usedSpots) => {
+    const candidates = [];
+    for (let i = 0; i < Math.max(projectedTotal + 8, 12); i += 1) {
+      candidates.push(cheerFlowSpot(candidateIndex + i, Math.max(projectedTotal, candidateIndex + i + 1), section?.section_type));
+    }
+    const open = candidates.find(spot => !usedSpots.some(used => Math.hypot(Number(used.x || 0.5) - spot.x, Number(used.y || 0.5) - spot.y) < 0.085));
+    return open || candidates[0] || quickSpot(candidateIndex, projectedTotal);
+  };
+
+  const autoFlowOpenAthletes = async (section = selectedSection || liveSection) => {
+    if (!section) {
+      pushToast && pushToast({ kind: 'info', title: 'Pick a section first', body: 'Choose the section that needs a cheer-logical floor flow.' });
+      return;
+    }
+    setSaving(true);
+    try {
+      const formation = await addFormationFromSection(section);
+      if (!formation) return;
+      const existingPositions = (routine.positions || []).filter(p => p.formation_id === formation.id);
+      const existingAthleteIds = new Set(existingPositions.map(p => p.athlete_id).filter(Boolean));
+      const missing = athletes
+        .filter(a => !existingAthleteIds.has(a.id))
+        .sort((a, b) => sectionRoleRank(a, section) - sectionRoleRank(b, section) || String(a.display_name || a.name || '').localeCompare(String(b.display_name || b.name || '')));
+      if (!missing.length) {
+        pushToast && pushToast({ kind: 'info', title: 'Everyone has a spot', body: `${formation.label || 'This formation'} already has every rostered athlete placed.` });
+        return;
+      }
+      const projectedTotal = existingPositions.length + missing.length;
+      const usedSpots = existingPositions.map(p => ({ x: Number(p.x || 0.5), y: Number(p.y || 0.5) }));
+      for (let i = 0; i < missing.length; i += 1) {
+        const athlete = missing[i];
+        const spot = pickOpenCheerSpot(existingPositions.length + i, projectedTotal, section, usedSpots);
+        usedSpots.push(spot);
+        const res = await persistInsert('routine_positions', {
+          id: routineUid('rp'),
+          formation_id: formation.id,
+          athlete_id: athlete.id,
+          label: athleteInitials(athlete),
+          x: spot.x,
+          y: spot.y,
+          role: athlete.role || athleteRoleForSection(athlete, section) || 'athlete',
+          created_at: new Date().toISOString(),
+        });
+        if (res.error) throw res.error;
+      }
+      pushToast && pushToast({ kind: 'success', title: 'Auto-flow placed open athletes', body: `${missing.length} unassigned athletes moved into a ${section.label || section.section_type || 'section'} floor picture. Existing coach placements stayed put.` });
+    } catch (err) {
+      pushToast && pushToast({ kind: 'error', title: 'Auto-flow failed', body: err.message || 'Could not place open athletes.' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const autoPopulateFormation = async (count = quickAthleteCount, section = selectedSection || liveSection) => {
     if (!section) {
       pushToast && pushToast({ kind: 'info', title: 'Pick a section first', body: 'Choose which part of the routine this floor picture belongs to.' });
@@ -1172,9 +1307,10 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
   const liveCount = countFromSeconds(audioTime);
   const playheadSection = (routine.sections || []).find(s => liveCount >= s.start_count && liveCount <= s.end_count) || (routine.sections || [])[0] || null;
   const liveSection = audioPlaying ? playheadSection : (selectedSection || playheadSection);
-  const liveFormation = formationForSection(liveSection) || (!audioPlaying ? selectedFormation : null) || null;
+  const liveDisplayCount = audioPlaying ? liveCount : Number(liveSection?.start_count || liveCount);
+  const liveFormation = formationForSection(liveSection) || null;
   const liveFormationPositions = liveFormation ? (routine.positions || []).filter(p => p.formation_id === liveFormation.id) : [];
-  const liveMarkers = (countMap?.markers || latestAnalysis?.result_payload?.markers || []).filter(m => Math.abs(Number(m.count || 0) - liveCount) <= 1).slice(0, 3);
+  const liveMarkers = (countMap?.markers || latestAnalysis?.result_payload?.markers || []).filter(m => Math.abs(Number(m.count || 0) - liveDisplayCount) <= 1).slice(0, 3);
   const audioProgress = Math.max(0, Math.min(1, Number(audioTime || 0) / Math.max(1, Number(audio?.duration_seconds || countToSeconds(routine.length_counts + 1, countMap)))));
   const quickFloorPresets = [8, 12, 16, 20].filter(n => n <= athletes.length);
   const quickFloorCount = Math.min(quickAthleteCount, athletes.length || quickAthleteCount);
@@ -1267,7 +1403,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
               <div>
                 <div className="hz-eyebrow">Live formation visualizer</div>
                 <div className="routine-live-title">
-                  Count {liveCount} · {liveSection?.label || 'No section selected'}
+                  Count {liveDisplayCount} · {liveSection?.label || 'No section selected'}
                 </div>
                 <div className="routine-live-sub">
                   {liveFormation ? `${liveFormation.label || 'Formation'} · ${liveFormationPositions.length} athletes on mat` : 'Create a formation below, then this mat follows the music.'}
@@ -1289,7 +1425,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
                   setSelected(e.target.value);
                   const next = (routine.sections || []).find(s => s.id === e.target.value);
                   const existing = formationForSection(next);
-                  if (existing) setSelectedFormationId(existing.id);
+                  setSelectedFormationId(existing?.id || '');
                   if (next && audioRef.current) {
                     audioRef.current.currentTime = countToSeconds(next.start_count, countMap);
                     setAudioTime(audioRef.current.currentTime || 0);
@@ -1307,9 +1443,14 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
                   <button className={`hz-btn hz-btn-xs ${quickAthleteCount === athletes.length ? 'hz-btn-primary' : ''}`} onClick={() => setQuickAthleteCount(athletes.length)}>{quickFloorPresets.length ? 'All' : Math.max(athletes.length, 1)}</button>
                 </div>
               </div>
-              <button className="hz-btn hz-btn-primary routine-live-build-btn" onClick={() => autoPopulateFormation(quickAthleteCount, liveSection)} disabled={saving || !liveSection}>
-                Auto-place {quickFloorCount}
-              </button>
+              <div className="routine-live-action-stack">
+                <button className="hz-btn hz-btn-primary routine-live-build-btn" onClick={() => autoPopulateFormation(quickAthleteCount, liveSection)} disabled={saving || !liveSection}>
+                  Auto-place {quickFloorCount}
+                </button>
+                <button className="hz-btn routine-live-build-btn" onClick={() => autoFlowOpenAthletes(liveSection)} disabled={saving || !liveSection || !athletes.length}>
+                  Auto-flow open athletes
+                </button>
+              </div>
             </div>
             <div className="routine-live-stage">
               <div className="routine-formation-centerline"/>
