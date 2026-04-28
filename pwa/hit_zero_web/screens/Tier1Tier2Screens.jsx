@@ -187,6 +187,47 @@ window.Messages = Messages;
 function Schedule({ snap, session }) {
   const me = session?.profile || { id: 'u_coach', role: 'coach' };
   const upcoming = window.HZsel.upcomingSessions(12);
+  const canEdit = me.role === 'coach' || me.role === 'owner';
+  const [adding, setAdding] = _useState(false);
+  const [editingId, setEditingId] = _useState(null);
+  const [busy, setBusy] = _useState(false);
+  const team = (snap.teams || [])[0] || null;
+
+  async function addSession(values) {
+    if (!team?.id) { alert('No team loaded.'); return; }
+    setBusy(true);
+    try {
+      const { error } = await window.HZdb.from('sessions').insert({
+        team_id: team.id,
+        scheduled_at: values.scheduled_at,
+        duration_min: values.duration_min,
+        type: values.type,
+        location: values.location || null,
+        is_competition: values.is_competition,
+        notes: values.notes || null,
+      });
+      if (error) { console.error('[sessions] insert', error); alert('Could not save: ' + error.message); return; }
+      setAdding(false);
+    } finally { setBusy(false); }
+  }
+
+  async function patchSession(id, patch) {
+    setBusy(true);
+    try {
+      const { error } = await window.HZdb.from('sessions').update(patch).eq('id', id);
+      if (error) { console.error('[sessions] update', error); alert('Could not save: ' + error.message); return false; }
+      return true;
+    } finally { setBusy(false); }
+  }
+
+  async function removeSession(id) {
+    if (!confirm('Cancel this session? This removes it from everyone\'s schedule.')) return;
+    setBusy(true);
+    try {
+      const { error } = await window.HZdb.from('sessions').delete().eq('id', id);
+      if (error) { console.error('[sessions] delete', error); alert('Could not remove: ' + error.message); }
+    } finally { setBusy(false); }
+  }
 
   return (
     <div>
@@ -197,21 +238,116 @@ function Schedule({ snap, session }) {
             What's <span className="hz-zero">next</span>.
           </div>
         </div>
-        <CalendarSubscribeButton me={me}/>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {canEdit && (
+            <button onClick={() => { setAdding(a => !a); setEditingId(null); }} className="hz-btn hz-btn-primary hz-btn-sm">
+              {adding ? 'Cancel' : '+ Add session'}
+            </button>
+          )}
+          <CalendarSubscribeButton me={me}/>
+        </div>
       </div>
 
+      {adding && <SessionForm onSave={addSession} onCancel={() => setAdding(false)} disabled={busy}/>}
+
       <div style={{ display: 'grid', gap: 14 }}>
-        {upcoming.length === 0 && (
+        {upcoming.length === 0 && !adding && (
           <div className="hz-card" style={{ padding: 40, color: 'var(--hz-dim)', textAlign: 'center' }}>
-            Nothing on the books. Add one from the Sessions tab.
+            Nothing on the books. {canEdit ? 'Click "+ Add session" above to put a practice or competition on the calendar.' : 'Check back later.'}
           </div>
         )}
-        {upcoming.map(s => <SessionRow key={s.id} session={s} me={me}/> )}
+        {upcoming.map(s => editingId === s.id
+          ? <SessionForm key={s.id} session={s}
+              onSave={async (vals) => { const ok = await patchSession(s.id, vals); if (ok) setEditingId(null); }}
+              onCancel={() => setEditingId(null)}
+              onRemove={() => removeSession(s.id).then(() => setEditingId(null))}
+              disabled={busy}/>
+          : <SessionRow key={s.id} session={s} me={me} canEdit={canEdit} onEdit={() => setEditingId(s.id)}/> )}
       </div>
     </div>
   );
 }
-function SessionRow({ session: s, me }) {
+
+function SessionForm({ session: existing, onSave, onCancel, onRemove, disabled }) {
+  // datetime-local needs a value like "2026-04-29T18:00"
+  const initialIso = existing?.scheduled_at ? new Date(existing.scheduled_at) : new Date(Date.now() + 24*3600*1000);
+  const pad = (n) => String(n).padStart(2, '0');
+  const formatLocal = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+  const [scheduledAt, setScheduledAt] = _useState(formatLocal(initialIso));
+  const [type, setType] = _useState(existing?.type || 'practice');
+  const [duration, setDuration] = _useState(existing?.duration_min || 90);
+  const [location, setLocation] = _useState(existing?.location || '');
+  const [isCompetition, setIsCompetition] = _useState(!!existing?.is_competition);
+  const [notes, setNotes] = _useState(existing?.notes || '');
+
+  const submit = (e) => {
+    e?.preventDefault?.();
+    onSave({
+      scheduled_at: new Date(scheduledAt).toISOString(),
+      type,
+      duration_min: parseInt(duration, 10) || 60,
+      location: location.trim() || null,
+      is_competition: isCompetition,
+      notes: notes.trim() || null,
+    });
+  };
+
+  return (
+    <form onSubmit={submit} className="hz-card" style={{ padding: 18, marginBottom: 14, display: 'grid', gap: 10 }}>
+      <div className="hz-eyebrow" style={{ fontSize: 10 }}>{existing ? 'Edit session' : 'New session'}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 0.7fr 1.4fr', gap: 10 }}>
+        <FieldRow label="When">
+          <input type="datetime-local" className="hz-input" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} disabled={disabled} required/>
+        </FieldRow>
+        <FieldRow label="Type">
+          <select className="hz-input" value={type} onChange={e => setType(e.target.value)} disabled={disabled}>
+            <option value="practice">Practice</option>
+            <option value="tumbling">Tumbling</option>
+            <option value="stunting">Stunting</option>
+            <option value="conditioning">Conditioning</option>
+            <option value="choreo">Choreo</option>
+            <option value="competition">Competition</option>
+            <option value="open_gym">Open Gym</option>
+            <option value="meeting">Meeting</option>
+          </select>
+        </FieldRow>
+        <FieldRow label="Min">
+          <input type="number" className="hz-input" value={duration} onChange={e => setDuration(e.target.value)} disabled={disabled} min="15" max="480" step="15"/>
+        </FieldRow>
+        <FieldRow label="Location">
+          <input className="hz-input" value={location} onChange={e => setLocation(e.target.value)} disabled={disabled} placeholder="Main floor"/>
+        </FieldRow>
+      </div>
+      <FieldRow label="Notes (optional)">
+        <textarea className="hz-input" rows={2} value={notes} onChange={e => setNotes(e.target.value)} disabled={disabled} placeholder="Bring poms, light makeup, etc."/>
+      </FieldRow>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, paddingTop: 4 }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+          <input type="checkbox" checked={isCompetition} onChange={e => setIsCompetition(e.target.checked)} disabled={disabled}/>
+          This is a competition
+        </label>
+        <div style={{ flex: 1 }}/>
+        {existing && onRemove && (
+          <button type="button" className="hz-btn hz-btn-danger hz-btn-sm" onClick={onRemove} disabled={disabled}>Cancel session</button>
+        )}
+        <button type="button" className="hz-btn hz-btn-ghost hz-btn-sm" onClick={onCancel} disabled={disabled}>Close</button>
+        <button type="submit" className="hz-btn hz-btn-primary hz-btn-sm" disabled={disabled}>{existing ? 'Save' : 'Add to calendar'}</button>
+      </div>
+    </form>
+  );
+}
+
+// Tiny field wrapper used by SessionForm + others (mirrors OtherScreens.jsx FieldRow)
+function FieldRow({ label, children }) {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span className="hz-eyebrow" style={{ fontSize: 10 }}>{label}</span>
+      {children}
+    </label>
+  );
+}
+function SessionRow({ session: s, me, canEdit, onEdit }) {
   const { day, time } = formatSessionTime(s.scheduled_at);
   const rsvp = window.HZsel.sessionRsvp(s.id);
   const volRows = window.HZsel.volunteerRolesAndAssignments(s.id);
@@ -249,8 +385,11 @@ function SessionRow({ session: s, me }) {
           </div>
         </div>
 
-        {/* Personal RSVP for athletes/parents; attendance drawer for coaches */}
+        {/* Personal RSVP for athletes/parents; edit button for staff */}
         {me.role !== 'coach' && me.role !== 'owner' && <PersonalRsvp session={s} me={me}/> }
+        {canEdit && onEdit && (
+          <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={onEdit} style={{ padding: '6px 12px', fontSize: 11 }}>Edit</button>
+        )}
       </div>
     </div>
   );

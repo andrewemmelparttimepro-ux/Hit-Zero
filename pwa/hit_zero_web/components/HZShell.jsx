@@ -175,7 +175,7 @@ function App() {
       .on('postgres_changes', { table: '*' }, () => refreshSnapshot())
       .subscribe();
     // subscribe to every table we care about
-    ['athlete_skills','celebrations','attendance','routine_sections','sessions','billing_accounts','billing_charges','announcements','score_runs','program_tracks','program_classes'].forEach(t => {
+    ['athlete_skills','celebrations','attendance','routine_sections','sessions','billing_accounts','billing_charges','announcements','score_runs','program_tracks','program_classes','athletes','programs','program_payment_settings'].forEach(t => {
       window.HZdb.channel('t-' + t).on('postgres_changes', { table: t }, () => refreshSnapshot()).subscribe();
     });
     return () => {

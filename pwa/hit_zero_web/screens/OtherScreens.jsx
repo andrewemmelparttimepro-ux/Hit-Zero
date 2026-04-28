@@ -882,17 +882,52 @@ window.Sessions = Sessions;
 
 // ─── Announcements ───
 function Announcements({ snap, session }) {
-  const [draft, setDraft] = React.useState({ title: '', body: '' });
-  const canPost = ['coach','owner'].includes(session.profile.role);
+  const program = window.HZsel.programProfile?.() || (snap.programs || [])[0] || {};
+  const [draft, setDraft] = React.useState({ title: '', body: '', pinned: false, audience: 'all' });
+  const [editingId, setEditingId] = React.useState(null);
+  const [busy, setBusy] = React.useState(false);
+  const canPost = ['coach','owner'].includes(session?.profile?.role || '');
 
   const post = async () => {
     if (!draft.title.trim()) return;
-    await window.HZdb.from('announcements').insert({
-      program_id: 'p_mca', audience: 'all', title: draft.title, body: draft.body,
-      pinned: false, created_by: session.profile.id, created_at: new Date().toISOString(),
-    });
-    setDraft({ title: '', body: '' });
+    if (!program.id) { alert('No program loaded.'); return; }
+    setBusy(true);
+    try {
+      const { error } = await window.HZdb.from('announcements').insert({
+        program_id: program.id,
+        audience: draft.audience,
+        title: draft.title.trim(),
+        body: draft.body.trim() || null,
+        pinned: draft.pinned,
+        created_by: session.profile.id,
+      });
+      if (error) { console.error('[announcements] insert', error); alert('Could not post: ' + error.message); return; }
+      setDraft({ title: '', body: '', pinned: false, audience: 'all' });
+    } finally { setBusy(false); }
   };
+
+  async function patch(id, p) {
+    setBusy(true);
+    try {
+      const { error } = await window.HZdb.from('announcements').update(p).eq('id', id);
+      if (error) { console.error('[announcements] update', error); alert('Could not save: ' + error.message); return false; }
+      return true;
+    } finally { setBusy(false); }
+  }
+
+  async function softDelete(a) {
+    if (!confirm(`Delete "${a.title}"?`)) return;
+    setBusy(true);
+    try {
+      const { error } = await window.HZdb.from('announcements').update({ deleted_at: new Date().toISOString() }).eq('id', a.id);
+      if (error) { console.error('[announcements] soft-delete', error); alert('Could not delete: ' + error.message); }
+    } finally { setBusy(false); }
+  }
+
+  const items = (snap.announcements || [])
+    .filter(a => !a.deleted_at)
+    .slice()
+    .sort((a,b) => (b.pinned - a.pinned) || (new Date(b.created_at) - new Date(a.created_at)));
 
   return (
     <div>
@@ -900,27 +935,85 @@ function Announcements({ snap, session }) {
       {canPost && (
         <div className="hz-card" style={{ marginBottom: 24 }}>
           <div className="hz-eyebrow" style={{ marginBottom: 10 }}>Post something</div>
-          <input className="hz-input" placeholder="Title" value={draft.title} onChange={e => setDraft({...draft, title: e.target.value})} style={{ marginBottom: 10 }}/>
-          <textarea className="hz-input" rows="3" placeholder="Details — everyone sees this." value={draft.body} onChange={e => setDraft({...draft, body: e.target.value})}/>
-          <div style={{ marginTop: 10, textAlign: 'right' }}>
-            <button className="hz-btn hz-btn-primary" onClick={post}>Post</button>
+          <input className="hz-input" placeholder="Title" value={draft.title} onChange={e => setDraft({...draft, title: e.target.value})} style={{ marginBottom: 10 }} disabled={busy}/>
+          <textarea className="hz-input" rows="3" placeholder="Details — everyone sees this." value={draft.body} onChange={e => setDraft({...draft, body: e.target.value})} disabled={busy}/>
+          <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                <input type="checkbox" checked={draft.pinned} onChange={e => setDraft({...draft, pinned: e.target.checked})} disabled={busy}/>
+                Pin to top
+              </label>
+              <select className="hz-input" value={draft.audience} onChange={e => setDraft({...draft, audience: e.target.value})} disabled={busy} style={{ width: 160, padding: '6px 10px' }}>
+                <option value="all">Everyone</option>
+                <option value="parents">Parents only</option>
+                <option value="athletes">Athletes only</option>
+                <option value="coaches">Coaches only</option>
+              </select>
+            </div>
+            <button className="hz-btn hz-btn-primary" onClick={post} disabled={busy || !draft.title.trim()}>Post</button>
           </div>
         </div>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {(snap.announcements || []).slice().sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).map(a => (
+        {items.length === 0 && (
+          <div className="hz-card" style={{ padding: 32, textAlign: 'center', color: 'var(--hz-dim)' }}>Nothing posted yet.</div>
+        )}
+        {items.map(a => editingId === a.id ? (
+          <AnnouncementEditor key={a.id} announcement={a} disabled={busy}
+            onSave={async (p) => { const ok = await patch(a.id, p); if (ok) setEditingId(null); }}
+            onCancel={() => setEditingId(null)}
+            onDelete={() => softDelete(a).then(() => setEditingId(null))}/>
+        ) : (
           <div key={a.id} className="hz-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
               <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                 {a.pinned && <Pill tone="pink">Pinned</Pill>}
                 <div className="hz-eyebrow">{new Date(a.created_at).toLocaleDateString('default', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
               </div>
-              <Pill>{a.audience}</Pill>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <Pill>{a.audience}</Pill>
+                {canPost && (
+                  <button className="hz-btn hz-btn-ghost hz-btn-sm" style={{ padding: '4px 10px', fontSize: 11 }} onClick={() => setEditingId(a.id)}>Edit</button>
+                )}
+              </div>
             </div>
             <div className="hz-display" style={{ fontSize: 28, marginBottom: 8 }}>{a.title}</div>
             <div style={{ color: 'var(--hz-dim)', fontSize: 14, lineHeight: 1.55 }}>{a.body}</div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function AnnouncementEditor({ announcement, disabled, onSave, onCancel, onDelete }) {
+  const [title, setTitle] = React.useState(announcement.title || '');
+  const [body, setBody] = React.useState(announcement.body || '');
+  const [pinned, setPinned] = React.useState(!!announcement.pinned);
+  const [audience, setAudience] = React.useState(announcement.audience || 'all');
+  return (
+    <div className="hz-card">
+      <div className="hz-eyebrow" style={{ marginBottom: 10 }}>Editing announcement</div>
+      <input className="hz-input" value={title} onChange={e => setTitle(e.target.value)} disabled={disabled} style={{ marginBottom: 10 }}/>
+      <textarea className="hz-input" rows="3" value={body} onChange={e => setBody(e.target.value)} disabled={disabled}/>
+      <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+            <input type="checkbox" checked={pinned} onChange={e => setPinned(e.target.checked)} disabled={disabled}/>
+            Pin to top
+          </label>
+          <select className="hz-input" value={audience} onChange={e => setAudience(e.target.value)} disabled={disabled} style={{ width: 160, padding: '6px 10px' }}>
+            <option value="all">Everyone</option>
+            <option value="parents">Parents only</option>
+            <option value="athletes">Athletes only</option>
+            <option value="coaches">Coaches only</option>
+          </select>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="hz-btn hz-btn-danger hz-btn-sm" onClick={onDelete} disabled={disabled}>Delete</button>
+          <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={onCancel} disabled={disabled}>Cancel</button>
+          <button className="hz-btn hz-btn-primary hz-btn-sm" onClick={() => onSave({ title: title.trim(), body: body.trim() || null, pinned, audience })} disabled={disabled || !title.trim()}>Save</button>
+        </div>
       </div>
     </div>
   );
@@ -952,25 +1045,7 @@ function AdminConsole({ snap, navigate }) {
         <StatTile label="Leads Open" value={leads.active} sub={`${leads.converted} converted`} accent="var(--hz-pink)"/>
         <StatTile label="Admissions" value={regs.pending} sub={`${regs.accepted} accepted`} accent={regs.pending ? 'var(--hz-amber)' : 'var(--hz-green)'}/>
       </div>
-      <div className="hz-card" style={{ marginBottom: 24 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.35fr 1fr 1fr', gap: 18, alignItems: 'stretch' }}>
-          <div>
-            <div className="hz-eyebrow" style={{ marginBottom: 10 }}>Gym identity · top of hierarchy</div>
-            <div className="hz-display" style={{ fontSize: 34, marginBottom: 8 }}>{programName}</div>
-            <div style={{ color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.5 }}>
-              {program.description || 'This is the business record that owns teams, roster, billing, leads, registrations, and processor connections.'}
-            </div>
-          </div>
-          <div style={{ display: 'grid', gap: 10 }}>
-            <MiniStat label="Directory" value={program.is_public ? 'Public' : 'Hidden'} sub={`${directoryUrl} · ${programLocation}`} accent={program.is_public ? 'var(--hz-teal)' : 'var(--hz-amber)'}/>
-            <MiniStat label="Lead intake" value={program.is_accepting_leads ? 'Open' : 'Closed'} sub="website forms attach to program_id" accent={program.is_accepting_leads ? 'var(--hz-green)' : 'var(--hz-dim)'}/>
-          </div>
-          <div style={{ display: 'grid', gap: 10 }}>
-            <MiniStat label="Payment owner" value={(paymentSettings.default_provider || 'square').toUpperCase()} sub={`program_id ${String(program.id || 'unset').slice(0, 8)}`} accent="var(--hz-pink)"/>
-            <MiniStat label="Checkout mode" value={(paymentSettings.checkout_mode || 'manual_invoice').replace(/_/g, ' ')} sub={paymentSettings.public_checkout_enabled ? 'public checkout enabled' : 'owner-gated until ready'} accent={paymentSettings.public_checkout_enabled ? 'var(--hz-green)' : 'var(--hz-amber)'}/>
-          </div>
-        </div>
-      </div>
+      <ProgramIdentityCard program={program} paymentSettings={paymentSettings} programLocation={programLocation} directoryUrl={directoryUrl}/>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
         <div className="hz-card">
           <div className="hz-eyebrow" style={{ marginBottom: 14 }}>Revenue · Season</div>
@@ -1049,6 +1124,210 @@ function AdminConsole({ snap, navigate }) {
   );
 }
 window.AdminConsole = AdminConsole;
+
+// ─── Program identity + payment settings card with inline editor ─────
+function ProgramIdentityCard({ program, paymentSettings, programLocation, directoryUrl }) {
+  const [editing, setEditing] = React.useState(null); // 'identity' | 'payment' | null
+  const [busy, setBusy] = React.useState(false);
+  const programName = program.public_name || program.brand_name || program.name || 'Your gym';
+
+  async function saveProgram(patch) {
+    if (!program.id) return;
+    setBusy(true);
+    try {
+      const { error } = await window.HZdb.from('programs').update(patch).eq('id', program.id);
+      if (error) { console.error('[programs] update', error); alert('Could not save: ' + error.message); return; }
+      setEditing(null);
+    } finally { setBusy(false); }
+  }
+  async function savePayment(patch) {
+    if (!program.id) return;
+    setBusy(true);
+    try {
+      // upsert in case the row doesn't exist yet
+      const payload = { program_id: program.id, ...patch };
+      const { error } = await window.HZdb.from('program_payment_settings').upsert(payload, { onConflict: 'program_id' });
+      if (error) { console.error('[payment_settings] upsert', error); alert('Could not save: ' + error.message); return; }
+      setEditing(null);
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="hz-card" style={{ marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.35fr 1fr 1fr', gap: 18, alignItems: 'stretch' }}>
+        <div style={{ position: 'relative' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div className="hz-eyebrow">Gym identity · top of hierarchy</div>
+            <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={() => setEditing(editing === 'identity' ? null : 'identity')} style={{ padding: '4px 10px', fontSize: 11 }}>
+              {editing === 'identity' ? 'Cancel' : 'Edit'}
+            </button>
+          </div>
+          <div className="hz-display" style={{ fontSize: 34, marginBottom: 8 }}>{programName}</div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.5 }}>
+            {program.description || 'This is the business record that owns teams, roster, billing, leads, registrations, and processor connections.'}
+          </div>
+        </div>
+        <div style={{ display: 'grid', gap: 10 }}>
+          <MiniStat label="Directory" value={program.is_public ? 'Public' : 'Hidden'} sub={`${directoryUrl} · ${programLocation}`} accent={program.is_public ? 'var(--hz-teal)' : 'var(--hz-amber)'}/>
+          <MiniStat label="Lead intake" value={program.is_accepting_leads ? 'Open' : 'Closed'} sub="website forms attach to program_id" accent={program.is_accepting_leads ? 'var(--hz-green)' : 'var(--hz-dim)'}/>
+        </div>
+        <div style={{ display: 'grid', gap: 10, position: 'relative' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={() => setEditing(editing === 'payment' ? null : 'payment')} style={{ padding: '4px 10px', fontSize: 11, position: 'absolute', top: -2, right: 0 }}>
+              {editing === 'payment' ? 'Cancel' : 'Edit'}
+            </button>
+          </div>
+          <MiniStat label="Payment owner" value={(paymentSettings.default_provider || 'square').toUpperCase()} sub={`program_id ${String(program.id || 'unset').slice(0, 8)}`} accent="var(--hz-pink)"/>
+          <MiniStat label="Checkout mode" value={(paymentSettings.checkout_mode || 'manual_invoice').replace(/_/g, ' ')} sub={paymentSettings.public_checkout_enabled ? 'public checkout enabled' : 'owner-gated until ready'} accent={paymentSettings.public_checkout_enabled ? 'var(--hz-green)' : 'var(--hz-amber)'}/>
+        </div>
+      </div>
+
+      {editing === 'identity' && (
+        <ProgramIdentityEditor program={program} onSave={saveProgram} disabled={busy}/>
+      )}
+      {editing === 'payment' && (
+        <PaymentSettingsEditor settings={paymentSettings} onSave={savePayment} disabled={busy}/>
+      )}
+    </div>
+  );
+}
+
+function ProgramIdentityEditor({ program, onSave, disabled }) {
+  const [publicName, setPublicName] = React.useState(program.public_name || '');
+  const [brandName, setBrandName] = React.useState(program.brand_name || '');
+  const [description, setDescription] = React.useState(program.description || '');
+  const [websiteUrl, setWebsiteUrl] = React.useState(program.website_url || '');
+  const [publicEmail, setPublicEmail] = React.useState(program.public_email || '');
+  const [publicPhone, setPublicPhone] = React.useState(program.public_phone || '');
+  const [addressLine1, setAddressLine1] = React.useState(program.address_line1 || '');
+  const [city, setCity] = React.useState(program.city || '');
+  const [state, setState] = React.useState(program.state || '');
+  const [postalCode, setPostalCode] = React.useState(program.postal_code || '');
+  const [isPublic, setIsPublic] = React.useState(!!program.is_public);
+  const [acceptingLeads, setAcceptingLeads] = React.useState(!!program.is_accepting_leads);
+
+  const save = () => onSave({
+    public_name: publicName.trim() || null,
+    brand_name: brandName.trim() || null,
+    description: description.trim() || null,
+    website_url: websiteUrl.trim() || null,
+    public_email: publicEmail.trim() || null,
+    public_phone: publicPhone.trim() || null,
+    address_line1: addressLine1.trim() || null,
+    city: city.trim() || null,
+    state: state.trim() || null,
+    postal_code: postalCode.trim() || null,
+    is_public: isPublic,
+    is_accepting_leads: acceptingLeads,
+  });
+
+  return (
+    <div style={{ marginTop: 16, padding: 14, background: 'rgba(255,255,255,0.04)', borderRadius: 10, display: 'grid', gap: 10 }}>
+      <div className="hz-eyebrow" style={{ fontSize: 10 }}>Edit gym identity · pushes to the website directory</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <FieldRow label="Public name (shown to families)">
+          <input className="hz-input" value={publicName} onChange={e => setPublicName(e.target.value)} disabled={disabled}/>
+        </FieldRow>
+        <FieldRow label="Brand name (header / wordmark)">
+          <input className="hz-input" value={brandName} onChange={e => setBrandName(e.target.value)} disabled={disabled}/>
+        </FieldRow>
+      </div>
+      <FieldRow label="Description (one paragraph for the directory + website)">
+        <textarea className="hz-input" value={description} onChange={e => setDescription(e.target.value)} rows={3} disabled={disabled}/>
+      </FieldRow>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
+        <FieldRow label="Public email">
+          <input className="hz-input" value={publicEmail} onChange={e => setPublicEmail(e.target.value)} disabled={disabled}/>
+        </FieldRow>
+        <FieldRow label="Phone">
+          <input className="hz-input" value={publicPhone} onChange={e => setPublicPhone(e.target.value)} disabled={disabled}/>
+        </FieldRow>
+        <FieldRow label="Website URL">
+          <input className="hz-input" value={websiteUrl} onChange={e => setWebsiteUrl(e.target.value)} disabled={disabled}/>
+        </FieldRow>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 0.7fr 0.8fr', gap: 10 }}>
+        <FieldRow label="Address">
+          <input className="hz-input" value={addressLine1} onChange={e => setAddressLine1(e.target.value)} disabled={disabled} placeholder="111 45th Ave NE"/>
+        </FieldRow>
+        <FieldRow label="City">
+          <input className="hz-input" value={city} onChange={e => setCity(e.target.value)} disabled={disabled}/>
+        </FieldRow>
+        <FieldRow label="State">
+          <input className="hz-input" value={state} onChange={e => setState(e.target.value)} disabled={disabled} placeholder="ND" maxLength={2}/>
+        </FieldRow>
+        <FieldRow label="Zip">
+          <input className="hz-input" value={postalCode} onChange={e => setPostalCode(e.target.value)} disabled={disabled} maxLength={10}/>
+        </FieldRow>
+      </div>
+      <div style={{ display: 'flex', gap: 18, alignItems: 'center', paddingTop: 4 }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+          <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} disabled={disabled}/>
+          Listed in the public directory
+        </label>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+          <input type="checkbox" checked={acceptingLeads} onChange={e => setAcceptingLeads(e.target.checked)} disabled={disabled}/>
+          Accepting new lead inquiries
+        </label>
+        <div style={{ flex: 1 }}/>
+        <button className="hz-btn hz-btn-primary" onClick={save} disabled={disabled}>Save changes</button>
+      </div>
+    </div>
+  );
+}
+
+function PaymentSettingsEditor({ settings, onSave, disabled }) {
+  const [provider, setProvider] = React.useState(settings.default_provider || 'square');
+  const [checkoutMode, setCheckoutMode] = React.useState(settings.checkout_mode || 'manual_invoice');
+  const [publicCheckout, setPublicCheckout] = React.useState(!!settings.public_checkout_enabled);
+  const [currency, setCurrency] = React.useState(settings.currency || 'USD');
+  const [paymentNote, setPaymentNote] = React.useState(settings.public_payment_note || '');
+
+  const save = () => onSave({
+    default_provider: provider,
+    checkout_mode: checkoutMode,
+    public_checkout_enabled: publicCheckout,
+    currency: currency.trim().toUpperCase() || 'USD',
+    public_payment_note: paymentNote.trim() || null,
+  });
+
+  return (
+    <div style={{ marginTop: 16, padding: 14, background: 'rgba(255,255,255,0.04)', borderRadius: 10, display: 'grid', gap: 10 }}>
+      <div className="hz-eyebrow" style={{ fontSize: 10 }}>Edit payment settings</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 0.6fr', gap: 10 }}>
+        <FieldRow label="Default provider">
+          <select className="hz-input" value={provider} onChange={e => setProvider(e.target.value)} disabled={disabled}>
+            <option value="square">Square</option>
+            <option value="stripe">Stripe</option>
+            <option value="manual">Manual / off-platform</option>
+          </select>
+        </FieldRow>
+        <FieldRow label="Checkout mode">
+          <select className="hz-input" value={checkoutMode} onChange={e => setCheckoutMode(e.target.value)} disabled={disabled}>
+            <option value="none">None</option>
+            <option value="square_checkout">Square hosted checkout</option>
+            <option value="square_web_payments">Square Web Payments</option>
+            <option value="manual_invoice">Manual invoice</option>
+          </select>
+        </FieldRow>
+        <FieldRow label="Currency">
+          <input className="hz-input" value={currency} onChange={e => setCurrency(e.target.value)} disabled={disabled} maxLength={3}/>
+        </FieldRow>
+      </div>
+      <FieldRow label="Public payment note (shown on website if enabled)">
+        <textarea className="hz-input" value={paymentNote} onChange={e => setPaymentNote(e.target.value)} rows={2} disabled={disabled}/>
+      </FieldRow>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 18, paddingTop: 4 }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+          <input type="checkbox" checked={publicCheckout} onChange={e => setPublicCheckout(e.target.checked)} disabled={disabled}/>
+          Allow public checkout from the website
+        </label>
+        <div style={{ flex: 1 }}/>
+        <button className="hz-btn hz-btn-primary" onClick={save} disabled={disabled}>Save settings</button>
+      </div>
+    </div>
+  );
+}
 
 // ─── Programs & Classes (Offerings Manager) ─────────────────────────
 // Owner-managed: tracks (the 6 marketing categories) + classes (the priced
