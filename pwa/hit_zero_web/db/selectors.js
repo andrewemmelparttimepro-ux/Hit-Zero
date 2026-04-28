@@ -31,6 +31,8 @@
       rubric_versions, rubric_categories,
       routine_analyses, analysis_elements, analysis_deductions,
       analysis_feedback, analysis_skill_updates,
+      // Owner-managed offerings (drives the marketing site)
+      program_tracks, program_classes,
     ] = await Promise.all([
       q('programs'), q('teams'), q('athletes'), q('skills'), q('athlete_skills'), q('sessions'),
       q('attendance'), q('routines'), q('routine_sections'),
@@ -54,6 +56,7 @@
       q('rubric_versions'), q('rubric_categories'),
       q('routine_analyses'), q('analysis_elements'), q('analysis_deductions'),
       q('analysis_feedback'), q('analysis_skill_updates'),
+      q('program_tracks'), q('program_classes'),
     ]);
     cache = {
       programs, teams, athletes, skills, athlete_skills, sessions, attendance, routines, routine_sections,
@@ -76,6 +79,7 @@
       rubric_versions, rubric_categories,
       routine_analyses, analysis_elements, analysis_deductions,
       analysis_feedback, analysis_skill_updates,
+      program_tracks, program_classes,
     };
     return cache;
   }
@@ -88,6 +92,23 @@
   function programProfile() { return cache?.programs?.[0] || null; }
   function programPaymentSettings() { return cache?.program_payment_settings?.[0] || null; }
   function team() { return cache?.teams?.[0]; }
+
+  // Owner-managed offerings (drives the marketing site)
+  function programTracks() {
+    const programId = programProfile()?.id;
+    return (cache?.program_tracks || [])
+      .filter(t => !programId || t.program_id === programId)
+      .slice()
+      .sort((a, b) => (a.display_order ?? 100) - (b.display_order ?? 100) || (a.name || '').localeCompare(b.name || ''));
+  }
+
+  function programClasses(trackId) {
+    const programId = programProfile()?.id;
+    return (cache?.program_classes || [])
+      .filter(c => (!programId || c.program_id === programId) && (!trackId || c.track_id === trackId))
+      .slice()
+      .sort((a, b) => (a.display_order ?? 100) - (b.display_order ?? 100) || (a.name || '').localeCompare(b.name || ''));
+  }
 
   // Per-athlete skill map { skillId: status }
   function athleteSkills(aid) {
@@ -551,6 +572,8 @@
     recentAnalyses, analysisById,
     elementsFor, deductionsFor, feedbackFor,
     pendingProposalsFor, scoreTrend,
+    // Owner-managed offerings
+    programTracks, programClasses,
     SHEET,
     STATUS_PCT,
   };

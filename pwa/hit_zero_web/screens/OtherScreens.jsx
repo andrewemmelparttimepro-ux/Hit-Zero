@@ -1042,10 +1042,267 @@ function AdminConsole({ snap, navigate }) {
           </div>
         </div>
       </div>
+
+      {/* Owner-managed marketing offerings — drives the public website */}
+      <OfferingsManager snap={snap}/>
     </div>
   );
 }
 window.AdminConsole = AdminConsole;
+
+// ─── Programs & Classes (Offerings Manager) ─────────────────────────
+// Owner-managed: tracks (the 6 marketing categories) + classes (the priced
+// items grouped under each track). The website Programs + Pricing pages
+// render directly from these tables via public_program_tracks /
+// public_program_classes views.
+function OfferingsManager({ snap }) {
+  const program = window.HZsel.programProfile?.() || (snap.programs || [])[0] || {};
+  const programId = program.id;
+  const tracks = window.HZsel.programTracks?.() || [];
+  const allClasses = window.HZsel.programClasses?.() || [];
+  const [editingTrackId, setEditingTrackId] = React.useState(null);
+  const [busy, setBusy] = React.useState(false);
+
+  if (!programId) {
+    return <div className="hz-card" style={{ marginTop: 24 }}>No program loaded.</div>;
+  }
+
+  async function patchTrack(track, patch) {
+    setBusy(true);
+    try {
+      const { error } = await window.HZdb.from('program_tracks').update(patch).eq('id', track.id);
+      if (error) console.error('[tracks] update', error);
+    } finally { setBusy(false); }
+  }
+
+  async function addClass(track) {
+    setBusy(true);
+    try {
+      const order = (allClasses.filter(c => c.track_id === track.id).length || 0) * 10 + 10;
+      const { error } = await window.HZdb.from('program_classes').insert({
+        program_id: programId,
+        track_id: track.id,
+        name: 'New offering',
+        price_cents: 0,
+        price_unit: 'per_month',
+        price_unit_label: '/month',
+        display_order: order,
+        is_public: true,
+      });
+      if (error) console.error('[classes] insert', error);
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="hz-card" style={{ marginTop: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div>
+          <div className="hz-eyebrow" style={{ marginBottom: 6 }}>Programs &amp; Classes · live on the website</div>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>What you sell.</div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>
+            6 tracks · {allClasses.length} priced offerings · changes here update <code style={{ fontFamily: 'var(--hz-mono)' }}>magic-city-allstars.vercel.app</code> instantly.
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {tracks.map(t => {
+          const classes = allClasses.filter(c => c.track_id === t.id);
+          const isEditing = editingTrackId === t.id;
+          return (
+            <div key={t.id} style={{ border: '1px solid var(--hz-line)', borderRadius: 14, padding: 16, background: 'rgba(255,255,255,0.02)' }}>
+              {/* Track header */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 6, fontSize: 11, fontWeight: 700, background: t.tone === 'pink' ? 'rgba(249,127,172,0.18)' : t.tone === 'teal' ? 'rgba(39,207,215,0.18)' : 'rgba(255,255,255,0.08)', color: t.tone === 'pink' ? 'var(--hz-pink)' : t.tone === 'teal' ? 'var(--hz-teal)' : '#fff' }}>{t.code}</span>
+                    <div style={{ fontWeight: 700, fontSize: 16 }}>{t.name}</div>
+                    {!t.is_public && <span className="hz-eyebrow" style={{ color: 'var(--hz-amber)', fontSize: 10 }}>HIDDEN</span>}
+                  </div>
+                  {t.eyebrow && <div className="hz-eyebrow" style={{ fontSize: 10, marginBottom: 4 }}>{t.eyebrow}</div>}
+                  {t.body && <div style={{ color: 'var(--hz-dim)', fontSize: 12, lineHeight: 1.5 }}>{t.body}</div>}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--hz-dim)', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={!!t.is_public} disabled={busy} onChange={e => patchTrack(t, { is_public: e.target.checked })}/>
+                    Public
+                  </label>
+                  <button className="hz-btn" style={{ fontSize: 12, padding: '6px 10px' }} onClick={() => setEditingTrackId(isEditing ? null : t.id)}>
+                    {isEditing ? 'Done' : 'Edit copy'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Track copy editor */}
+              {isEditing && (
+                <TrackCopyEditor track={t} onSave={(patch) => patchTrack(t, patch).then(() => setEditingTrackId(null))} disabled={busy}/>
+              )}
+
+              {/* Classes inside this track */}
+              <div style={{ marginTop: 14, borderTop: '1px solid var(--hz-line)', paddingTop: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <div className="hz-eyebrow" style={{ fontSize: 10 }}>{classes.length} offering{classes.length === 1 ? '' : 's'}</div>
+                  <button className="hz-btn hz-btn-primary" style={{ fontSize: 11, padding: '6px 10px' }} disabled={busy} onClick={() => addClass(t)}>
+                    + Add class
+                  </button>
+                </div>
+                {classes.length === 0 && (
+                  <div style={{ color: 'var(--hz-dim)', fontSize: 12, fontStyle: 'italic', padding: 8 }}>
+                    No priced offerings yet — add one to make this track sellable on the website.
+                  </div>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {classes.map(c => <ClassRow key={c.id} cls={c} disabled={busy} onChange={() => {}}/>)}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TrackCopyEditor({ track, onSave, disabled }) {
+  const [name, setName] = React.useState(track.name || '');
+  const [eyebrow, setEyebrow] = React.useState(track.eyebrow || '');
+  const [body, setBody] = React.useState(track.body || '');
+  const [bullets, setBullets] = React.useState((track.bullets || []).join('\n'));
+  const [ctaLabel, setCtaLabel] = React.useState(track.cta_label || '');
+  const [ctaKind, setCtaKind] = React.useState(track.cta_kind || 'contact');
+  const [tone, setTone] = React.useState(track.tone || 'mix');
+  return (
+    <div style={{ marginTop: 12, padding: 12, background: 'rgba(255,255,255,0.04)', borderRadius: 10, display: 'grid', gap: 10 }}>
+      <FieldRow label="Name">
+        <input className="hz-input" value={name} onChange={e => setName(e.target.value)} style={{ width: '100%' }}/>
+      </FieldRow>
+      <FieldRow label="Eyebrow (small label above)">
+        <input className="hz-input" value={eyebrow} onChange={e => setEyebrow(e.target.value)} style={{ width: '100%' }} placeholder="Tiny · Mini · Youth · Junior · Senior"/>
+      </FieldRow>
+      <FieldRow label="Description (paragraph on the card)">
+        <textarea className="hz-input" value={body} onChange={e => setBody(e.target.value)} rows={3} style={{ width: '100%' }}/>
+      </FieldRow>
+      <FieldRow label="Bullets (one per line)">
+        <textarea className="hz-input" value={bullets} onChange={e => setBullets(e.target.value)} rows={3} style={{ width: '100%' }} placeholder="6-month season&#10;One competition performance&#10;Tiny / Mini / Youth / Junior / Senior"/>
+      </FieldRow>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
+        <FieldRow label="CTA button label">
+          <input className="hz-input" value={ctaLabel} onChange={e => setCtaLabel(e.target.value)} style={{ width: '100%' }} placeholder="Tryout info"/>
+        </FieldRow>
+        <FieldRow label="CTA action">
+          <select className="hz-input" value={ctaKind} onChange={e => setCtaKind(e.target.value)} style={{ width: '100%' }}>
+            <option value="contact">Contact form</option>
+            <option value="register">Registration window</option>
+            <option value="external">External URL</option>
+            <option value="none">None</option>
+          </select>
+        </FieldRow>
+        <FieldRow label="Tone">
+          <select className="hz-input" value={tone} onChange={e => setTone(e.target.value)} style={{ width: '100%' }}>
+            <option value="pink">Pink</option>
+            <option value="teal">Teal</option>
+            <option value="mix">Gradient</option>
+            <option value="dark">Dark</option>
+          </select>
+        </FieldRow>
+      </div>
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+        <button className="hz-btn hz-btn-primary" disabled={disabled} onClick={() => onSave({
+          name: name.trim(),
+          eyebrow: eyebrow.trim() || null,
+          body: body.trim() || null,
+          bullets: bullets.split('\n').map(s => s.trim()).filter(Boolean),
+          cta_label: ctaLabel.trim() || null,
+          cta_kind: ctaKind,
+          tone,
+        })}>Save copy</button>
+      </div>
+    </div>
+  );
+}
+
+function ClassRow({ cls, disabled }) {
+  const [name, setName] = React.useState(cls.name || '');
+  const [priceCents, setPriceCents] = React.useState(cls.price_cents || 0);
+  const [priceUnit, setPriceUnit] = React.useState(cls.price_unit || 'per_month');
+  const [priceUnitLabel, setPriceUnitLabel] = React.useState(cls.price_unit_label || '');
+  const [schedule, setSchedule] = React.useState(cls.schedule_summary || '');
+  const [capacity, setCapacity] = React.useState(cls.capacity ?? '');
+  const [registrationOpen, setRegistrationOpen] = React.useState(!!cls.registration_open);
+  const [isPublic, setIsPublic] = React.useState(!!cls.is_public);
+  const [dirty, setDirty] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+
+  function mark() { setDirty(true); }
+
+  async function save() {
+    setSaving(true);
+    try {
+      const patch = {
+        name: name.trim() || 'Untitled',
+        price_cents: Math.max(0, parseInt(priceCents, 10) || 0),
+        price_unit: priceUnit,
+        price_unit_label: priceUnitLabel.trim() || null,
+        schedule_summary: schedule.trim() || null,
+        capacity: capacity === '' ? null : Math.max(0, parseInt(capacity, 10) || 0),
+        registration_open: !!registrationOpen,
+        is_public: !!isPublic,
+      };
+      const { error } = await window.HZdb.from('program_classes').update(patch).eq('id', cls.id);
+      if (error) console.error('[classes] update', error);
+      else setDirty(false);
+    } finally { setSaving(false); }
+  }
+
+  async function remove() {
+    if (!confirm(`Delete "${name}"? This removes it from the website.`)) return;
+    setSaving(true);
+    try {
+      const { error } = await window.HZdb.from('program_classes').delete().eq('id', cls.id);
+      if (error) console.error('[classes] delete', error);
+    } finally { setSaving(false); }
+  }
+
+  const dollars = (priceCents / 100).toFixed(2).replace(/\.00$/, '');
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 100px 1fr 1.4fr 80px auto', gap: 8, alignItems: 'center', padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
+      <input className="hz-input" value={name} onChange={e => { setName(e.target.value); mark(); }} placeholder="Senior" disabled={disabled || saving} style={{ fontSize: 13, padding: '6px 8px' }}/>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ color: 'var(--hz-dim)', fontSize: 12 }}>$</span>
+        <input className="hz-input" type="number" value={dollars} onChange={e => { setPriceCents(Math.round(parseFloat(e.target.value || 0) * 100)); mark(); }} disabled={disabled || saving} style={{ fontSize: 13, padding: '6px 8px', width: '100%' }}/>
+      </div>
+      <select className="hz-input" value={priceUnit} onChange={e => { setPriceUnit(e.target.value); mark(); }} disabled={disabled || saving} style={{ fontSize: 12, padding: '6px 8px' }}>
+        <option value="per_month">/month</option>
+        <option value="per_session">/session</option>
+        <option value="per_session_per_month">/month per session</option>
+        <option value="per_athlete">/athlete</option>
+        <option value="flat">flat</option>
+        <option value="custom">custom</option>
+      </select>
+      <input className="hz-input" value={schedule} onChange={e => { setSchedule(e.target.value); mark(); }} placeholder="6-week sessions" disabled={disabled || saving} style={{ fontSize: 12, padding: '6px 8px' }}/>
+      <input className="hz-input" type="number" value={capacity} onChange={e => { setCapacity(e.target.value); mark(); }} placeholder="∞" disabled={disabled || saving} style={{ fontSize: 12, padding: '6px 8px' }}/>
+      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+        <label title="Public on website" style={{ cursor: 'pointer', fontSize: 11 }}>
+          <input type="checkbox" checked={isPublic} onChange={e => { setIsPublic(e.target.checked); mark(); }} disabled={disabled || saving}/>
+        </label>
+        <button className="hz-btn" style={{ fontSize: 11, padding: '4px 8px' }} disabled={!dirty || saving} onClick={save}>{saving ? '…' : dirty ? 'Save' : '✓'}</button>
+        <button className="hz-btn hz-btn-danger" style={{ fontSize: 11, padding: '4px 8px' }} disabled={saving} onClick={remove} title="Delete">×</button>
+      </div>
+    </div>
+  );
+}
+
+function FieldRow({ label, children }) {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span className="hz-eyebrow" style={{ fontSize: 10 }}>{label}</span>
+      {children}
+    </label>
+  );
+}
+
+window.OfferingsManager = OfferingsManager;
 
 // ─── Billing ───
 function Billing({ snap, session, openAthlete }) {
