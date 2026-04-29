@@ -3,10 +3,14 @@
      · Same-origin HTML / JS / JSX / CSS: NETWORK-FIRST so new deploys reach
        users immediately. Cache is only a fallback when offline.
      · Same-origin icons + images: cache-first (rarely change).
-     · Cross-origin (React, Babel CDN): stale-while-revalidate.
+     · API calls (Supabase REST, edge functions, auth): NEVER cached — every
+       request goes to the network. (Caching these caused the public booking
+       page to hang on "Loading class…" because the SW was returning a stale
+       empty response.)
+     · Other cross-origin (React/Babel CDN, Google Fonts): stale-while-revalidate.
    Bump CACHE_VERSION any time you re-deploy to force clients to refresh. */
 
-const CACHE_VERSION = 'hz-v55-2026-04-27-gym-directory-payments';
+const CACHE_VERSION = 'hz-v56-2026-04-28-public-booking-no-api-cache';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting());
@@ -31,11 +35,22 @@ function isCodeOrShell(url) {
 function isStaticAsset(url) {
   return /\.(png|jpg|jpeg|webp|svg|ico|woff2?)$/.test(url.pathname);
 }
+function isApiCall(url) {
+  // Supabase project domain + edge functions + auth — never cache, always live.
+  if (url.hostname.endsWith('.supabase.co')) return true;
+  if (url.hostname.endsWith('.supabase.in')) return true;
+  return false;
+}
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
+
+  // API calls (Supabase REST + edge functions): bypass the SW entirely so
+  // every read goes straight to the network. Caching these would cause
+  // stale data and, in some cases, hung pages waiting for fresh data.
+  if (isApiCall(url)) return;
 
   if (url.origin === self.location.origin) {
     if (isCodeOrShell(url)) {

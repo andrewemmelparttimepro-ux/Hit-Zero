@@ -69,29 +69,54 @@ function PublicBooking({ classId, onClose }) {
 
   _useE_pb(() => {
     let cancelled = false;
+    // Direct REST fetch — bypasses any cached supabase-js client + any
+    // service-worker layer. Adds a hard 8-second timeout so the page
+    // can't hang indefinitely.
+    async function restFetch(path) {
+      const url = (window.HZ?.SUPABASE_URL || pbFunctionsBase()).replace(/\/$/, '') + '/rest/v1' + path;
+      const anon = pbAnonKey();
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8000);
+      try {
+        // No query-string cache buster — PostgREST tries to parse unknown
+        // params as column filters. The no-store + no-cache headers below
+        // are enough to bypass any HTTP cache, and the SW now skips
+        // *.supabase.co entirely.
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: {
+            apikey: anon,
+            Authorization: `Bearer ${anon}`,
+            'Cache-Control': 'no-cache',
+            'Accept': 'application/json',
+          },
+          cache: 'no-store',
+          signal: ctrl.signal,
+        });
+        if (!res.ok) {
+          let msg = `Supabase ${res.status}`;
+          try { const body = await res.text(); if (body) msg += ': ' + body.slice(0, 200); } catch {}
+          throw new Error(msg);
+        }
+        return await res.json();
+      } finally { clearTimeout(t); }
+    }
     (async () => {
       try {
-        const supa = window.HZsupa;
-        if (!supa) throw new Error('Supabase client not initialized');
-        const { data: c, error: cErr } = await supa
-          .from('public_program_classes')
-          .select('*')
-          .eq('id', classId)
-          .maybeSingle();
-        if (cErr) throw cErr;
+        const classRows = await restFetch(`/public_program_classes?id=eq.${encodeURIComponent(classId)}&select=*&limit=1`);
+        const c = Array.isArray(classRows) ? classRows[0] : classRows;
         if (!c) throw new Error('This class is no longer available.');
         if (cancelled) return;
         setKlass(c);
 
-        const { data: p } = await supa
-          .from('program_public_directory')
-          .select('id, slug, public_name, public_email, public_phone, address_line1, city, state, payment_provider, public_checkout_enabled, checkout_mode, public_payment_note')
-          .eq('id', c.program_id)
-          .maybeSingle();
+        const progRows = await restFetch(`/program_public_directory?id=eq.${encodeURIComponent(c.program_id)}&select=id,slug,public_name,public_email,public_phone,address_line1,city,state,payment_provider,public_checkout_enabled,checkout_mode,public_payment_note&limit=1`);
+        const p = Array.isArray(progRows) ? progRows[0] : progRows;
         if (cancelled) return;
         setProgram(p || null);
       } catch (err) {
-        if (!cancelled) setLoadErr(err.message || 'Could not load this class.');
+        if (!cancelled) setLoadErr(err.name === 'AbortError'
+          ? 'Connection timed out. Please refresh and try again.'
+          : (err.message || 'Could not load this class.'));
       }
     })();
     return () => { cancelled = true; };
