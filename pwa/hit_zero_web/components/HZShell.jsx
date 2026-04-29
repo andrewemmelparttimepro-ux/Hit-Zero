@@ -261,7 +261,7 @@ function App() {
     if (!session) return;
     // Public booking route is allowed for anyone (signed-in too — they can
     // still help a friend book). Don't bounce them out.
-    if (route && route.startsWith('book/')) return;
+    if (route && (route.startsWith('book/') || route.startsWith('trial/'))) return;
     const allowed = navIdsForRole(effectiveRole);
     if (allowed.has(route)) return;
     const next = firstRouteForRole(effectiveRole);
@@ -328,6 +328,15 @@ function App() {
     const bookingClassId = route.slice(5).split('?')[0];
     if (bookingClassId && window.PublicBooking) {
       return <window.PublicBooking classId={bookingClassId} />;
+    }
+  }
+
+  // Public free-trial / lead-capture route. Same pattern, different shape:
+  //   https://hit-zero.vercel.app/#trial/<gym_slug>
+  if (route && route.startsWith('trial/')) {
+    const gymSlug = route.slice(6).split('?')[0] || 'mca';
+    if (window.PublicTrial) {
+      return <window.PublicTrial gymSlug={gymSlug} />;
     }
   }
 

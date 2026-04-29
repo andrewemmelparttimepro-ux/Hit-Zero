@@ -62,17 +62,21 @@ const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? '';
 const RESEND_FROM = Deno.env.get('RESEND_FROM') ?? 'Hit Zero <onboarding@resend.dev>';
 const RESEND_NOTIFY_EMAIL = Deno.env.get('RESEND_NOTIFY_EMAIL') ?? 'andrewemmelparttimepro@gmail.com';
 
-// Best-effort email send. Never throws — booking succeeds even if this
+type IntakeEmailKind = 'registration' | 'class_booking' | 'lead';
+
+// Best-effort email send. Never throws — intake succeeds even if this
 // fails or RESEND_API_KEY isn't configured yet.
-async function sendBookingEmail(opts: {
-  registrationId: string;
+async function sendIntakeEmail(opts: {
+  kind: IntakeEmailKind;
+  recordId: string;
   programName: string | null;
-  athleteName: string;
+  athleteName: string | null;
   parentName: string;
-  parentEmail: string;
+  parentEmail: string | null;
   parentPhone: string | null;
   className?: string | null;
   windowTitle?: string | null;
+  interest?: string | null;
   notes?: string | null;
   source?: string | null;
 }) {
@@ -81,28 +85,30 @@ async function sendBookingEmail(opts: {
     return;
   }
   try {
-    const subjBits = [
-      'New booking',
-      opts.className || opts.windowTitle || 'Registration',
-      'for',
-      opts.athleteName,
-    ].filter(Boolean);
-    const subject = subjBits.join(' ');
-    const lines = [
-      `<h2 style="margin:0 0 12px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">New ${opts.className ? 'class booking' : 'registration'}</h2>`,
+    const kindLabel =
+      opts.kind === 'class_booking' ? 'class booking' :
+      opts.kind === 'lead' ? 'free trial / lead' :
+      'registration';
+    const subjectKind = opts.kind === 'lead' ? 'New lead' : 'New booking';
+    const subjectFor = opts.athleteName || opts.parentName;
+    const headerThing = opts.className || opts.windowTitle || opts.interest || (opts.kind === 'lead' ? 'Inquiry' : 'Registration');
+    const subject = `${subjectKind} · ${headerThing} · ${subjectFor}`;
+    const html = [
+      `<h2 style="margin:0 0 12px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">New ${kindLabel}</h2>`,
       `<p style="margin:0 0 16px;color:#555;font-family:-apple-system,Segoe UI,Roboto,sans-serif">${opts.programName || 'Magic City Athletics'} · via the public website</p>`,
       `<table style="border-collapse:collapse;font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px">`,
-      row('Athlete', opts.athleteName),
       opts.className ? row('Class', opts.className) : '',
-      opts.windowTitle ? row('Window', opts.windowTitle) : '',
+      opts.windowTitle ? row('Registration window', opts.windowTitle) : '',
+      opts.interest ? row('Interest', escapeHtml(opts.interest)) : '',
+      opts.athleteName ? row('Athlete', opts.athleteName) : '',
       row('Parent', opts.parentName),
-      row('Email', `<a href="mailto:${opts.parentEmail}">${opts.parentEmail}</a>`),
+      opts.parentEmail ? row('Email', `<a href="mailto:${opts.parentEmail}">${opts.parentEmail}</a>`) : '',
       opts.parentPhone ? row('Phone', `<a href="tel:${opts.parentPhone}">${opts.parentPhone}</a>`) : '',
       opts.notes ? row('Notes', escapeHtml(opts.notes)) : '',
       row('Source', opts.source || 'public_website'),
-      row('Registration ID', `<code>${opts.registrationId}</code>`),
+      row('Record ID', `<code>${opts.recordId}</code>`),
       `</table>`,
-      `<p style="margin:20px 0 0;color:#888;font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:12px">Open Hit Zero to accept, waitlist, or follow up.</p>`,
+      `<p style="margin:20px 0 0;color:#888;font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:12px">Open Hit Zero (${opts.kind === 'lead' ? '#leads' : '#registration'}) to follow up.</p>`,
     ].filter(Boolean).join('\n');
 
     const res = await fetch('https://api.resend.com/emails', {
@@ -114,9 +120,9 @@ async function sendBookingEmail(opts: {
       body: JSON.stringify({
         from: RESEND_FROM,
         to: [RESEND_NOTIFY_EMAIL],
-        reply_to: opts.parentEmail,
+        reply_to: opts.parentEmail || undefined,
         subject,
-        html: lines,
+        html,
       }),
     });
     if (!res.ok) {
@@ -204,6 +210,23 @@ async function handleLead(body: any) {
 
   const { data, error } = await supa.from('leads').insert(insertRow).select('id').single();
   if (error) return bad(500, 'insert_failed', error.message);
+
+  // Best-effort email backup so a lead can't get lost. Non-blocking.
+  const { data: pn } = await supa.from('programs').select('public_name, brand_name, name').eq('id', program.id).maybeSingle();
+  const programName = pn?.public_name || pn?.brand_name || pn?.name || null;
+  sendIntakeEmail({
+    kind: 'lead',
+    recordId: data.id,
+    programName,
+    athleteName: insertRow.athlete_name as string | null,
+    parentName,
+    parentEmail,
+    parentPhone,
+    interest: insertRow.interest as string | null,
+    notes: insertRow.metadata && (insertRow.metadata as any).notes ? (insertRow.metadata as any).notes : null,
+    source: insertRow.source as string | null,
+  }).catch(() => {});
+
   return json({ ok: true, lead_id: data.id });
 }
 
@@ -305,8 +328,9 @@ async function handleRegistration(body: any) {
   let programName: string | null = null;
   const { data: pn } = await supa.from('programs').select('public_name, brand_name, name').eq('id', program.id).maybeSingle();
   programName = pn?.public_name || pn?.brand_name || pn?.name || null;
-  sendBookingEmail({
-    registrationId: data.id,
+  sendIntakeEmail({
+    kind: classRow ? 'class_booking' : 'registration',
+    recordId: data.id,
     programName,
     athleteName,
     parentName,
