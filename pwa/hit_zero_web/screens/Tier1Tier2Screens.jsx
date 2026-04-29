@@ -1188,6 +1188,17 @@ function RegistrationInbox({ snap, session }) {
     return new Date(b.created_at) - new Date(a.created_at);
   });
   const windows = new Map((snap.registration_windows || []).map(w => [w.id, w]));
+  const classes = new Map((snap.program_classes || []).map(c => [c.id, c]));
+  const tracks = new Map((snap.program_tracks || []).map(t => [t.id, t]));
+  const labelFor = (r) => {
+    if (r.class_id && classes.has(r.class_id)) {
+      const c = classes.get(r.class_id);
+      const trackName = c.track_id && tracks.has(c.track_id) ? tracks.get(c.track_id).name : null;
+      return trackName ? `${trackName} · ${c.name}` : c.name;
+    }
+    if (r.window_id && windows.has(r.window_id)) return windows.get(r.window_id).title;
+    return 'Registration';
+  };
   const [activeId, setActiveId] = _useState(regs[0]?.id || null);
   const active = regs.find(r => r.id === activeId) || regs[0] || null;
   const [notes, setNotes] = _useState(active?.notes || '');
@@ -1236,7 +1247,6 @@ function RegistrationInbox({ snap, session }) {
       <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: 18 }}>
         <aside style={{ display: 'grid', gap: 8 }}>
           {regs.map(r => {
-            const win = windows.get(r.window_id);
             return (
               <button key={r.id} onClick={() => setActiveId(r.id)}
                 className="hz-nosel"
@@ -1247,7 +1257,7 @@ function RegistrationInbox({ snap, session }) {
                   color: '#fff',
                 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                  <div className="hz-eyebrow">{win?.title || 'Registration'}</div>
+                  <div className="hz-eyebrow">{labelFor(r)}</div>
                   <StatusBadge status={r.status}/>
                 </div>
                 <div style={{ fontWeight: 700, fontSize: 14, marginTop: 4 }}>{r.athlete_name}</div>
@@ -1267,7 +1277,7 @@ function RegistrationInbox({ snap, session }) {
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
                 <div>
-                  <div className="hz-eyebrow">{windows.get(active.window_id)?.title || 'Registration'}</div>
+                  <div className="hz-eyebrow">{labelFor(active)}</div>
                   <div className="hz-display" style={{ fontSize: 28 }}>{active.athlete_name}</div>
                 </div>
                 <StatusBadge status={active.status}/>

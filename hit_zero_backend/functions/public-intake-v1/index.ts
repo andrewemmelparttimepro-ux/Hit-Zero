@@ -156,6 +156,37 @@ async function handleRegistration(body: any) {
     windowId = window.id;
   }
 
+  let classId: string | null = null;
+  let classRow: any = null;
+  if (body.class_id) {
+    if (typeof body.class_id !== 'string' || !UUID_RE.test(body.class_id)) {
+      return bad(400, 'bad_class_id', 'class_id must be a valid uuid');
+    }
+    const { data: c } = await supa
+      .from('program_classes')
+      .select('id, program_id, is_public, registration_open, name, capacity')
+      .eq('id', body.class_id)
+      .maybeSingle();
+    if (!c) return bad(404, 'class_not_found', 'class not found');
+    if (c.program_id !== program.id) {
+      return bad(400, 'class_program_mismatch', 'class belongs to a different program');
+    }
+    if (!c.is_public) return bad(403, 'class_not_public', 'class is not public');
+    if (!c.registration_open) return bad(403, 'class_closed', 'this class is not open for sign-ups right now');
+    if (c.capacity != null) {
+      const { count } = await supa
+        .from('registrations')
+        .select('id', { count: 'exact', head: true })
+        .eq('class_id', c.id)
+        .in('status', ['pending', 'accepted']);
+      if ((count || 0) >= c.capacity) {
+        return bad(409, 'class_full', 'this class is full — try the waitlist');
+      }
+    }
+    classId = c.id;
+    classRow = c;
+  }
+
   const levelInterest = body.level_interest != null ? Number(body.level_interest) : null;
   if (levelInterest != null && (!Number.isInteger(levelInterest) || levelInterest < 1 || levelInterest > 6)) {
     return bad(400, 'bad_level_interest', 'level_interest must be an integer 1-6');
@@ -164,6 +195,7 @@ async function handleRegistration(body: any) {
   const insertRow: Record<string, unknown> = {
     program_id: program.id,
     window_id: windowId,
+    class_id: classId,
     athlete_name: athleteName,
     parent_name: parentName,
     parent_email: parentEmail,
@@ -181,7 +213,7 @@ async function handleRegistration(body: any) {
 
   const { data, error } = await supa.from('registrations').insert(insertRow).select('id').single();
   if (error) return bad(500, 'insert_failed', error.message);
-  return json({ ok: true, registration_id: data.id });
+  return json({ ok: true, registration_id: data.id, class: classRow ? { id: classRow.id, name: classRow.name } : null });
 }
 
 Deno.serve(async (req: Request) => {
