@@ -116,6 +116,53 @@ function roleNav(role) {
   return NAV_CONFIG[role] || NAV_CONFIG.coach;
 }
 
+// ─── Mobile bottom-tab-bar config (4 thumb-reachable + "More") ───
+const MOBILE_TABS = {
+  owner:   [
+    { id: 'today',    label: 'Today',    icon: 'today' },
+    { id: 'admin',    label: 'Program',  icon: 'admin' },
+    { id: 'roster',   label: 'Roster',   icon: 'roster' },
+    { id: 'schedule', label: 'Schedule', icon: 'calendar' },
+    { id: '__more',   label: 'More',     icon: 'skills' },
+  ],
+  coach:   [
+    { id: 'today',    label: 'Today',    icon: 'today' },
+    { id: 'roster',   label: 'Roster',   icon: 'roster' },
+    { id: 'schedule', label: 'Schedule', icon: 'calendar' },
+    { id: 'routine',  label: 'Routine',  icon: 'routine' },
+    { id: '__more',   label: 'More',     icon: 'skills' },
+  ],
+  athlete: [
+    { id: 'reel',      label: 'Reel',     icon: 'reel' },
+    { id: 'skilltree', label: 'Skills',   icon: 'skills' },
+    { id: 'pins',      label: 'Pins',     icon: 'star' },
+    { id: 'schedule',  label: 'Schedule', icon: 'calendar' },
+    { id: '__more',    label: 'More',     icon: 'skills' },
+  ],
+  parent:  [
+    { id: 'parent',   label: 'Home',     icon: 'home' },
+    { id: 'schedule', label: 'Schedule', icon: 'calendar' },
+    { id: 'billing',  label: 'Billing',  icon: 'billing' },
+    { id: 'reel',     label: 'Reel',     icon: 'reel' },
+    { id: '__more',   label: 'More',     icon: 'skills' },
+  ],
+};
+
+function useIsMobile(breakpoint = 768) {
+  const [m, setM] = React.useState(() => typeof window !== 'undefined' && window.innerWidth <= breakpoint);
+  React.useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const onChange = () => setM(mq.matches);
+    mq.addEventListener ? mq.addEventListener('change', onChange) : mq.addListener(onChange);
+    setM(mq.matches);
+    return () => {
+      mq.removeEventListener ? mq.removeEventListener('change', onChange) : mq.removeListener(onChange);
+    };
+  }, [breakpoint]);
+  return m;
+}
+window.useIsMobile = useIsMobile;
+
 function navIdsForRole(role) {
   return new Set(roleNav(role).filter(item => item.id).map(item => item.id));
 }
@@ -137,7 +184,9 @@ function App() {
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [drawerAthleteId, setDrawerAthleteId] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [moreSheetOpen, setMoreSheetOpen] = useState(false);
   const [walkthroughRole, setWalkthroughRole] = useState(null);
+  const isMobile = useIsMobile(768);
 
   useEffect(() => {
     let live = true;
@@ -282,38 +331,79 @@ function App() {
   const ScreenName = SCREEN_MAP[screenId] || 'CoachToday';
   const Screen = window[ScreenName];
 
+  const navigate = (id) => { location.hash = '#' + id; };
+
+  // Find the human-readable label for the current screen (used in mobile top bar).
+  const currentNavItem = nav.find(it => it.id === screenId);
+  const screenLabel = currentNavItem?.label || screenId;
+
   return (
-    <div className="app-shell">
-      <Sidebar
-        nav={nav} active={screenId} session={session}
-        snap={snap}
-        open={sidebarOpen}
-        onNav={(id) => { location.hash = '#' + id; setSidebarOpen(false); }}
-      />
-      {sidebarOpen && <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)}/>}
-      <Topbar
-        session={session}
-        onOpenCmdk={() => setCmdkOpen(true)}
-        onSignOut={async () => { await window.HZdb.auth.signOut(); }}
-        onHamburger={() => setSidebarOpen(true)}
-        onHelp={() => setWalkthroughRole(effectiveRole)}
-        snap={snap}
-      />
+    <div className={'app-shell' + (isMobile ? ' app-shell--mobile' : '')}>
+      {!isMobile && (
+        <>
+          <Sidebar
+            nav={nav} active={screenId} session={session}
+            snap={snap}
+            open={sidebarOpen}
+            onNav={(id) => { location.hash = '#' + id; setSidebarOpen(false); }}
+          />
+          {sidebarOpen && <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)}/>}
+          <Topbar
+            session={session}
+            onOpenCmdk={() => setCmdkOpen(true)}
+            onSignOut={async () => { await window.HZdb.auth.signOut(); }}
+            onHamburger={() => setSidebarOpen(true)}
+            onHelp={() => setWalkthroughRole(effectiveRole)}
+            snap={snap}
+          />
+        </>
+      )}
+      {isMobile && (
+        <MobileTopBar
+          title={screenLabel}
+          onSignOut={async () => { await window.HZdb.auth.signOut(); }}
+          session={session}
+          snap={snap}
+        />
+      )}
+
       <div className="main hz-rise" key={screenId}>
         {Screen && snap ? (
-          <ScreenErrorBoundary screenId={screenId} navigate={(id) => { location.hash = '#' + id; }}>
+          <ScreenErrorBoundary screenId={screenId} navigate={navigate}>
             <Screen
               session={session}
               snap={snap}
               pushToast={pushToast}
               openAthlete={setDrawerAthleteId}
-              navigate={(id) => { location.hash = '#' + id; }}
+              navigate={navigate}
             />
           </ScreenErrorBoundary>
         ) : (
           <div style={{ color: 'var(--hz-dim)', padding: 40 }}>Loading…</div>
         )}
       </div>
+
+      {isMobile && (
+        <MobileTabBar
+          role={effectiveRole}
+          active={screenId}
+          onNav={(id) => {
+            if (id === '__more') setMoreSheetOpen(true);
+            else { navigate(id); setMoreSheetOpen(false); }
+          }}
+        />
+      )}
+      {isMobile && moreSheetOpen && (
+        <MobileMoreSheet
+          nav={nav}
+          active={screenId}
+          tabIds={(MOBILE_TABS[effectiveRole] || []).map(t => t.id)}
+          onNav={(id) => { navigate(id); setMoreSheetOpen(false); }}
+          onClose={() => setMoreSheetOpen(false)}
+          onSignOut={async () => { await window.HZdb.auth.signOut(); setMoreSheetOpen(false); }}
+        />
+      )}
+
       {cmdkOpen && snap && <CommandK snap={snap} onClose={() => setCmdkOpen(false)} onNav={(id) => { location.hash = '#' + id; setCmdkOpen(false); }} openAthlete={(id) => { setDrawerAthleteId(id); setCmdkOpen(false); }} />}
       {drawerAthleteId && snap && <AthleteDrawer athleteId={drawerAthleteId} snap={snap} onClose={() => setDrawerAthleteId(null)} pushToast={pushToast}/>}
       {walkthroughRole && <RoleWalkthrough role={walkthroughRole} onClose={closeWalkthrough} navigate={(id) => { location.hash = '#' + id; closeWalkthrough(); }}/>}
@@ -324,6 +414,75 @@ function App() {
   );
 }
 window.App = App;
+
+// ─── Mobile top bar (just title + account chip) ───
+function MobileTopBar({ title, onSignOut, session, snap }) {
+  return (
+    <div className="mobile-topbar hz-nosel">
+      <div className="mobile-topbar__title">{title}</div>
+      <button className="mobile-topbar__account" onClick={onSignOut} title="Sign out" aria-label="Sign out">
+        {session?.profile?.display_name?.[0]?.toUpperCase() || 'U'}
+      </button>
+    </div>
+  );
+}
+window.MobileTopBar = MobileTopBar;
+
+// ─── Mobile bottom tab bar ───
+function MobileTabBar({ role, active, onNav }) {
+  const tabs = MOBILE_TABS[role] || MOBILE_TABS.coach;
+  return (
+    <nav className="mobile-tabbar hz-nosel" aria-label="Primary">
+      {tabs.map(t => {
+        const isActive = active === t.id;
+        return (
+          <button
+            key={t.id}
+            className={'mobile-tabbar__tab' + (isActive ? ' is-active' : '')}
+            onClick={() => onNav(t.id)}
+            aria-current={isActive ? 'page' : undefined}
+          >
+            <span className="mobile-tabbar__icon"><HZIcon name={t.icon} size={20}/></span>
+            <span className="mobile-tabbar__label">{t.label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+window.MobileTabBar = MobileTabBar;
+
+// ─── Mobile "More" bottom sheet (everything not in the tab bar) ───
+function MobileMoreSheet({ nav, active, tabIds, onNav, onClose, onSignOut }) {
+  const tabSet = new Set(tabIds);
+  return (
+    <div className="mobile-sheet-backdrop" onClick={onClose}>
+      <div className="mobile-sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="More">
+        <div className="mobile-sheet__handle"/>
+        <div className="mobile-sheet__title">More</div>
+        <div className="mobile-sheet__list">
+          {nav.filter(it => it.id && !tabSet.has(it.id)).map(it => (
+            <button
+              key={it.id}
+              className={'mobile-sheet__item' + (active === it.id ? ' is-active' : '')}
+              onClick={() => onNav(it.id)}
+            >
+              <span className="mobile-sheet__item-icon"><HZIcon name={it.icon} size={18}/></span>
+              <span className="mobile-sheet__item-label">{it.label}</span>
+              <HZIcon name="chev-right" size={14} color="var(--hz-dim)"/>
+            </button>
+          ))}
+          <div className="mobile-sheet__divider"/>
+          <button className="mobile-sheet__item" onClick={onSignOut}>
+            <span className="mobile-sheet__item-icon"><HZIcon name="logout" size={18}/></span>
+            <span className="mobile-sheet__item-label">Sign out</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+window.MobileMoreSheet = MobileMoreSheet;
 
 // ─── Error boundary: a screen crash shouldn't blank the app ───
 class ScreenErrorBoundary extends React.Component {

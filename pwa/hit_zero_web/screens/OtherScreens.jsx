@@ -1545,28 +1545,36 @@ function ClassRow({ cls, disabled }) {
   const dollars = (priceCents / 100).toFixed(2).replace(/\.00$/, '');
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 100px 1fr 1.4fr 80px auto', gap: 8, alignItems: 'center', padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
-      <input className="hz-input" value={name} onChange={e => { setName(e.target.value); mark(); }} placeholder="Senior" disabled={disabled || saving} style={{ fontSize: 13, padding: '6px 8px' }}/>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ color: 'var(--hz-dim)', fontSize: 12 }}>$</span>
-        <input className="hz-input" type="number" value={dollars} onChange={e => { setPriceCents(Math.round(parseFloat(e.target.value || 0) * 100)); mark(); }} disabled={disabled || saving} style={{ fontSize: 13, padding: '6px 8px', width: '100%' }}/>
+    <div className="class-row" style={{ padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: 10 }}>
+      {/* Top row: name + price (always together so the row reads as one offering) */}
+      <div className="class-row__head">
+        <input className="hz-input class-row__name" value={name} onChange={e => { setName(e.target.value); mark(); }} placeholder="Senior" disabled={disabled || saving}/>
+        <div className="class-row__price">
+          <span style={{ color: 'var(--hz-dim)', fontSize: 13 }}>$</span>
+          <input className="hz-input" type="number" value={dollars} onChange={e => { setPriceCents(Math.round(parseFloat(e.target.value || 0) * 100)); mark(); }} disabled={disabled || saving}/>
+          <select className="hz-input" value={priceUnit} onChange={e => { setPriceUnit(e.target.value); mark(); }} disabled={disabled || saving}>
+            <option value="per_month">/month</option>
+            <option value="per_session">/session</option>
+            <option value="per_session_per_month">/mo·session</option>
+            <option value="per_athlete">/athlete</option>
+            <option value="flat">flat</option>
+            <option value="custom">custom</option>
+          </select>
+        </div>
       </div>
-      <select className="hz-input" value={priceUnit} onChange={e => { setPriceUnit(e.target.value); mark(); }} disabled={disabled || saving} style={{ fontSize: 12, padding: '6px 8px' }}>
-        <option value="per_month">/month</option>
-        <option value="per_session">/session</option>
-        <option value="per_session_per_month">/month per session</option>
-        <option value="per_athlete">/athlete</option>
-        <option value="flat">flat</option>
-        <option value="custom">custom</option>
-      </select>
-      <input className="hz-input" value={schedule} onChange={e => { setSchedule(e.target.value); mark(); }} placeholder="6-week sessions" disabled={disabled || saving} style={{ fontSize: 12, padding: '6px 8px' }}/>
-      <input className="hz-input" type="number" value={capacity} onChange={e => { setCapacity(e.target.value); mark(); }} placeholder="∞" disabled={disabled || saving} style={{ fontSize: 12, padding: '6px 8px' }}/>
-      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-        <label title="Public on website" style={{ cursor: 'pointer', fontSize: 11 }}>
+      {/* Bottom row: schedule + capacity + actions */}
+      <div className="class-row__meta">
+        <input className="hz-input class-row__schedule" value={schedule} onChange={e => { setSchedule(e.target.value); mark(); }} placeholder="Schedule (e.g. 6-week sessions)" disabled={disabled || saving}/>
+        <input className="hz-input class-row__capacity" type="number" value={capacity} onChange={e => { setCapacity(e.target.value); mark(); }} placeholder="Cap ∞" disabled={disabled || saving}/>
+      </div>
+      <div className="class-row__actions">
+        <label className="class-row__public" title="Show on website">
           <input type="checkbox" checked={isPublic} onChange={e => { setIsPublic(e.target.checked); mark(); }} disabled={disabled || saving}/>
+          Public
         </label>
-        <button className="hz-btn" style={{ fontSize: 11, padding: '4px 8px' }} disabled={!dirty || saving} onClick={save}>{saving ? '…' : dirty ? 'Save' : '✓'}</button>
-        <button className="hz-btn hz-btn-danger" style={{ fontSize: 11, padding: '4px 8px' }} disabled={saving} onClick={remove} title="Delete">×</button>
+        <div style={{ flex: 1 }}/>
+        <button className="hz-btn" disabled={!dirty || saving} onClick={save}>{saving ? '…' : dirty ? 'Save' : '✓'}</button>
+        <button className="hz-btn hz-btn-danger" disabled={saving} onClick={remove} title="Delete">Delete</button>
       </div>
     </div>
   );

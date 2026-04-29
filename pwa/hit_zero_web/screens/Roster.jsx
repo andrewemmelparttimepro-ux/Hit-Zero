@@ -11,9 +11,10 @@ function initialsFor(name) {
 }
 
 function Roster({ snap, openAthlete, navigate }) {
+  const isMobile = (typeof window !== 'undefined' && window.useIsMobile) ? window.useIsMobile() : false;
   const [sort, setSort] = React.useState({ col: 'readiness', dir: 'desc' });
   const [filter, setFilter] = React.useState('all');
-  const [view, setView] = React.useState('table');
+  const [view, setView] = React.useState(isMobile ? 'grid' : 'table');
   const [showAdd, setShowAdd] = React.useState(false);
   const [editingId, setEditingId] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
@@ -153,19 +154,35 @@ function Roster({ snap, openAthlete, navigate }) {
           </table>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
-          {sorted.map(r => (
-            <div key={r.id} className="hz-card" onClick={() => openAthlete(r.id)} style={{ cursor: 'pointer', padding: 20 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-                <Avatar name={r.display_name} initials={r.initials} color={r.photo_color} src={r.photo_url} size={44}/>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{r.display_name}</div>
-                  <div style={{ fontSize: 10, color: 'var(--hz-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700 }}>{r.role}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }} className="roster-grid">
+          {sorted.map(r => editingId === r.id ? (
+            <div key={r.id} className="hz-card" style={{ padding: 16 }}>
+              <InlineCardEditor athlete={r} disabled={busy}
+                onSave={async (patch) => { const ok = await patchAthlete(r.id, patch); if (ok) setEditingId(null); }}
+                onCancel={() => setEditingId(null)}
+                onRemove={() => removeAthlete(r)}/>
+            </div>
+          ) : (
+            <div key={r.id} className="hz-card roster-card" style={{ padding: 16, cursor: 'pointer' }} onClick={() => openAthlete(r.id)}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                <Avatar name={r.display_name} initials={r.initials} color={r.photo_color} src={r.photo_url} size={48}/>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 16, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.display_name}</div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>
+                    {r.position && <span className="hz-pill" style={{ fontSize: 9, padding: '2px 8px', textTransform: 'capitalize' }}>{r.position}</span>}
+                    {r.age != null && <span style={{ fontSize: 11, color: 'var(--hz-dim)', fontFamily: 'var(--hz-mono)' }}>age {r.age}</span>}
+                  </div>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-                <div><div style={{ fontSize: 9, color: 'var(--hz-dim)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.1em' }}>Ready</div><div className="hz-display" style={{ fontSize: 22, color: 'var(--hz-teal)' }}>{Math.round(r.readiness*100)}</div></div>
-                <div><div style={{ fontSize: 9, color: 'var(--hz-dim)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.1em' }}>Attend</div><div className="hz-display" style={{ fontSize: 22 }}>{Math.round(r.attendance*100)}</div></div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                <RosterStat label="Ready" value={Math.round(r.readiness*100)} accent="var(--hz-teal)"/>
+                <RosterStat label="Attend" value={Math.round(r.attendance*100)}/>
+                <RosterStat label="Skills" value={r.mastered}/>
+              </div>
+              <div style={{ display: 'flex', gap: 6, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--hz-line)' }}>
+                <button className="hz-btn hz-btn-ghost hz-btn-sm" style={{ flex: 1, fontSize: 12 }} onClick={(e) => { e.stopPropagation(); setEditingId(r.id); }}>Edit</button>
+                <button className="hz-btn hz-btn-ghost hz-btn-sm" style={{ flex: 1, fontSize: 12 }} onClick={(e) => { e.stopPropagation(); openAthlete(r.id); }}>Open</button>
+                {r.owed > 0 && <span className="hz-pill hz-pill-amber" style={{ alignSelf: 'center', fontSize: 10 }}>${r.owed}</span>}
               </div>
             </div>
           ))}
@@ -182,6 +199,45 @@ function Th({ children, onClick, sort, col }) {
       {children}
       {active && <HZIcon name={sort.dir === 'asc' ? 'chev-up' : 'chev-down'} size={10}/>}
     </span>
+  );
+}
+
+function RosterStat({ label, value, accent }) {
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+      <div style={{ fontSize: 9, color: 'var(--hz-dim)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.08em' }}>{label}</div>
+      <div className="hz-display" style={{ fontSize: 18, color: accent || '#fff', marginTop: 2 }}>{value}</div>
+    </div>
+  );
+}
+
+function InlineCardEditor({ athlete, disabled, onSave, onCancel, onRemove }) {
+  const [name, setName] = React.useState(athlete.display_name || '');
+  const [age, setAge] = React.useState(athlete.age ?? '');
+  const [position, setPosition] = React.useState(athlete.position || '');
+  const save = () => onSave({
+    display_name: name.trim() || athlete.display_name,
+    initials: initialsFor(name),
+    age: age === '' ? null : parseInt(age, 10),
+    position: position || null,
+  });
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div className="hz-eyebrow" style={{ fontSize: 10 }}>Edit athlete</div>
+      <input className="hz-input" value={name} onChange={e => setName(e.target.value)} disabled={disabled} placeholder="Athlete name"/>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input className="hz-input" type="number" value={age} onChange={e => setAge(e.target.value)} disabled={disabled} placeholder="Age" style={{ width: 90 }} min="3" max="30"/>
+        <select className="hz-input" value={position} onChange={e => setPosition(e.target.value)} disabled={disabled} style={{ flex: 1 }}>
+          <option value="">No position</option>
+          {POSITION_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+        <button className="hz-btn hz-btn-primary hz-btn-sm" style={{ flex: 1 }} onClick={save} disabled={disabled}>Save</button>
+        <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={onCancel} disabled={disabled}>Cancel</button>
+        <button className="hz-btn hz-btn-danger hz-btn-sm" onClick={onRemove} disabled={disabled}>Remove</button>
+      </div>
+    </div>
   );
 }
 
