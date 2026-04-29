@@ -22,6 +22,11 @@
 //   { "kind": "lead", "program_slug": "mca", ...lead fields }
 //     or
 //   { "kind": "registration", "program_slug": "mca", "window_id": "...", ...reg fields }
+//
+// Optional email backup (registrations only): if RESEND_API_KEY is set in
+// the function env, every successful booking also fires a notification to
+// RESEND_NOTIFY_EMAIL (default andrewemmelparttimepro@gmail.com). Booking
+// always succeeds whether the email goes out or not.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
@@ -52,6 +57,83 @@ function bad(status: number, code: string, message: string, extra: Record<string
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? '';
+const RESEND_FROM = Deno.env.get('RESEND_FROM') ?? 'Hit Zero <onboarding@resend.dev>';
+const RESEND_NOTIFY_EMAIL = Deno.env.get('RESEND_NOTIFY_EMAIL') ?? 'andrewemmelparttimepro@gmail.com';
+
+// Best-effort email send. Never throws — booking succeeds even if this
+// fails or RESEND_API_KEY isn't configured yet.
+async function sendBookingEmail(opts: {
+  registrationId: string;
+  programName: string | null;
+  athleteName: string;
+  parentName: string;
+  parentEmail: string;
+  parentPhone: string | null;
+  className?: string | null;
+  windowTitle?: string | null;
+  notes?: string | null;
+  source?: string | null;
+}) {
+  if (!RESEND_API_KEY) {
+    console.log('[intake] RESEND_API_KEY not set, skipping email backup');
+    return;
+  }
+  try {
+    const subjBits = [
+      'New booking',
+      opts.className || opts.windowTitle || 'Registration',
+      'for',
+      opts.athleteName,
+    ].filter(Boolean);
+    const subject = subjBits.join(' ');
+    const lines = [
+      `<h2 style="margin:0 0 12px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">New ${opts.className ? 'class booking' : 'registration'}</h2>`,
+      `<p style="margin:0 0 16px;color:#555;font-family:-apple-system,Segoe UI,Roboto,sans-serif">${opts.programName || 'Magic City Athletics'} · via the public website</p>`,
+      `<table style="border-collapse:collapse;font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px">`,
+      row('Athlete', opts.athleteName),
+      opts.className ? row('Class', opts.className) : '',
+      opts.windowTitle ? row('Window', opts.windowTitle) : '',
+      row('Parent', opts.parentName),
+      row('Email', `<a href="mailto:${opts.parentEmail}">${opts.parentEmail}</a>`),
+      opts.parentPhone ? row('Phone', `<a href="tel:${opts.parentPhone}">${opts.parentPhone}</a>`) : '',
+      opts.notes ? row('Notes', escapeHtml(opts.notes)) : '',
+      row('Source', opts.source || 'public_website'),
+      row('Registration ID', `<code>${opts.registrationId}</code>`),
+      `</table>`,
+      `<p style="margin:20px 0 0;color:#888;font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:12px">Open Hit Zero to accept, waitlist, or follow up.</p>`,
+    ].filter(Boolean).join('\n');
+
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: RESEND_FROM,
+        to: [RESEND_NOTIFY_EMAIL],
+        reply_to: opts.parentEmail,
+        subject,
+        html: lines,
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      console.warn('[intake] resend email failed', res.status, text);
+    }
+  } catch (err) {
+    console.warn('[intake] resend email threw', err);
+  }
+}
+
+function row(label: string, value: string) {
+  return `<tr><td style="padding:6px 14px 6px 0;color:#777;vertical-align:top">${label}</td><td style="padding:6px 0;color:#111">${value}</td></tr>`;
+}
+function escapeHtml(s: string) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
 async function resolveProgram(programSlug: string | undefined, programId: string | undefined) {
   let id: string | null = null;
@@ -213,6 +295,29 @@ async function handleRegistration(body: any) {
 
   const { data, error } = await supa.from('registrations').insert(insertRow).select('id').single();
   if (error) return bad(500, 'insert_failed', error.message);
+
+  // Best-effort email backup so a booking can't get lost. Doesn't block.
+  let windowTitle: string | null = null;
+  if (windowId) {
+    const { data: w } = await supa.from('registration_windows').select('title').eq('id', windowId).maybeSingle();
+    windowTitle = w?.title ?? null;
+  }
+  let programName: string | null = null;
+  const { data: pn } = await supa.from('programs').select('public_name, brand_name, name').eq('id', program.id).maybeSingle();
+  programName = pn?.public_name || pn?.brand_name || pn?.name || null;
+  sendBookingEmail({
+    registrationId: data.id,
+    programName,
+    athleteName,
+    parentName,
+    parentEmail,
+    parentPhone: insertRow.parent_phone as string | null,
+    className: classRow?.name ?? null,
+    windowTitle,
+    notes: insertRow.notes as string | null,
+    source: insertRow.source as string | null,
+  }).catch(() => {});
+
   return json({ ok: true, registration_id: data.id, class: classRow ? { id: classRow.id, name: classRow.name } : null });
 }
 

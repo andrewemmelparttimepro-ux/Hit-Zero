@@ -259,6 +259,9 @@ function App() {
 
   useEffect(() => {
     if (!session) return;
+    // Public booking route is allowed for anyone (signed-in too — they can
+    // still help a friend book). Don't bounce them out.
+    if (route && route.startsWith('book/')) return;
     const allowed = navIdsForRole(effectiveRole);
     if (allowed.has(route)) return;
     const next = firstRouteForRole(effectiveRole);
@@ -317,6 +320,16 @@ function App() {
       .subscribe();
     return () => ch.unsubscribe();
   }, [snap?.athletes?.length, pushToast]);
+
+  // Public booking route — pre-auth, no session required.
+  // Triggered when the marketing site sends a parent here via
+  //   https://hit-zero.vercel.app/#book/<class_id>
+  if (route && route.startsWith('book/')) {
+    const bookingClassId = route.slice(5).split('?')[0];
+    if (bookingClassId && window.PublicBooking) {
+      return <window.PublicBooking classId={bookingClassId} />;
+    }
+  }
 
   if (!authReady) {
     return <div style={{ color: 'var(--hz-dim)', padding: 40 }}>Loading…</div>;
