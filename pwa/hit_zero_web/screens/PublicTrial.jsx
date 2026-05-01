@@ -22,7 +22,7 @@ function ptAnonKey() {
 }
 
 const TRIAL_INTERESTS = [
-  'Open Gym (free trial)',
+  'Open Gym (drop-in $10/athlete)',
   'All-Star Competitive',
   'Performance Cheer',
   'Rec Cheer',
@@ -46,7 +46,7 @@ function PublicTrial({ gymSlug }) {
     parentEmail: '',
     parentPhone: '',
     preferredContact: 'email',
-    interest: 'Open Gym (free trial)',
+    interest: 'Open Gym (drop-in $10/athlete)',
     notes: '',
     consentToText: false,
     hp: '',
