@@ -1911,3 +1911,370 @@ function SquareBillingPanel({ programRef }) {
     </div>
   );
 }
+
+// ─── Owner Profile / Account hub ───
+// Plain-language home for gym owners: change your password, walk through
+// connecting Square, and see your account at a glance. Shows up in the
+// owner sidebar as "My Account" so it's the first thing a brand-new owner
+// sees on first login.
+function OwnerProfile({ snap, session, navigate }) {
+  const profile = session.profile || {};
+  const userMeta = (session.user && session.user.user_metadata) || {};
+  const mustChangePassword = userMeta.must_change_password === true;
+  const firstName = (profile.display_name || profile.email || 'there').split(' ')[0];
+  const program = (snap.programs || []).find(p => p.id === profile.program_id);
+  const programRef = { program_id: profile.program_id, program_slug: program?.slug || 'mca' };
+
+  return (
+    <div>
+      <div style={{ marginBottom: 28 }}>
+        <div className="hz-eyebrow" style={{ marginBottom: 10 }}>Account · {program?.name || 'Magic City'}</div>
+        <div className="hz-display" style={{ fontSize: 56, lineHeight: 0.95 }}>
+          Hey {firstName}.<br/>Let's get you <span className="hz-zero">set up</span>.
+        </div>
+        <div style={{ color: 'var(--hz-dim)', fontSize: 14, marginTop: 14, maxWidth: 640, lineHeight: 1.5 }}>
+          Two quick things on first login: change your password, then connect Square so the gym can take real payments through Hit Zero.
+        </div>
+      </div>
+
+      {mustChangePassword && (
+        <div style={{
+          marginBottom: 20, padding: '14px 18px', borderRadius: 12,
+          border: '1px solid rgba(255,180,84,0.35)', background: 'rgba(255,180,84,0.08)',
+          color: 'var(--hz-amber)', fontSize: 13, lineHeight: 1.5,
+          display: 'flex', alignItems: 'center', gap: 12,
+        }}>
+          <HZIcon name="bolt" size={16}/>
+          <div><strong>You're using a default password.</strong> Change it below before you do anything else — it takes 30 seconds.</div>
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 20, marginBottom: 24 }}>
+        <AccountInfoCard profile={profile} session={session} program={program}/>
+        <ChangePasswordCard session={session} userMeta={userMeta}/>
+      </div>
+
+      <SquareSetupWizard programRef={programRef} navigate={navigate}/>
+
+      <div style={{ marginTop: 28, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className="hz-btn hz-btn-ghost" onClick={() => navigate('billing')}>Open Billing →</button>
+        <button className="hz-btn hz-btn-ghost" onClick={() => navigate('admin')}>Open Program →</button>
+        <button
+          className="hz-btn hz-btn-ghost"
+          onClick={async () => {
+            if (!confirm('Sign out of Hit Zero?')) return;
+            try { await window.HZsupa.auth.signOut(); } catch {}
+            try { await window.HZdb.auth.signOut(); } catch {}
+            location.reload();
+          }}
+        >Sign out</button>
+      </div>
+    </div>
+  );
+}
+window.OwnerProfile = OwnerProfile;
+
+function AccountInfoCard({ profile, session, program }) {
+  const email = profile.email || session.user?.email || '—';
+  const initials = (profile.display_name || '?').split(' ').map(s => s[0]).slice(0,2).join('').toUpperCase();
+  return (
+    <div className="hz-card">
+      <div className="hz-eyebrow" style={{ marginBottom: 12 }}>Account</div>
+      <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginBottom: 16 }}>
+        <div style={{
+          width: 56, height: 56, borderRadius: '50%',
+          background: 'linear-gradient(135deg, var(--hz-teal), var(--hz-pink))',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontFamily: 'var(--hz-display)', fontSize: 22, fontWeight: 700, color: 'white',
+        }}>{initials}</div>
+        <div>
+          <div className="hz-display" style={{ fontSize: 22 }}>{profile.display_name || 'Owner'}</div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 12.5 }}>Gym Owner · {program?.name || 'Magic City'}</div>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gap: 8, fontSize: 13 }}>
+        <Row label="Email" value={email}/>
+        <Row label="Role" value="Owner"/>
+        <Row label="Program" value={program?.name || profile.program_id?.slice(0,8) || '—'}/>
+      </div>
+    </div>
+  );
+}
+
+function Row({ label, value }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0', borderBottom: '1px solid var(--hz-line)' }}>
+      <span style={{ color: 'var(--hz-dim)', textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: 11, fontWeight: 700 }}>{label}</span>
+      <span style={{ fontFamily: 'var(--hz-mono)', fontSize: 12.5, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</span>
+    </div>
+  );
+}
+
+function ChangePasswordCard({ session, userMeta }) {
+  const [next, setNext] = React.useState('');
+  const [confirm, setConfirm] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [flash, setFlash] = React.useState(null);
+
+  async function submit(e) {
+    e.preventDefault();
+    setFlash(null);
+    if (next.length < 8) { setFlash({ kind: 'error', text: 'Use at least 8 characters.' }); return; }
+    if (next !== confirm) { setFlash({ kind: 'error', text: 'The two passwords don\'t match.' }); return; }
+    setBusy(true);
+    try {
+      const cleared = { ...(userMeta || {}), must_change_password: false };
+      const { error } = await window.HZsupa.auth.updateUser({ password: next, data: cleared });
+      if (error) throw error;
+      setFlash({ kind: 'success', text: 'Password updated. You\'re all set.' });
+      setNext(''); setConfirm('');
+    } catch (e) {
+      setFlash({ kind: 'error', text: e.message || 'Could not update password.' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="hz-card">
+      <div className="hz-eyebrow" style={{ marginBottom: 12 }}>Password</div>
+      <div className="hz-display" style={{ fontSize: 22, marginBottom: 6 }}>Change your password.</div>
+      <div style={{ color: 'var(--hz-dim)', fontSize: 12.5, lineHeight: 1.5, marginBottom: 14 }}>
+        At least 8 characters. Pick something only you would know.
+      </div>
+      <form onSubmit={submit} style={{ display: 'grid', gap: 10 }}>
+        <input
+          className="hz-input"
+          type="password"
+          placeholder="New password"
+          autoComplete="new-password"
+          value={next}
+          onChange={e => setNext(e.target.value)}
+          disabled={busy}
+          style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.04)', color: 'var(--hz-fg)', fontSize: 14 }}
+        />
+        <input
+          className="hz-input"
+          type="password"
+          placeholder="Confirm new password"
+          autoComplete="new-password"
+          value={confirm}
+          onChange={e => setConfirm(e.target.value)}
+          disabled={busy}
+          style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.04)', color: 'var(--hz-fg)', fontSize: 14 }}
+        />
+        <button className="hz-btn hz-btn-primary" type="submit" disabled={busy || !next || !confirm}>
+          {busy ? 'Saving…' : 'Save new password'}
+        </button>
+      </form>
+      {flash && (
+        <div style={{
+          marginTop: 12, padding: '10px 12px', borderRadius: 10,
+          border: '1px solid ' + (flash.kind === 'success' ? 'rgba(63,231,160,0.25)' : 'rgba(255,94,108,0.3)'),
+          background: flash.kind === 'success' ? 'rgba(63,231,160,0.08)' : 'rgba(255,94,108,0.08)',
+          color: flash.kind === 'success' ? 'var(--hz-green)' : 'var(--hz-red)',
+          fontSize: 12.5,
+        }}>{flash.text}</div>
+      )}
+    </div>
+  );
+}
+
+// Step-by-step Square connect wizard. Wraps the same square-admin-v1
+// endpoints SquareBillingPanel uses, but presents a friendlier first-run
+// experience: explain → connect → verify, then collapse to a status card
+// that points at the existing Billing screen for ongoing management.
+function SquareSetupWizard({ programRef, navigate }) {
+  const [state, setState] = React.useState({ loading: true, busy: false, data: null, error: '' });
+  const [flash, setFlash] = React.useState(null);
+
+  React.useEffect(() => {
+    const url = new URL(window.location.href);
+    const square = url.searchParams.get('square');
+    const message = url.searchParams.get('message');
+    if (square) {
+      setFlash({
+        kind: square === 'connected' ? 'success' : square === 'error' ? 'error' : 'info',
+        text: square === 'connected'
+          ? 'Square connected. Magic City can take real payments through Hit Zero.'
+          : message || `Square returned: ${square}`,
+      });
+      url.searchParams.delete('square');
+      url.searchParams.delete('message');
+      history.replaceState(null, '', url.toString());
+    }
+  }, []);
+
+  React.useEffect(() => {
+    let dead = false;
+    loadStatus();
+    return () => { dead = true; };
+    async function loadStatus() {
+      setState(prev => ({ ...prev, loading: true, error: '' }));
+      try {
+        const qs = new URLSearchParams();
+        if (programRef.program_id) qs.set('program_id', programRef.program_id);
+        if (programRef.program_slug) qs.set('program_slug', programRef.program_slug);
+        const res = await fetch(`${window.HZ_FN_BASE}/functions/v1/square-admin-v1?${qs.toString()}`, {
+          headers: window.HZ_ANON_KEY ? { Authorization: 'Bearer ' + window.HZ_ANON_KEY } : undefined,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to load Square status');
+        if (!dead) setState({ loading: false, busy: false, data, error: '' });
+      } catch (e) {
+        if (!dead) setState({ loading: false, busy: false, data: null, error: e.message || String(e) });
+      }
+    }
+  }, [programRef.program_id, programRef.program_slug]);
+
+  async function call(action, extra = {}) {
+    setState(prev => ({ ...prev, busy: true, error: '' }));
+    try {
+      const res = await fetch(`${window.HZ_FN_BASE}/functions/v1/square-admin-v1`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(window.HZ_ANON_KEY ? { Authorization: 'Bearer ' + window.HZ_ANON_KEY } : {}) },
+        body: JSON.stringify({
+          action,
+          program_id: programRef.program_id,
+          program_slug: programRef.program_slug,
+          return_to: `${window.location.origin}/#profile`,
+          ...extra,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Square action failed: ${action}`);
+      setState(prev => ({ ...prev, busy: false }));
+      return data;
+    } catch (e) {
+      setState(prev => ({ ...prev, busy: false, error: e.message || String(e) }));
+      throw e;
+    }
+  }
+
+  async function onConnect() {
+    try {
+      const out = await call('connect_url');
+      if (out?.url) window.location.href = out.url;
+    } catch {}
+  }
+
+  const data = state.data || {};
+  const conn = data.connection;
+  const isConnected = conn?.status === 'connected';
+  const isConfigured = !!data.configured;
+
+  return (
+    <div className="hz-card" style={{ position: 'relative', overflow: 'hidden' }}>
+      <div style={{
+        position: 'absolute', top: 0, right: 0, width: 240, height: 240,
+        background: 'radial-gradient(circle at top right, rgba(63,231,160,0.12), transparent 60%)',
+        pointerEvents: 'none',
+      }}/>
+      <div className="hz-eyebrow" style={{ marginBottom: 10 }}>Step 2 · Take payments</div>
+      <div className="hz-display" style={{ fontSize: 30, marginBottom: 8 }}>
+        Connect <span className="hz-zero">Square</span>.
+      </div>
+      <div style={{ color: 'var(--hz-dim)', fontSize: 13.5, lineHeight: 1.55, maxWidth: 640, marginBottom: 18 }}>
+        Square is the gym's payment processor. Once you connect your Magic City Square account, families can pay tuition with a card and every payment shows up on Hit Zero next to the right athlete.
+      </div>
+
+      {flash && (
+        <div style={{
+          marginBottom: 16, padding: '12px 14px', borderRadius: 10,
+          border: '1px solid ' + (flash.kind === 'success' ? 'rgba(63,231,160,0.25)' : flash.kind === 'error' ? 'rgba(255,94,108,0.3)' : 'rgba(255,180,84,0.25)'),
+          background: flash.kind === 'success' ? 'rgba(63,231,160,0.08)' : flash.kind === 'error' ? 'rgba(255,94,108,0.08)' : 'rgba(255,180,84,0.08)',
+          color: flash.kind === 'success' ? 'var(--hz-green)' : flash.kind === 'error' ? 'var(--hz-red)' : 'var(--hz-amber)',
+          fontSize: 12.5, position: 'relative',
+        }}>{flash.text}</div>
+      )}
+
+      {state.loading && (
+        <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>Checking your Square setup…</div>
+      )}
+
+      {!state.loading && !isConfigured && (
+        <div style={{ position: 'relative', padding: 16, borderRadius: 12, border: '1px solid rgba(255,180,84,0.25)', background: 'rgba(255,180,84,0.06)' }}>
+          <div style={{ color: 'var(--hz-amber)', fontWeight: 600, marginBottom: 6 }}>Platform setup pending</div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 12.5, lineHeight: 1.5 }}>
+            Andrew is finishing the Square app credentials on the platform side. The connect button will turn on as soon as that's in place — usually a couple minutes. Refresh this page when he gives the all-clear.
+          </div>
+        </div>
+      )}
+
+      {!state.loading && isConfigured && !isConnected && (
+        <div style={{ position: 'relative' }}>
+          <ol style={{ listStyle: 'none', padding: 0, margin: '0 0 18px 0', display: 'grid', gap: 12 }}>
+            <WizardStep n={1} title="Click the green button below."
+              body="It opens Square's secure sign-in page in this same window."/>
+            <WizardStep n={2} title="Sign in with your Magic City Square account."
+              body="Use the same login Brynn or Carissa already use to view payouts. If you don't have one yet, Square will let you create it on that page."/>
+            <WizardStep n={3} title="Approve the connection."
+              body="Square will ask if you want to share customers, invoices, and payments with Hit Zero. Click 'Allow.' Square sends you back here automatically."/>
+            <WizardStep n={4} title="Done — pull your first sync."
+              body="Hit Zero will show your Square merchant + locations. From Billing, click 'Sync now' to pull existing customers and invoices in."/>
+          </ol>
+
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              className="hz-btn hz-btn-primary"
+              onClick={onConnect}
+              disabled={state.busy}
+              style={{ background: 'linear-gradient(135deg, #3FE7A0, #27CFD7)', border: 'none', color: '#04111A', fontWeight: 700, padding: '12px 22px', fontSize: 14 }}
+            >
+              {state.busy ? 'Opening Square…' : 'Connect Square →'}
+            </button>
+            <a
+              href="https://squareup.com/login"
+              target="_blank" rel="noopener noreferrer"
+              style={{ color: 'var(--hz-dim)', fontSize: 12.5, textDecoration: 'underline' }}
+            >Don't have a Square account yet?</a>
+          </div>
+        </div>
+      )}
+
+      {!state.loading && isConnected && (
+        <div style={{ position: 'relative' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16 }}>
+            <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(63,231,160,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <HZIcon name="check" size={18} color="var(--hz-green)"/>
+            </div>
+            <div>
+              <div style={{ color: 'var(--hz-green)', fontWeight: 700, fontSize: 14 }}>Connected to Square</div>
+              <div style={{ color: 'var(--hz-dim)', fontSize: 12.5 }}>{conn.external_business_name || 'Magic City Square seller'} · {conn.environment}</div>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginBottom: 18 }}>
+            <MiniStat label="Last sync" value={conn.last_sync_completed_at ? new Date(conn.last_sync_completed_at).toLocaleString() : 'Not yet'} sub={conn.last_sync_status || 'idle'}/>
+            <MiniStat label="Location" value={conn.external_location_id ? conn.external_location_id.slice(-6) : '—'} sub="primary location"/>
+            <MiniStat label="Permissions" value={String((conn.scopes || []).length)} sub="scopes granted"/>
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button className="hz-btn hz-btn-primary" onClick={() => navigate('billing')}>Manage in Billing →</button>
+            <button className="hz-btn" onClick={onConnect} disabled={state.busy}>Reconnect Square</button>
+          </div>
+        </div>
+      )}
+
+      {state.error && !state.loading && (
+        <div style={{ marginTop: 14, color: 'var(--hz-red)', fontSize: 12.5 }}>{state.error}</div>
+      )}
+    </div>
+  );
+}
+
+function WizardStep({ n, title, body }) {
+  return (
+    <li style={{ display: 'flex', gap: 14, padding: 14, borderRadius: 12, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.02)' }}>
+      <div style={{
+        flexShrink: 0, width: 32, height: 32, borderRadius: '50%',
+        background: 'linear-gradient(135deg, var(--hz-teal), var(--hz-pink))',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: 'white', fontWeight: 700, fontSize: 14, fontFamily: 'var(--hz-display)',
+      }}>{n}</div>
+      <div>
+        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{title}</div>
+        <div style={{ color: 'var(--hz-dim)', fontSize: 12.5, lineHeight: 1.5 }}>{body}</div>
+      </div>
+    </li>
+  );
+}

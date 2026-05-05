@@ -27,6 +27,7 @@ const NAV_CONFIG = {
   owner: [
     { group: 'Overview' },
     { id: 'today',        label: 'Today',           icon: 'today' },
+    { id: 'profile',      label: 'My Account',      icon: 'home' },
     { id: 'admin',        label: 'Program',         icon: 'admin' },
     { id: 'billing',      label: 'Billing',         icon: 'billing' },
     { id: 'leads',        label: 'Leads',           icon: 'roster' },
@@ -88,6 +89,7 @@ const SCREEN_MAP = {
   announcements: 'Announcements',
   admin: 'AdminConsole',
   billing: 'Billing',
+  profile: 'OwnerProfile',
   reel: 'AthleteReel',
   pins: 'PinsHub',
   skilltree: 'SkillTree',
@@ -268,6 +270,21 @@ function App() {
     if (location.hash.slice(1) !== next) location.hash = '#' + next;
     else setRoute(next);
   }, [session, effectiveRole, route]);
+
+  // First-login redirect: owners landing with must_change_password = true
+  // get pushed to the Profile screen so they hit the password form + Square
+  // wizard before anything else.
+  useEffect(() => {
+    if (!session?.user) return;
+    if (effectiveRole !== 'owner') return;
+    if (session.user.user_metadata?.must_change_password !== true) return;
+    const key = `hz_first_login_redirect_${session.profile.id}`;
+    try {
+      if (localStorage.getItem(key)) return;
+      localStorage.setItem(key, 'done');
+    } catch {}
+    if (location.hash.slice(1) !== 'profile') location.hash = '#profile';
+  }, [session?.user?.id, effectiveRole]);
 
   // CmdK open
   useEffect(() => {
