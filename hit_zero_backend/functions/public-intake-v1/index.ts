@@ -135,6 +135,55 @@ async function sendIntakeEmail(opts: {
   }
 }
 
+// ── Rate limiting ──────────────────────────────────────────────────────────
+// Backed by public.public_intake_events (service-role only). Caps abusive
+// submissions per IP and per email over a rolling window. Fails OPEN: if the
+// throttle store itself errors, a real family can still book.
+const THROTTLE_WINDOW_MIN = 10;
+const MAX_PER_IP = 8;     // submissions per IP per window
+const MAX_PER_EMAIL = 5;  // submissions per email per window
+
+function clientIp(req: Request): string | null {
+  const xff = req.headers.get('x-forwarded-for') || '';
+  const first = xff.split(',')[0]?.trim();
+  if (first) return first.slice(0, 64);
+  return req.headers.get('x-real-ip')?.trim().slice(0, 64) || null;
+}
+
+// Returns a 429 Response if the caller is over the limit, otherwise null.
+async function throttle(req: Request, kind: string, programId: string | null, email: string | null): Promise<Response | null> {
+  const ip = clientIp(req);
+  const normEmail = email ? email.trim().toLowerCase() : null;
+  const since = new Date(Date.now() - THROTTLE_WINDOW_MIN * 60_000).toISOString();
+  try {
+    if (ip) {
+      const { count } = await supa
+        .from('public_intake_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('ip', ip)
+        .gte('created_at', since);
+      if ((count || 0) >= MAX_PER_IP) {
+        return bad(429, 'rate_limited', 'Too many submissions from this connection. Please wait a few minutes and try again.');
+      }
+    }
+    if (normEmail) {
+      const { count } = await supa
+        .from('public_intake_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('email', normEmail)
+        .gte('created_at', since);
+      if ((count || 0) >= MAX_PER_EMAIL) {
+        return bad(429, 'rate_limited', 'This email has submitted several times recently. Please wait a few minutes and try again.');
+      }
+    }
+    // Record the attempt. Non-blocking on failure.
+    await supa.from('public_intake_events').insert({ ip, email: normEmail, kind, program_id: programId });
+  } catch (err) {
+    console.warn('[intake] throttle check failed, allowing through', err);
+  }
+  return null;
+}
+
 function row(label: string, value: string) {
   return `<tr><td style="padding:6px 14px 6px 0;color:#777;vertical-align:top">${label}</td><td style="padding:6px 0;color:#111">${value}</td></tr>`;
 }
@@ -466,10 +515,15 @@ Deno.serve(async (req: Request) => {
 
   const kind = String(body?.kind || '').toLowerCase();
   try {
+    if (kind !== 'lead' && kind !== 'registration' && kind !== 'open_gym') {
+      return bad(400, 'bad_kind', "kind must be 'lead', 'registration', or 'open_gym'");
+    }
+    const email = body?.parent_email ? String(body.parent_email) : null;
+    const limited = await throttle(req, kind, null, email);
+    if (limited) return limited;
     if (kind === 'lead') return await handleLead(body);
     if (kind === 'registration') return await handleRegistration(body);
-    if (kind === 'open_gym') return await handleOpenGym(body);
-    return bad(400, 'bad_kind', "kind must be 'lead', 'registration', or 'open_gym'");
+    return await handleOpenGym(body);
   } catch (err) {
     return bad(500, 'unexpected', err instanceof Error ? err.message : String(err));
   }
