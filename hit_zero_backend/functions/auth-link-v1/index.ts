@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
 const SB_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SB_SR = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-const APP_ORIGIN = Deno.env.get('APP_ORIGIN') ?? 'https://hit-zero.vercel.app';
+const APP_ORIGIN = Deno.env.get('APP_ORIGIN') ?? 'https://thehitzero.net';
 const MAGIC_CITY_PROGRAM_ID = '11111111-1111-1111-1111-111111111111';
 
 const BOOTSTRAP_USERS: Record<string, {

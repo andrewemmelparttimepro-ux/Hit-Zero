@@ -12,8 +12,7 @@ const NAV_CONFIG = {
     { id: 'roster',       label: 'Roster',          icon: 'roster' },
     { id: 'skills',       label: 'Skill Matrix',    icon: 'skills' },
     { id: 'practice',     label: 'Practice Plans',  icon: 'routine' },
-    { group: 'Routine' },
-    { id: 'routine',      label: 'Routine Builder', icon: 'routine' },
+    { group: 'Scoring' },
     { id: 'score',        label: 'Mock Score',      icon: 'score' },
     { id: 'ai_judge',     label: 'AI Judge',        icon: 'bolt' },
     { id: 'forms',        label: 'Evaluations',     icon: 'skills' },
@@ -23,6 +22,7 @@ const NAV_CONFIG = {
     { id: 'announcements',label: 'Announcements',   icon: 'megaphone' },
     { id: 'volunteers',   label: 'Volunteers',      icon: 'roster' },
     { id: 'medical',      label: 'Medical',         icon: 'bolt' },
+    { id: 'birthdays',    label: 'Birthdays',       icon: 'calendar' },
   ],
   owner: [
     { group: 'Overview' },
@@ -34,23 +34,21 @@ const NAV_CONFIG = {
     { group: 'Teams' },
     { id: 'roster',       label: 'Roster',          icon: 'roster' },
     { id: 'skills',       label: 'Skill Matrix',    icon: 'skills' },
-    { id: 'routine',      label: 'Routine',         icon: 'routine' },
     { id: 'score',        label: 'Mock Score',      icon: 'score' },
     { id: 'ai_judge',     label: 'AI Judge',        icon: 'bolt' },
     { id: 'forms',        label: 'Evaluations',     icon: 'skills' },
-    { id: 'uniforms',     label: 'Uniforms',        icon: 'roster' },
     { group: 'Communications' },
     { id: 'messages',     label: 'Messages',        icon: 'megaphone' },
     { id: 'announcements',label: 'Announcements',   icon: 'megaphone' },
     { id: 'schedule',     label: 'Schedule',        icon: 'calendar' },
     { id: 'volunteers',   label: 'Volunteers',      icon: 'roster' },
     { id: 'medical',      label: 'Medical',         icon: 'bolt' },
+    { id: 'birthdays',    label: 'Birthdays',       icon: 'calendar' },
     { id: 'registration', label: 'Registration',    icon: 'plus' },
   ],
   athlete: [
     { group: 'My Cheer' },
     { id: 'reel',         label: 'My Reel',         icon: 'reel' },
-    { id: 'pins',         label: 'Pins',            icon: 'star' },
     { id: 'skilltree',    label: 'Skill Tree',      icon: 'skills' },
     { id: 'routine',      label: 'My Routine',      icon: 'routine' },
     { id: 'ai_judge',     label: 'AI Judge',        icon: 'bolt' },
@@ -61,19 +59,20 @@ const NAV_CONFIG = {
     { id: 'volunteers',   label: 'Volunteers',      icon: 'roster' },
   ],
   parent: [
-    { group: "Kid's World" },
-    { id: 'parent',       label: 'Overview',        icon: 'home' },
-    { id: 'reel',         label: 'Reel',            icon: 'reel' },
-    { id: 'skilltree',    label: 'Skills',          icon: 'skills' },
-    { id: 'ai_judge',     label: 'AI Judge',        icon: 'bolt' },
     { group: 'Family' },
-    { id: 'billing',      label: 'Billing',         icon: 'billing' },
+    { id: 'parent',       label: 'Overview',        icon: 'home' },
     { id: 'schedule',     label: 'Schedule',        icon: 'calendar' },
     { id: 'messages',     label: 'Messages',        icon: 'megaphone' },
+    { id: 'medical',      label: 'Medical',         icon: 'bolt' },
+    { id: 'family_forms', label: 'Forms',           icon: 'skills' },
+    { id: 'billing',      label: 'Billing',         icon: 'billing' },
     { id: 'announcements',label: 'Gym Feed',        icon: 'megaphone' },
     { id: 'uniforms',     label: 'Uniforms',        icon: 'roster' },
     { id: 'volunteers',   label: 'Volunteers',      icon: 'roster' },
-    { id: 'medical',      label: 'Medical',         icon: 'bolt' },
+    { group: 'Athlete Progress' },
+    { id: 'reel',         label: 'Reel',            icon: 'reel' },
+    { id: 'skilltree',    label: 'Skills',          icon: 'skills' },
+    { id: 'ai_judge',     label: 'AI Judge',        icon: 'bolt' },
   ],
 };
 
@@ -89,6 +88,7 @@ const SCREEN_MAP = {
   announcements: 'Announcements',
   admin: 'AdminConsole',
   billing: 'Billing',
+  family_forms: 'FamilyForms',
   profile: 'OwnerProfile',
   reel: 'AthleteReel',
   pins: 'PinsHub',
@@ -102,6 +102,7 @@ const SCREEN_MAP = {
   volunteers: 'Volunteers',
   practice: 'PracticePlans',
   medical: 'MedicalHub',
+  birthdays: 'BirthdayCalendar',
   registration: 'Registration',
   ai_judge: 'AIJudge',
 };
@@ -112,10 +113,31 @@ const ROLE_LABELS = {
   parent: 'Parent',
   athlete: 'Athlete',
 };
-const WALKTHROUGH_VERSION = 'v2';
+window.ROLE_LABELS = ROLE_LABELS;
+const WALKTHROUGH_VERSION = 'v4';
+
+function programDisplayName(program, fallback = 'your gym') {
+  return program?.brand_name || program?.public_name || program?.name || fallback;
+}
+window.HZprogramDisplayName = programDisplayName;
+
+function programLocationLabel(program, fallback = '') {
+  return [program?.city, program?.state].filter(Boolean).join(', ') || fallback;
+}
+window.HZprogramLocationLabel = programLocationLabel;
+
+function activeProgramFromSnap(snap, session) {
+  const programId = session?.actualProfile?.program_id || session?.profile?.program_id || null;
+  return (programId ? (snap?.programs || []).find(p => p.id === programId) : null) || (snap?.programs || [])[0] || null;
+}
+window.HZactiveProgramFromSnap = activeProgramFromSnap;
 
 function roleNav(role) {
   return NAV_CONFIG[role] || NAV_CONFIG.coach;
+}
+
+function walkthroughStorageKey(profileId, role, mode) {
+  return `hz_walkthrough_${WALKTHROUGH_VERSION}_${mode || 'prototype'}_${profileId}_${role}`;
 }
 
 // ─── Mobile bottom-tab-bar config (4 thumb-reachable + "More") ───
@@ -131,21 +153,21 @@ const MOBILE_TABS = {
     { id: 'today',    label: 'Today',    icon: 'today' },
     { id: 'roster',   label: 'Roster',   icon: 'roster' },
     { id: 'schedule', label: 'Schedule', icon: 'calendar' },
-    { id: 'routine',  label: 'Routine',  icon: 'routine' },
+    { id: 'practice', label: 'Plans',     icon: 'routine' },
     { id: '__more',   label: 'More',     icon: 'skills' },
   ],
   athlete: [
     { id: 'reel',      label: 'Reel',     icon: 'reel' },
     { id: 'skilltree', label: 'Skills',   icon: 'skills' },
-    { id: 'pins',      label: 'Pins',     icon: 'star' },
     { id: 'schedule',  label: 'Schedule', icon: 'calendar' },
+    { id: 'messages',  label: 'Messages', icon: 'megaphone' },
     { id: '__more',    label: 'More',     icon: 'skills' },
   ],
   parent:  [
     { id: 'parent',   label: 'Home',     icon: 'home' },
     { id: 'schedule', label: 'Schedule', icon: 'calendar' },
-    { id: 'billing',  label: 'Billing',  icon: 'billing' },
-    { id: 'reel',     label: 'Reel',     icon: 'reel' },
+    { id: 'messages', label: 'Messages', icon: 'megaphone' },
+    { id: 'medical',  label: 'Medical',  icon: 'bolt' },
     { id: '__more',   label: 'More',     icon: 'skills' },
   ],
 };
@@ -173,21 +195,91 @@ function firstRouteForRole(role) {
   return roleNav(role).find(item => item.id)?.id || 'today';
 }
 
+function publicAuthModeFromRoute(route) {
+  const clean = String(route || '').split('?')[0].replace(/^\/+/, '').toLowerCase();
+  if (['signup', 'create-account', 'create', 'family', 'join'].includes(clean)) return 'signup';
+  if (['signin', 'sign-in', 'login'].includes(clean)) return 'password';
+  if (['find-gym', 'find'].includes(clean)) return 'find';
+  if (['owner-application', 'run-a-gym'].includes(clean)) return 'owner';
+  try {
+    const params = new URLSearchParams(location.search || '');
+    const requested = (params.get('auth') || params.get('entry') || '').toLowerCase();
+    if (['signup', 'create', 'create-account', 'family'].includes(requested)) return 'signup';
+    if (['signin', 'sign-in', 'login'].includes(requested)) return 'password';
+  } catch {}
+  return null;
+}
+
+const DEFAULT_PUBLIC_GYM_SLUG = 'mca';
+const DEFAULT_PUBLIC_GYM_NAME = 'your gym';
+const DEFAULT_PUBLIC_GYM_ID = '11111111-1111-1111-1111-111111111111';
+const PASSWORD_RESET_TIMEOUT_MS = 18000;
+
+function timeoutAfter(ms, message) {
+  return new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(message)), ms);
+  });
+}
+
+function fallbackPublicGym(slug = DEFAULT_PUBLIC_GYM_SLUG) {
+  return {
+    id: DEFAULT_PUBLIC_GYM_ID,
+    slug: slug || DEFAULT_PUBLIC_GYM_SLUG,
+    public_name: DEFAULT_PUBLIC_GYM_NAME,
+    brand_name: DEFAULT_PUBLIC_GYM_NAME,
+    name: DEFAULT_PUBLIC_GYM_NAME,
+    city: 'Minot',
+    state: 'ND',
+    directory_tags: ['all-star cheer', 'tumbling', 'stunting'],
+  };
+}
+
+function routeHashParams(route) {
+  try {
+    const raw = String(route || '');
+    const query = raw.includes('?') ? raw.slice(raw.indexOf('?') + 1) : '';
+    return new URLSearchParams(query);
+  } catch {
+    return new URLSearchParams();
+  }
+}
+
+function preferredGymSlugFromRoute(route) {
+  const raw = String(route || '');
+  const clean = raw.split('?')[0].replace(/^\/+/, '').toLowerCase();
+  const params = routeHashParams(route);
+  const explicit = params.get('gym') || params.get('program') || params.get('program_slug');
+  if (explicit) return explicit.trim().toLowerCase();
+  const parts = clean.split('/').filter(Boolean);
+  if (['signup', 'create-account', 'create', 'family', 'join', 'find-gym', 'find'].includes(parts[0]) && parts[1]) {
+    return parts[1];
+  }
+  if (publicAuthModeFromRoute(route)) return DEFAULT_PUBLIC_GYM_SLUG;
+  return DEFAULT_PUBLIC_GYM_SLUG;
+}
+
+function routeFromLocation() {
+  const h = location.hash.slice(1);
+  if (h) return h;
+  const path = location.pathname.replace(/^\/+/, '');
+  if (path.startsWith('pay/')) return path;
+  return 'today';
+}
+
 // ─── Top-level App ───
 function App() {
   const [session, setSession] = useState(() => window.HZdb.auth._getSession());
   const [authReady, setAuthReady] = useState(() => !window.HZdb.auth._init);
   const [snap, setSnap] = useState(null);
-  const [route, setRoute] = useState(() => {
-    const h = location.hash.slice(1);
-    return h || 'today';
-  });
+  const [route, setRoute] = useState(routeFromLocation);
   const [toasts, setToasts] = useState([]);
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [drawerAthleteId, setDrawerAthleteId] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [moreSheetOpen, setMoreSheetOpen] = useState(false);
+  const [accountSheetOpen, setAccountSheetOpen] = useState(false);
   const [walkthroughRole, setWalkthroughRole] = useState(null);
+  const drawerHistoryRef = useRef(false);
   const isMobile = useIsMobile(768);
 
   useEffect(() => {
@@ -226,7 +318,7 @@ function App() {
       .on('postgres_changes', { table: '*' }, () => refreshSnapshot())
       .subscribe();
     // subscribe to every table we care about
-    ['athlete_skills','celebrations','attendance','routine_sections','sessions','billing_accounts','billing_charges','announcements','score_runs','program_tracks','program_classes','athletes','programs','program_payment_settings'].forEach(t => {
+    ['athlete_skills','celebrations','attendance','routine_sections','sessions','billing_accounts','billing_charges','announcements','score_runs','program_tracks','program_classes','class_enrollments','athletes','parent_links','programs','program_payment_settings','program_join_requests','program_invites','program_owner_applications','family_info_packets','message_threads','thread_members','messages','message_reads','practice_plans','practice_plan_blocks','form_responses'].forEach(t => {
       window.HZdb.channel('t-' + t).on('postgres_changes', { table: t }, () => refreshSnapshot()).subscribe();
     });
     return () => {
@@ -237,36 +329,96 @@ function App() {
 
   // Hash router
   useEffect(() => {
-    const onHash = () => setRoute(location.hash.slice(1) || 'today');
+    const onHash = () => setRoute(routeFromLocation());
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
+  useEffect(() => {
+    window.HZAnalytics?.page?.();
+  }, [route]);
+
   const effectiveRole = session?.profile?.role || 'coach';
 
   useEffect(() => {
-    if (!session?.profile) return;
-    const key = `hz_walkthrough_${WALKTHROUGH_VERSION}_${session.profile.id}_${effectiveRole}`;
+    if (!session?.profile || !snap) return;
+    const mode = session.mode || 'prototype';
+    const actualRole = session.actualProfile?.role || session.profile.role;
+    const canAutoOpen = mode === 'prototype' || (mode === 'live' && effectiveRole === 'parent' && actualRole === 'parent');
+    if (!canAutoOpen) return;
+    const profileId = session.actualProfile?.id || session.profile.id;
+    const key = walkthroughStorageKey(profileId, effectiveRole, mode);
     try {
       if (!localStorage.getItem(key)) setWalkthroughRole(effectiveRole);
     } catch {}
-  }, [session?.profile?.id, effectiveRole]);
+  }, [session?.profile?.id, session?.actualProfile?.id, effectiveRole, session?.mode, snap?._tick]);
 
   const closeWalkthrough = useCallback((markDone = true) => {
     if (markDone && session?.profile?.id && walkthroughRole) {
-      try { localStorage.setItem(`hz_walkthrough_${WALKTHROUGH_VERSION}_${session.profile.id}_${walkthroughRole}`, 'done'); } catch {}
+      const profileId = session.actualProfile?.id || session.profile.id;
+      try { localStorage.setItem(walkthroughStorageKey(profileId, walkthroughRole, session.mode || 'prototype'), 'done'); } catch {}
     }
     setWalkthroughRole(null);
-  }, [session?.profile?.id, walkthroughRole]);
+  }, [session?.profile?.id, session?.actualProfile?.id, session?.mode, walkthroughRole]);
 
+  const openAthleteDrawer = useCallback((id) => {
+    if (!id) return;
+    // Parents on phones get the full-screen athlete profile route so the OS
+    // back button / gestures work; the overlay drawer stays a staff/desktop tool.
+    if (session?.profile?.role === 'parent' && window.innerWidth <= 768) {
+      location.hash = '#athlete/' + id;
+      return;
+    }
+    setDrawerAthleteId(id);
+  }, [session?.profile?.role]);
+
+  const closeAthleteDrawer = useCallback((source = 'button') => {
+    const shouldPop = source !== 'popstate' && drawerHistoryRef.current;
+    drawerHistoryRef.current = false;
+    setDrawerAthleteId(null);
+    if (shouldPop) {
+      try {
+        if (history.state?.hzDrawer) history.back();
+      } catch {}
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!drawerAthleteId || drawerHistoryRef.current) return undefined;
+    try {
+      history.pushState({ ...(history.state || {}), hzDrawer: true }, '', location.href);
+      drawerHistoryRef.current = true;
+    } catch {}
+    return undefined;
+  }, [drawerAthleteId]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      if (!drawerHistoryRef.current && !drawerAthleteId) return;
+      closeAthleteDrawer('popstate');
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [drawerAthleteId, closeAthleteDrawer]);
+
+  const hadAllowedRouteRef = useRef(false);
   useEffect(() => {
     if (!session) return;
     // Public booking route is allowed for anyone (signed-in too — they can
     // still help a friend book). Don't bounce them out.
-    if (route && (route.startsWith('book/') || route.startsWith('trial/'))) return;
+    if (route && (route.startsWith('book/') || route.startsWith('trial/') || route.startsWith('pay/'))) return;
+    // Routes may carry query params (e.g. uniforms?tab=orders) — match on the base.
+    const baseRoute = String(route || '').split('?')[0];
+    // Athlete profile is a parameterized in-app route; access is enforced by
+    // viewer scope inside the screen itself.
+    if (baseRoute.startsWith('athlete/')) { hadAllowedRouteRef.current = true; return; }
     const allowed = navIdsForRole(effectiveRole);
-    if (allowed.has(route)) return;
+    if (allowed.has(baseRoute)) { hadAllowedRouteRef.current = true; return; }
     const next = firstRouteForRole(effectiveRole);
+    // Explain the redirect instead of silently teleporting mid-session.
+    if (hadAllowedRouteRef.current && route && baseRoute !== next) {
+      window.HZToast?.({ eyebrow: 'Not available', title: 'That screen is not part of this account.', body: 'Taking you back home.' });
+    }
     if (location.hash.slice(1) !== next) location.hash = '#' + next;
     else setRoute(next);
   }, [session, effectiveRole, route]);
@@ -290,11 +442,14 @@ function App() {
   useEffect(() => {
     const onKey = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setCmdkOpen(v => !v); }
-      if (e.key === 'Escape') setCmdkOpen(false);
+      if (e.key === 'Escape') {
+        setCmdkOpen(false);
+        if (drawerAthleteId) closeAthleteDrawer('escape');
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [drawerAthleteId, closeAthleteDrawer]);
 
   // Toast helper
   const pushToast = useCallback((t) => {
@@ -307,7 +462,7 @@ function App() {
   useEffect(() => {
     if (!snap) return;
     const ch = window.HZdb.channel('celebrate-' + Date.now())
-      .on('postgres_changes', { table: 'athlete_skills' }, (evt) => {
+      .on('postgres_changes', { table: 'athlete_skills' }, async (evt) => {
         if (evt.eventType !== 'UPDATE') return;
         const o = evt.old, n = evt.new;
         if (!o || !n) return;
@@ -323,16 +478,22 @@ function App() {
           body: n.status === 'mastered' ? 'Added to program highlights' : 'Working → Got it',
         });
         // Also record celebration row
-        window.HZdb.from('celebrations').insert({
-          team_id: a.team_id,
-          athlete_id: a.id,
-          kind: 'skill_progress',
-          skill_id: s.id,
-          from_status: o.status,
-          to_status: n.status,
-          headline: `${a.display_name.split(' ')[0]} ${n.status === 'mastered' ? 'mastered' : 'got'} ${s.name}`,
-          created_at: new Date().toISOString(),
-        });
+        try {
+          const celebration = {
+            team_id: a.team_id,
+            athlete_id: a.id,
+            kind: 'skill_progress',
+            skill_id: s.id,
+            from_status: o.status,
+            to_status: n.status,
+            headline: `${a.display_name.split(' ')[0]} ${n.status === 'mastered' ? 'mastered' : 'got'} ${s.name}`,
+            created_at: new Date().toISOString(),
+          };
+          await window.HZdb.from('celebrations').insert(celebration);
+          window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table: 'celebrations', action: 'insert' } }));
+        } catch (err) {
+          console.warn('[HZ] celebration insert failed', err);
+        }
       })
       .subscribe();
     return () => ch.unsubscribe();
@@ -340,7 +501,7 @@ function App() {
 
   // Public booking route — pre-auth, no session required.
   // Triggered when the marketing site sends a parent here via
-  //   https://hit-zero.vercel.app/#book/<class_id>
+  //   https://thehitzero.net/#book/<class_id>
   if (route && route.startsWith('book/')) {
     const bookingClassId = route.slice(5).split('?')[0];
     if (bookingClassId && window.PublicBooking) {
@@ -348,8 +509,15 @@ function App() {
     }
   }
 
+  if (route && route.startsWith('pay/')) {
+    const registrationId = route.slice(4).split('?')[0];
+    if (registrationId && window.PublicPaymentLink) {
+      return <window.PublicPaymentLink registrationId={registrationId} />;
+    }
+  }
+
   // Public free-trial / lead-capture route. Same pattern, different shape:
-  //   https://hit-zero.vercel.app/#trial/<gym_slug>
+  //   https://thehitzero.net/#trial/<gym_slug>
   if (route && route.startsWith('trial/')) {
     const gymSlug = route.slice(6).split('?')[0] || 'mca';
     if (window.PublicTrial) {
@@ -358,23 +526,57 @@ function App() {
   }
 
   if (!authReady) {
-    return <div style={{ color: 'var(--hz-dim)', padding: 40 }}>Loading…</div>;
+    return <SkeletonCard rows={4} style={{ margin: 40, maxWidth: 520 }} />;
   }
 
-  // Not signed in → login
-  if (!session) return <Login onIn={() => {}} />;
+  const inviteCodeFromRoute = route && route.startsWith('invite/')
+    ? decodeURIComponent(route.slice(7).split('?')[0] || '')
+    : '';
+  const publicAuthMode = publicAuthModeFromRoute(route);
+  const resetPasswordFromRoute = (() => {
+    try { return new URLSearchParams(location.search || '').get('next') === 'reset-password'; }
+    catch { return false; }
+  })();
+
+  // Not signed in → public launch gateway.
+  const preferredGymSlug = preferredGymSlugFromRoute(route);
+
+  if (!session) return <Login initialMode={resetPasswordFromRoute ? 'reset' : inviteCodeFromRoute ? 'invite' : publicAuthMode || 'password'} inviteCode={inviteCodeFromRoute} preferredGymSlug={preferredGymSlug} />;
+
+  if (session.recovery || resetPasswordFromRoute) {
+    return <PasswordResetGate session={session} />;
+  }
+
+  if (inviteCodeFromRoute) {
+    return <PendingGymOnboarding session={session} initialInviteCode={inviteCodeFromRoute} connected={!!session.actualProfile?.program_id || !!session.profile?.program_id} preferredGymSlug={preferredGymSlug} />;
+  }
+
+  const realProfile = session.actualProfile || session.profile;
+  const needsGymConnection = !realProfile?.program_id && session.mode !== 'prototype';
+  if (needsGymConnection) {
+    return <PendingGymOnboarding session={session} preferredGymSlug={preferredGymSlug} />;
+  }
 
   const role = effectiveRole;
   const nav = roleNav(role);
-  const screenId = navIdsForRole(role).has(route) ? route : firstRouteForRole(role);
+  const baseRoute = String(route || '').split('?')[0];
+  const isAthleteProfileRoute = baseRoute.startsWith('athlete/');
+  const screenId = isAthleteProfileRoute ? 'athlete'
+    : navIdsForRole(role).has(baseRoute) ? baseRoute : firstRouteForRole(role);
   const ScreenName = SCREEN_MAP[screenId] || 'CoachToday';
   const Screen = window[ScreenName];
 
   const navigate = (id) => { location.hash = '#' + id; };
+  const shellProgram = activeProgramFromSnap(snap, session);
 
   // Find the human-readable label for the current screen (used in mobile top bar).
   const currentNavItem = nav.find(it => it.id === screenId);
-  const screenLabel = currentNavItem?.label || screenId;
+  const screenLabel = isAthleteProfileRoute ? 'Athlete' : (currentNavItem?.label || screenId);
+
+  // Unread message total drives the Messages tab badge.
+  const unreadMessages = (snap && session?.profile?.id && window.HZsel?.inboxThreads)
+    ? (window.HZsel.inboxThreads(session.profile.id) || []).reduce((sum, t) => sum + (t.unread || 0), 0)
+    : 0;
 
   return (
     <div className={'app-shell' + (isMobile ? ' app-shell--mobile' : '')}>
@@ -383,6 +585,7 @@ function App() {
           <Sidebar
             nav={nav} active={screenId} session={session}
             snap={snap}
+            program={shellProgram}
             open={sidebarOpen}
             onNav={(id) => { location.hash = '#' + id; setSidebarOpen(false); }}
           />
@@ -400,25 +603,36 @@ function App() {
       {isMobile && (
         <MobileTopBar
           title={screenLabel}
-          onSignOut={async () => { await window.HZdb.auth.signOut(); }}
+          onAccount={() => setAccountSheetOpen(true)}
           session={session}
           snap={snap}
         />
       )}
 
-      <div className="main hz-rise" key={screenId}>
-        {Screen && snap ? (
+      <div className="main hz-rise" key={isAthleteProfileRoute ? baseRoute : screenId}>
+        {isAthleteProfileRoute && snap ? (
+          <ScreenErrorBoundary screenId="athlete" navigate={navigate}>
+            <window.AthleteProfile
+              route={route}
+              session={session}
+              snap={snap}
+              pushToast={pushToast}
+              navigate={navigate}
+            />
+          </ScreenErrorBoundary>
+        ) : Screen && snap ? (
           <ScreenErrorBoundary screenId={screenId} navigate={navigate}>
             <Screen
               session={session}
               snap={snap}
+              route={route}
               pushToast={pushToast}
-              openAthlete={setDrawerAthleteId}
+              openAthlete={openAthleteDrawer}
               navigate={navigate}
             />
           </ScreenErrorBoundary>
         ) : (
-          <div style={{ color: 'var(--hz-dim)', padding: 40 }}>Loading…</div>
+          <SkeletonCard rows={5} style={{ margin: 40, maxWidth: 620 }} />
         )}
       </div>
 
@@ -426,6 +640,7 @@ function App() {
         <MobileTabBar
           role={effectiveRole}
           active={screenId}
+          badges={{ messages: unreadMessages }}
           onNav={(id) => {
             if (id === '__more') setMoreSheetOpen(true);
             else { navigate(id); setMoreSheetOpen(false); }
@@ -439,12 +654,21 @@ function App() {
           tabIds={(MOBILE_TABS[effectiveRole] || []).map(t => t.id)}
           onNav={(id) => { navigate(id); setMoreSheetOpen(false); }}
           onClose={() => setMoreSheetOpen(false)}
-          onSignOut={async () => { await window.HZdb.auth.signOut(); setMoreSheetOpen(false); }}
+          onSignOut={() => { setMoreSheetOpen(false); setAccountSheetOpen(true); }}
+        />
+      )}
+      {isMobile && accountSheetOpen && (
+        <MobileAccountSheet
+          session={session}
+          snap={snap}
+          onClose={() => setAccountSheetOpen(false)}
+          onWalkthrough={() => { setAccountSheetOpen(false); setWalkthroughRole(effectiveRole); }}
+          onSignOut={async () => { await window.HZdb.auth.signOut(); setAccountSheetOpen(false); }}
         />
       )}
 
-      {cmdkOpen && snap && <CommandK snap={snap} onClose={() => setCmdkOpen(false)} onNav={(id) => { location.hash = '#' + id; setCmdkOpen(false); }} openAthlete={(id) => { setDrawerAthleteId(id); setCmdkOpen(false); }} />}
-      {drawerAthleteId && snap && <AthleteDrawer athleteId={drawerAthleteId} snap={snap} onClose={() => setDrawerAthleteId(null)} pushToast={pushToast}/>}
+      {cmdkOpen && snap && <CommandK snap={snap} session={session} onClose={() => setCmdkOpen(false)} onNav={(id) => { location.hash = '#' + id; setCmdkOpen(false); }} openAthlete={(id) => { openAthleteDrawer(id); setCmdkOpen(false); }} />}
+      {drawerAthleteId && snap && <AthleteDrawer athleteId={drawerAthleteId} snap={snap} session={session} onClose={closeAthleteDrawer} pushToast={pushToast}/>}
       {walkthroughRole && <RoleWalkthrough role={walkthroughRole} onClose={closeWalkthrough} navigate={(id) => { location.hash = '#' + id; closeWalkthrough(); }}/>}
       <div className="toast-stack">
         {toasts.map(t => <Toast key={t.id} toast={t} onClose={(id) => setToasts(prev => prev.filter(x => x.id !== id))} />)}
@@ -455,11 +679,13 @@ function App() {
 window.App = App;
 
 // ─── Mobile top bar (just title + account chip) ───
-function MobileTopBar({ title, onSignOut, session, snap }) {
+function MobileTopBar({ title, onAccount, session, snap }) {
+  const canSwitchRoles = roleSwitcherRoles(session).length > 1 || session.mode === 'prototype';
   return (
     <div className="mobile-topbar hz-nosel">
       <div className="mobile-topbar__title">{title}</div>
-      <button className="mobile-topbar__account" onClick={onSignOut} title="Sign out" aria-label="Sign out">
+      {canSwitchRoles && <RoleSwitcher session={session} snap={snap} compact />}
+      <button className="mobile-topbar__account" onClick={onAccount} title="Account" aria-label="Account">
         {session?.profile?.display_name?.[0]?.toUpperCase() || 'U'}
       </button>
     </div>
@@ -467,13 +693,65 @@ function MobileTopBar({ title, onSignOut, session, snap }) {
 }
 window.MobileTopBar = MobileTopBar;
 
+// ─── Mobile account sheet (avatar tap — info + confirmed sign out) ───
+function MobileAccountSheet({ session, snap, onClose, onSignOut, onWalkthrough }) {
+  const [confirming, setConfirming] = useState(false);
+  const profile = session?.profile || {};
+  const programId = session?.actualProfile?.program_id || profile.program_id || null;
+  const program = (snap?.programs || []).find(p => p.id === programId) || null;
+  const gymName = programDisplayName(program, '');
+  return (
+    <div className="mobile-sheet-backdrop" onClick={onClose}>
+      <div className="mobile-sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Account">
+        <div className="mobile-sheet__handle"/>
+        <div className="mobile-sheet__title">Account</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '2px 4px 16px' }}>
+          <Avatar name={profile.display_name} color={['coach','owner'].includes(profile.role) ? '#27CFD7' : '#F97FAC'} size={44}/>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>{profile.display_name || 'Account'}</div>
+            <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {profile.email || session?.user?.email || ''}
+            </div>
+            <div className="hz-eyebrow" style={{ marginTop: 5 }}>
+              {(ROLE_LABELS[profile.role] || profile.role || '')}{gymName ? ' · ' + gymName : ''}
+            </div>
+          </div>
+        </div>
+        <div className="mobile-sheet__divider"/>
+        {onWalkthrough && !confirming && (
+          <button className="mobile-sheet__item" onClick={onWalkthrough}>
+            <span className="mobile-sheet__item-icon"><HZIcon name="star" size={18}/></span>
+            <span className="mobile-sheet__item-label">App tour</span>
+          </button>
+        )}
+        {!confirming ? (
+          <button className="mobile-sheet__item" onClick={() => setConfirming(true)}>
+            <span className="mobile-sheet__item-icon"><HZIcon name="logout" size={18}/></span>
+            <span className="mobile-sheet__item-label">Sign out</span>
+          </button>
+        ) : (
+          <div style={{ display: 'grid', gap: 10, padding: '6px 4px 8px' }}>
+            <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>Sign out of Hit Zero on this device?</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="hz-btn" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setConfirming(false)}>Cancel</button>
+              <button className="hz-btn hz-btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={onSignOut}>Sign out</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+window.MobileAccountSheet = MobileAccountSheet;
+
 // ─── Mobile bottom tab bar ───
-function MobileTabBar({ role, active, onNav }) {
+function MobileTabBar({ role, active, onNav, badges = {} }) {
   const tabs = MOBILE_TABS[role] || MOBILE_TABS.coach;
   return (
     <nav className="mobile-tabbar hz-nosel" aria-label="Primary">
       {tabs.map(t => {
         const isActive = active === t.id;
+        const badge = badges[t.id] || 0;
         return (
           <button
             key={t.id}
@@ -483,6 +761,7 @@ function MobileTabBar({ role, active, onNav }) {
           >
             <span className="mobile-tabbar__icon"><HZIcon name={t.icon} size={20}/></span>
             <span className="mobile-tabbar__label">{t.label}</span>
+            {badge > 0 && <span className="mobile-tabbar__badge" aria-label={badge + ' unread'}>{badge > 9 ? '9+' : badge}</span>}
           </button>
         );
       })}
@@ -555,14 +834,18 @@ function profileAvatarSource(snap, profileId) {
   return (snap?.athletes || []).find(a => a.profile_id === profileId)?.photo_url || null;
 }
 
-function Sidebar({ nav, active, session, onNav, open, snap }) {
+function Sidebar({ nav, active, session, onNav, open, snap, program }) {
   const role = session.profile.role;
   const src = profileAvatarSource(snap, session.profile.id);
+  const programName = programDisplayName(program, 'Your gym');
+  const programLocation = programLocationLabel(program);
   return (
     <aside className={'sidebar hz-nosel' + (open ? ' open' : '')}>
       <div style={{ padding: '4px 10px 20px', borderBottom: '1px solid var(--hz-line)', marginBottom: 14 }}>
         <HZWordmark size={28} />
-        <div className="hz-eyebrow" style={{ marginTop: 8, color: 'var(--hz-dimmer)', fontSize: 9 }}>Magic City · Minot, ND</div>
+        <div className="hz-eyebrow" style={{ marginTop: 8, color: 'var(--hz-dimmer)', fontSize: 9 }}>
+          {programName}{programLocation ? ' · ' + programLocation : ''}
+        </div>
       </div>
       <nav style={{ flex: 1, overflowY: 'auto' }} className="hz-scroll">
         {nav.map((item, i) => item.group ? (
@@ -594,6 +877,7 @@ function Sidebar({ nav, active, session, onNav, open, snap }) {
 
 // ─── Topbar ───
 function Topbar({ session, onOpenCmdk, onSignOut, onHamburger, onHelp, snap }) {
+  const canSwitchRoles = roleSwitcherRoles(session).length > 1 || session.mode === 'prototype';
   return (
     <div className="topbar hz-nosel">
       <div className="topbar-left">
@@ -611,7 +895,7 @@ function Topbar({ session, onOpenCmdk, onSignOut, onHamburger, onHelp, snap }) {
         </button>
       </div>
       <div className="topbar-actions">
-        {session.canViewAs || session.mode === 'prototype'
+        {canSwitchRoles
           ? <RoleSwitcher session={session} snap={snap} />
           : <AccountBadge session={session} />}
         <button className="topbar-icon-btn" onClick={onHelp} title="Open walkthrough" aria-label="Open walkthrough">
@@ -637,11 +921,11 @@ function AccountBadge({ session }) {
   );
 }
 
-function RoleSwitcher({ session, snap }) {
+function RoleSwitcher({ session, snap, compact = false }) {
   const [open, setOpen] = useState(false);
-  const roles = ['coach','parent','athlete','owner'];
+  const roles = session.mode === 'prototype' ? ['coach','parent','athlete','owner'] : roleSwitcherRoles(session);
   const profiles = window.HZdb._raw().profiles;
-  const liveViewAs = !!session.canViewAs;
+  const liveViewAs = session.mode !== 'prototype';
   const currentRole = session.profile.role;
   const accountName = session.actualProfile?.display_name || session.profile.display_name || session.user?.email || session.profile.email;
   const switchRole = async (role) => {
@@ -657,7 +941,7 @@ function RoleSwitcher({ session, snap }) {
   return (
     <div style={{ position: 'relative' }}>
       <button className="topbar-account" onClick={() => setOpen(v => !v)}>
-        <span className="topbar-account-name">{accountName}</span>
+        {!compact && <span className="topbar-account-name">{accountName}</span>}
         <span className="topbar-view-as">View as</span>
         <span className="topbar-account-role">{ROLE_LABELS[currentRole] || currentRole}</span>
         <HZIcon name="chev-down" size={13} />
@@ -699,7 +983,7 @@ function RoleSwitcher({ session, snap }) {
             })}
             {liveViewAs && (
               <div style={{ borderTop: '1px solid var(--hz-line)', marginTop: 6, padding: '9px 10px 4px', color: 'var(--hz-dim)', fontSize: 11, lineHeight: 1.35 }}>
-                Preview only. Your real Supabase role stays {ROLE_LABELS[session.actualRole] || session.actualRole}.
+                Family view only changes what you see here. Your real staff role stays {ROLE_LABELS[session.actualRole] || session.actualRole}.
               </div>
             )}
           </div>
@@ -709,36 +993,807 @@ function RoleSwitcher({ session, snap }) {
   );
 }
 
-// ─── Login / auth gate ───
-function Login() {
-  const liveAuth = window.HZdb.auth._supportsMagicLink?.();
-  const [mode, setMode] = useState('password');
-  const [email, setEmail] = useState(window.HZdb.auth._lastEmail?.() || '');
-  const [identifier, setIdentifier] = useState(window.HZdb.auth._lastEmail?.() || '');
-  const [password, setPassword] = useState('');
-  const [role, setRole] = useState('owner');
+function roleSwitcherRoles(session) {
+  if (!session) return [];
+  if (window.HZdb?.auth?._viewRoles) {
+    try {
+      const roles = window.HZdb.auth._viewRoles() || [];
+      if (roles.length) return roles;
+    } catch {}
+  }
+  if (session.canViewAs) return [session.actualRole || session.profile?.role, 'parent'].filter(Boolean);
+  return [];
+}
+
+function AuthFrame({ children, title, subtitle }) {
+  return (
+    <div className="hz-auth-frame" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div className="hz-auth-frame__inner" style={{ maxWidth: 980, width: '100%' }}>
+        <div className="hz-auth-frame__header" style={{ textAlign: 'center', marginBottom: 34 }}>
+          <HZWordmark size={80} stacked />
+          <div className="hz-eyebrow" style={{ marginTop: 18, fontSize: 11 }}>Hit Zero · public launch</div>
+          <div className="hz-display" style={{ fontSize: 34, marginTop: 30 }}>{title}</div>
+          {subtitle && <div style={{ color: 'var(--hz-dim)', margin: '12px auto 0', fontSize: 14, lineHeight: 1.55, maxWidth: 560 }}>{subtitle}</div>}
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function GymSearchPicker({ onSelect, compact = false }) {
+  const [query, setQuery] = useState('');
+  const [rows, setRows] = useState([]);
   const [busy, setBusy] = useState(false);
-  const [sent, setSent] = useState(false);
-  const [err, setErr] = useState(null);
-  const roles = [
-    { id: 'coach', label: 'Coach', sub: 'Run practice, track skills, build routines' },
-    { id: 'owner', label: 'Gym Owner', sub: 'Program health, billing, all teams' },
-    { id: 'athlete', label: 'Athlete', sub: "My reel, my skills, what's next" },
-    { id: 'parent', label: 'Parent', sub: "Kid's wins, billing, schedule" },
-  ];
+  const [err, setErr] = useState('');
+
+  const runSearch = useCallback(async (q = query) => {
+    setBusy(true);
+    setErr('');
+    const { data, error } = await window.HZdb.auth.searchPrograms(q);
+    if (error) setErr(error.message || 'Could not search gyms.');
+    else setRows(data?.programs || []);
+    setBusy(false);
+  }, [query]);
+
+  useEffect(() => { runSearch(''); }, []);
+
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div className="hz-gym-search-row" style={{ display: 'flex', gap: 8 }}>
+        <input className="hz-input" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search gym name, city, state..." style={{ flex: 1 }} />
+        <button className="hz-btn" type="button" onClick={() => runSearch()} disabled={busy}><HZIcon name="search" size={14}/> Search</button>
+      </div>
+      {err && <div style={{ color: 'var(--hz-pink)', fontSize: 13 }}>{err}</div>}
+      <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr' : 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
+        {rows.map(program => (
+          <button
+            type="button"
+            key={program.id}
+            className="hz-card"
+            aria-label={`Request access to ${program.public_name || program.brand_name || program.name}`}
+            onClick={() => onSelect(program)}
+            style={{ textAlign: 'left', padding: 16, cursor: 'pointer' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 16 }}>{program.public_name || program.brand_name || program.name}</div>
+                <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>{[program.city, program.state].filter(Boolean).join(', ') || 'Location coming soon'}</div>
+              </div>
+              <span className="hz-eyebrow" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--hz-teal)', fontSize: 9, whiteSpace: 'nowrap' }}>
+                Request access
+                <HZIcon name="arrow-right" size={14} color="var(--hz-teal)"/>
+              </span>
+            </div>
+            {program.description && <div style={{ color: 'var(--hz-dim)', fontSize: 12, lineHeight: 1.45, marginTop: 10 }}>{program.description}</div>}
+            {!!program.directory_tags?.length && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
+                {program.directory_tags.slice(0, 3).map(tag => <span key={tag} className="hz-eyebrow" style={{ fontSize: 9, color: 'var(--hz-teal)' }}>{tag}</span>)}
+              </div>
+            )}
+          </button>
+        ))}
+      </div>
+      {!busy && !rows.length && <div style={{ color: 'var(--hz-dim)', fontSize: 13, textAlign: 'center', padding: 20 }}>No public gyms found yet.</div>}
+    </div>
+  );
+}
+
+function DefaultGymCard({ program, onSelect, compact = false }) {
+  const name = program?.public_name || program?.brand_name || program?.name || DEFAULT_PUBLIC_GYM_NAME;
+  const cityState = [program?.city || 'Minot', program?.state || 'ND'].filter(Boolean).join(', ');
+  return (
+    <button
+      type="button"
+      className="hz-card hz-default-gym-card"
+      onClick={() => onSelect(program)}
+      style={{ textAlign: 'left', padding: compact ? 14 : 18, cursor: 'pointer', borderColor: 'rgba(39,207,215,0.28)', background: 'linear-gradient(135deg, rgba(39,207,215,0.10), rgba(249,127,172,0.07))' }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+        <div>
+          <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)', fontSize: 9 }}>Default gym for Minot families</div>
+          <div style={{ fontWeight: 900, fontSize: compact ? 17 : 20, marginTop: 6 }}>{name}</div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>{cityState}</div>
+        </div>
+        <span className="hz-eyebrow" style={{ color: 'var(--hz-teal)', fontSize: 9, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          Continue
+          <HZIcon name="arrow-right" size={14} color="var(--hz-teal)"/>
+        </span>
+      </div>
+      {!compact && (
+        <div style={{ color: 'var(--hz-dim)', fontSize: 12.5, lineHeight: 1.45, marginTop: 12 }}>
+          Hit Zero is live for selected gyms in this area. You can still use search or an invite code if staff sends a different path.
+        </div>
+      )}
+    </button>
+  );
+}
+
+function usePreferredPublicGym(slug = DEFAULT_PUBLIC_GYM_SLUG) {
+  const [program, setProgram] = useState(() => fallbackPublicGym(slug));
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    let live = true;
+    setProgram(fallbackPublicGym(slug));
+    async function load() {
+      setLoaded(false);
+      const query = slug || DEFAULT_PUBLIC_GYM_SLUG;
+      const { data } = await window.HZdb.auth.searchPrograms(query);
+      if (!live) return;
+      const rows = data?.programs || [];
+      const match = rows.find(p => String(p.slug || '').toLowerCase() === String(query).toLowerCase())
+        || rows.find(p => p.id === DEFAULT_PUBLIC_GYM_ID || String(p.slug || '').toLowerCase() === DEFAULT_PUBLIC_GYM_SLUG)
+        || rows[0]
+        || fallbackPublicGym(query);
+      setProgram(match);
+      setLoaded(true);
+    }
+    load();
+    return () => { live = false; };
+  }, [slug]);
+  return { program, loaded };
+}
+
+function JoinRequestForm({ session, selectedProgram, onSubmitted }) {
+  const profile = session.actualProfile || session.profile || {};
+  const programName = selectedProgram.public_name || selectedProgram.brand_name || selectedProgram.name || DEFAULT_PUBLIC_GYM_NAME;
+  const [requestedRole, setRequestedRole] = useState(profile.role === 'athlete' ? 'athlete' : 'parent');
+  const [parentName, setParentName] = useState(profile.display_name || '');
+  const [athleteName, setAthleteName] = useState('');
+  const [athleteAge, setAthleteAge] = useState('');
+  const [phone, setPhone] = useState(profile.phone || '');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
 
   async function submit(e) {
     e.preventDefault();
     setBusy(true);
+    setErr('');
+    const { data, error } = await window.HZdb.auth.submitJoinRequest({
+      program_id: selectedProgram.id,
+      requested_role: requestedRole,
+      parent_name: parentName,
+      athlete_name: athleteName,
+      athlete_age: athleteAge,
+      phone,
+      email: profile.email,
+      message,
+    });
+    setBusy(false);
+    if (error) setErr(error.message || 'Could not submit request.');
+    else onSubmitted(data?.request, selectedProgram);
+  }
+
+  return (
+    <form onSubmit={submit} style={{ display: 'grid', gap: 12 }}>
+      <div style={{ padding: 14, border: '1px solid var(--hz-line)', borderRadius: 10, background: 'rgba(255,255,255,0.03)' }}>
+        <div className="hz-eyebrow" style={{ fontSize: 10 }}>Selected gym</div>
+        <div style={{ fontWeight: 800, marginTop: 4 }}>{programName}</div>
+        <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 3 }}>{[selectedProgram.city, selectedProgram.state].filter(Boolean).join(', ')}</div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <button type="button" className={'hz-btn' + (requestedRole === 'parent' ? ' hz-btn-primary' : '')} onClick={() => setRequestedRole('parent')}>Parent account</button>
+        <button type="button" className={'hz-btn' + (requestedRole === 'athlete' ? ' hz-btn-primary' : '')} onClick={() => setRequestedRole('athlete')}>Athlete account</button>
+      </div>
+      <label className="hz-eyebrow" style={{ fontSize: 10 }}>Parent / account name</label>
+      <input className="hz-input" required value={parentName} onChange={e => setParentName(e.target.value)} />
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 0.7fr', gap: 10 }}>
+        <div>
+          <label className="hz-eyebrow" style={{ fontSize: 10 }}>Athlete name</label>
+          <input className="hz-input" value={athleteName} onChange={e => setAthleteName(e.target.value)} placeholder="Optional" />
+        </div>
+        <div>
+          <label className="hz-eyebrow" style={{ fontSize: 10 }}>Age</label>
+          <input className="hz-input" type="number" value={athleteAge} onChange={e => setAthleteAge(e.target.value)} placeholder="Optional" />
+        </div>
+      </div>
+      <label className="hz-eyebrow" style={{ fontSize: 10 }}>Phone</label>
+      <input className="hz-input" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Optional" />
+      <label className="hz-eyebrow" style={{ fontSize: 10 }}>Note to gym staff</label>
+      <textarea className="hz-input" rows={3} value={message} onChange={e => setMessage(e.target.value)} placeholder="Optional: tell staff which class, athlete, or family this account belongs to." />
+      {err && <div style={{ color: 'var(--hz-pink)', fontSize: 13 }}>{err}</div>}
+      <button className="hz-btn hz-btn-primary" disabled={busy}>{busy ? 'Sending...' : `Request ${programName} access`}</button>
+    </form>
+  );
+}
+
+const FAMILY_PACKET_INTERESTS = [
+  'All-Star evaluation / team placement',
+  'Competition Cheer',
+  'Cheer Skill Builder',
+  'Tumbling/Stunts Clinic',
+  'Flex & Strength Class',
+  'Tiny Camp',
+  'School Team Clinics',
+  'Adult "Let\'s Get Moving"',
+  'Private lesson',
+  'Open Gym',
+];
+const FAMILY_PACKET_SIZES = ['YXS','YS','YM','YL','YXL','AS','AM','AL','AXL'];
+
+function FamilyInfoPacketCard({ session, program, request, onSaved }) {
+  const profile = session?.actualProfile || session?.profile || {};
+  const programId = program?.id || request?.program_id || profile.program_id || '';
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [saved, setSaved] = useState(null);
+  const [form, setForm] = useState(() => ({
+    parent_name: request?.parent_name || profile.display_name || '',
+    parent_email: request?.email || profile.email || '',
+    parent_phone: request?.phone || '',
+    preferred_contact: 'email',
+    relationship: 'Parent',
+    secondary_phone: '',
+    mailing_address: '',
+    athlete_name: request?.athlete_name || '',
+    athlete_age: request?.athlete_age || '',
+    athlete_dob: '',
+    grade: '',
+    cheer_experience: 'Beginner',
+    nickname: '',
+    tshirt_size: '',
+    interest: request?.message || 'All-Star evaluation / team placement',
+    emergency_name: '',
+    emergency_relationship: '',
+    emergency_phone: '',
+    secondary_emergency_name: '',
+    secondary_emergency_relationship: '',
+    secondary_emergency_phone: '',
+    medical_conditions: '',
+    medications: '',
+    injury_history: '',
+    physician_name: '',
+    physician_phone: '',
+    insurance_name: '',
+    policy_number: '',
+    media_release: 'yes',
+    agree_tuition: false,
+    agree_payment_policies: false,
+    agree_autopay: false,
+    agree_handbook: false,
+    agree_attendance: false,
+    agree_expectations: false,
+    parent_signature: '',
+    athlete_signature: '',
+    notes: '',
+  }));
+
+  const hydrate = useCallback((packet) => {
+    if (!packet) return;
+    setForm(f => ({
+      ...f,
+      parent_name: packet.parent_name || f.parent_name,
+      parent_email: packet.parent_email || f.parent_email,
+      parent_phone: packet.parent_phone || f.parent_phone,
+      preferred_contact: packet.preferred_contact || f.preferred_contact,
+      relationship: packet.relationship || f.relationship,
+      secondary_phone: packet.secondary_phone || f.secondary_phone,
+      mailing_address: packet.mailing_address || f.mailing_address,
+      athlete_name: packet.athlete_name || f.athlete_name,
+      athlete_age: packet.athlete_age ?? f.athlete_age,
+      athlete_dob: packet.athlete_dob || f.athlete_dob,
+      grade: packet.grade || f.grade,
+      cheer_experience: packet.cheer_experience || f.cheer_experience,
+      nickname: packet.nickname || f.nickname,
+      tshirt_size: packet.tshirt_size || f.tshirt_size,
+      interest: packet.interest || f.interest,
+      emergency_name: packet.emergency_contact?.name || f.emergency_name,
+      emergency_relationship: packet.emergency_contact?.relationship || f.emergency_relationship,
+      emergency_phone: packet.emergency_contact?.phone || f.emergency_phone,
+      secondary_emergency_name: packet.secondary_emergency_contact?.name || f.secondary_emergency_name,
+      secondary_emergency_relationship: packet.secondary_emergency_contact?.relationship || f.secondary_emergency_relationship,
+      secondary_emergency_phone: packet.secondary_emergency_contact?.phone || f.secondary_emergency_phone,
+      medical_conditions: packet.health_safety?.medical_conditions_or_allergies || f.medical_conditions,
+      medications: packet.health_safety?.current_medications || f.medications,
+      injury_history: packet.health_safety?.injury_history_or_limitations || f.injury_history,
+      physician_name: packet.health_safety?.physician_name || f.physician_name,
+      physician_phone: packet.health_safety?.physician_phone || f.physician_phone,
+      insurance_name: packet.health_safety?.insurance_name || f.insurance_name,
+      policy_number: packet.health_safety?.policy_number || f.policy_number,
+      media_release: packet.agreements?.media_release || f.media_release,
+      agree_tuition: !!packet.agreements?.tuition_fees_due,
+      agree_payment_policies: !!packet.agreements?.payment_policies,
+      agree_autopay: !!packet.agreements?.autopay_after_registration,
+      agree_handbook: !!packet.agreements?.handbook,
+      agree_attendance: !!packet.agreements?.attendance_policy,
+      agree_expectations: !!packet.agreements?.policy_expectations,
+      parent_signature: packet.signatures?.parent_signature || f.parent_signature,
+      athlete_signature: packet.signatures?.athlete_signature || f.athlete_signature,
+      notes: packet.notes || f.notes,
+    }));
+    setSaved(packet);
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    async function load() {
+      if (!programId || !window.HZdb?.auth?.myFamilyPacket) { setLoaded(true); return; }
+      const { data } = await window.HZdb.auth.myFamilyPacket(programId);
+      if (!alive) return;
+      hydrate(data?.packet || null);
+      setLoaded(true);
+    }
+    load();
+    return () => { alive = false; };
+  }, [programId, hydrate]);
+
+  const set = (key, value) => setForm(f => ({ ...f, [key]: value }));
+  const complete = saved?.completion_status === 'complete';
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!programId) { setErr('Choose a gym first.'); return; }
+    setBusy(true);
+    setErr('');
+    const payload = {
+      program_id: programId,
+      join_request_id: request?.id || null,
+      requested_role: request?.requested_role || profile.role || 'parent',
+      parent_name: form.parent_name,
+      parent_email: form.parent_email,
+      parent_phone: form.parent_phone,
+      preferred_contact: form.preferred_contact,
+      relationship: form.relationship,
+      secondary_phone: form.secondary_phone,
+      mailing_address: form.mailing_address,
+      athlete_name: form.athlete_name,
+      athlete_age: form.athlete_age,
+      athlete_dob: form.athlete_dob,
+      grade: form.grade,
+      cheer_experience: form.cheer_experience,
+      nickname: form.nickname,
+      tshirt_size: form.tshirt_size,
+      interest: form.interest,
+      emergency_contact: { name: form.emergency_name, relationship: form.emergency_relationship, phone: form.emergency_phone },
+      secondary_emergency_contact: { name: form.secondary_emergency_name, relationship: form.secondary_emergency_relationship, phone: form.secondary_emergency_phone },
+      health_safety: {
+        medical_conditions_or_allergies: form.medical_conditions,
+        current_medications: form.medications,
+        injury_history_or_limitations: form.injury_history,
+        physician_name: form.physician_name,
+        physician_phone: form.physician_phone,
+        insurance_name: form.insurance_name,
+        policy_number: form.policy_number,
+      },
+      agreements: {
+        tuition_fees_due: form.agree_tuition,
+        payment_policies: form.agree_payment_policies,
+        autopay_after_registration: form.agree_autopay,
+        handbook: form.agree_handbook,
+        attendance_policy: form.agree_attendance,
+        policy_expectations: form.agree_expectations,
+        media_release: form.media_release,
+      },
+      signatures: { parent_signature: form.parent_signature, athlete_signature: form.athlete_signature },
+      notes: form.notes,
+    };
+    const { data, error } = await window.HZdb.auth.submitFamilyPacket(payload);
+    setBusy(false);
+    if (error) setErr(error.message || 'Could not save family packet.');
+    else {
+      setSaved(data?.packet || null);
+      onSaved?.(data?.packet);
+    }
+  }
+
+  return (
+    <form className="hz-card" onSubmit={submit} style={{ padding: 18, display: 'grid', gap: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+        <div>
+          <div className="hz-eyebrow" style={{ marginBottom: 6 }}>Family info packet</div>
+          <div style={{ fontWeight: 900, fontSize: 18 }}>Insurance, emergency contact, policies, and waiver.</div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 12, lineHeight: 1.45, marginTop: 5 }}>
+            {program?.public_name || program?.name || 'The gym'} can review this before linking your account to the correct athlete.
+          </div>
+        </div>
+        <Pill tone={complete ? 'teal' : 'amber'}>{complete ? 'complete' : 'needs info'}</Pill>
+      </div>
+      {!loaded && <SkeletonCard rows={3} title={false} style={{ padding: 14, minHeight: 82 }} />}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+        <PacketField label="Parent / guardian name"><input className="hz-input" value={form.parent_name} onChange={e => set('parent_name', e.target.value)} required/></PacketField>
+        <PacketField label="Email"><input className="hz-input" type="email" value={form.parent_email} onChange={e => set('parent_email', e.target.value)} required/></PacketField>
+        <PacketField label="Phone"><input className="hz-input" type="tel" value={form.parent_phone} onChange={e => set('parent_phone', e.target.value)} required/></PacketField>
+        <PacketField label="Preferred contact"><select className="hz-input" value={form.preferred_contact} onChange={e => set('preferred_contact', e.target.value)}><option value="email">Email</option><option value="text">Text</option><option value="phone">Phone</option></select></PacketField>
+        <PacketField label="Athlete name"><input className="hz-input" value={form.athlete_name} onChange={e => set('athlete_name', e.target.value)} required/></PacketField>
+        <PacketField label="Athlete age"><input className="hz-input" type="number" min="0" max="30" value={form.athlete_age} onChange={e => set('athlete_age', e.target.value)}/></PacketField>
+        <PacketField label="Date of birth"><input className="hz-input" type="date" value={form.athlete_dob} onChange={e => set('athlete_dob', e.target.value)}/></PacketField>
+        <PacketField label="Grade"><input className="hz-input" value={form.grade} onChange={e => set('grade', e.target.value)}/></PacketField>
+        <PacketField label="Insurance name"><input className="hz-input" value={form.insurance_name} onChange={e => set('insurance_name', e.target.value)} required/></PacketField>
+        <PacketField label="Policy number"><input className="hz-input" value={form.policy_number} onChange={e => set('policy_number', e.target.value)} required/></PacketField>
+      </div>
+      <PacketField label="Mailing address"><input className="hz-input" value={form.mailing_address} onChange={e => set('mailing_address', e.target.value)}/></PacketField>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
+        <PacketField label="Emergency contact"><input className="hz-input" value={form.emergency_name} onChange={e => set('emergency_name', e.target.value)} required/></PacketField>
+        <PacketField label="Relationship"><input className="hz-input" value={form.emergency_relationship} onChange={e => set('emergency_relationship', e.target.value)}/></PacketField>
+        <PacketField label="Emergency phone"><input className="hz-input" type="tel" value={form.emergency_phone} onChange={e => set('emergency_phone', e.target.value)} required/></PacketField>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
+        <PacketField label="Second contact"><input className="hz-input" value={form.secondary_emergency_name} onChange={e => set('secondary_emergency_name', e.target.value)}/></PacketField>
+        <PacketField label="Relationship"><input className="hz-input" value={form.secondary_emergency_relationship} onChange={e => set('secondary_emergency_relationship', e.target.value)}/></PacketField>
+        <PacketField label="Phone"><input className="hz-input" type="tel" value={form.secondary_emergency_phone} onChange={e => set('secondary_emergency_phone', e.target.value)}/></PacketField>
+      </div>
+      <PacketField label="Medical conditions or allergies"><textarea className="hz-input" rows={2} value={form.medical_conditions} onChange={e => set('medical_conditions', e.target.value)}/></PacketField>
+      <PacketField label="Medications"><textarea className="hz-input" rows={2} value={form.medications} onChange={e => set('medications', e.target.value)}/></PacketField>
+      <PacketField label="Injury history or physical limitations"><textarea className="hz-input" rows={2} value={form.injury_history} onChange={e => set('injury_history', e.target.value)}/></PacketField>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+        <PacketField label="Physician"><input className="hz-input" value={form.physician_name} onChange={e => set('physician_name', e.target.value)}/></PacketField>
+        <PacketField label="Physician phone"><input className="hz-input" type="tel" value={form.physician_phone} onChange={e => set('physician_phone', e.target.value)}/></PacketField>
+        <PacketField label="Interest"><select className="hz-input" value={form.interest} onChange={e => set('interest', e.target.value)}>{FAMILY_PACKET_INTERESTS.map(x => <option key={x} value={x}>{x}</option>)}</select></PacketField>
+        <PacketField label="T-shirt size"><select className="hz-input" value={form.tshirt_size} onChange={e => set('tshirt_size', e.target.value)}><option value="">Choose later</option>{FAMILY_PACKET_SIZES.map(x => <option key={x} value={x}>{x}</option>)}</select></PacketField>
+      </div>
+      <div style={{ display: 'grid', gap: 8 }}>
+        {[
+          ['agree_tuition', 'I understand tuition and fees are due as scheduled'],
+          ['agree_payment_policies', 'I agree to MCA payment policies'],
+          ['agree_autopay', 'I understand auto-pay is required once official registration is completed'],
+          ['agree_handbook', 'I have read and agree to the MCA handbook'],
+          ['agree_attendance', 'I understand and agree to the attendance policy'],
+          ['agree_expectations', 'I agree to follow policies and expectations'],
+        ].map(([key, label]) => (
+          <label key={key} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', color: 'var(--hz-dim)', fontSize: 12 }}>
+            <input type="checkbox" checked={!!form[key]} onChange={e => set(key, e.target.checked)}/>
+            <span>{label}</span>
+          </label>
+        ))}
+      </div>
+      <PacketField label="Media release"><select className="hz-input" value={form.media_release} onChange={e => set('media_release', e.target.value)}><option value="yes">Yes, photo/video permission granted</option><option value="no">No photo/video promotional use</option></select></PacketField>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+        <PacketField label="Parent waiver signature"><input className="hz-input" value={form.parent_signature} onChange={e => set('parent_signature', e.target.value)} required/></PacketField>
+        <PacketField label="Athlete signature"><input className="hz-input" value={form.athlete_signature} onChange={e => set('athlete_signature', e.target.value)}/></PacketField>
+      </div>
+      <PacketField label="Notes"><textarea className="hz-input" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)}/></PacketField>
+      {err && <div style={{ color: 'var(--hz-pink)', fontSize: 13 }}>{err}</div>}
+      {saved && <div style={{ color: saved.completion_status === 'complete' ? 'var(--hz-teal)' : 'var(--hz-amber)', fontSize: 12 }}>Saved {new Date(saved.updated_at || saved.submitted_at || Date.now()).toLocaleString()}.</div>}
+      <button className="hz-btn hz-btn-primary" disabled={busy}>{busy ? 'Saving...' : 'Save family packet'}</button>
+    </form>
+  );
+}
+window.FamilyInfoPacketCard = FamilyInfoPacketCard;
+
+function PacketField({ label, children }) {
+  return (
+    <label style={{ display: 'grid', gap: 5 }}>
+      <span className="hz-eyebrow" style={{ fontSize: 10 }}>{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function OwnerApplicationForm({ session, onDone }) {
+  const profile = session?.actualProfile || session?.profile || {};
+  const [ownerName, setOwnerName] = useState(profile.display_name || '');
+  const [ownerEmail, setOwnerEmail] = useState(profile.email || '');
+  const [ownerPhone, setOwnerPhone] = useState('');
+  const [gymName, setGymName] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [websiteUrl, setWebsiteUrl] = useState('');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setErr('');
+    const { data, error } = await window.HZdb.auth.submitOwnerApplication({
+      owner_name: ownerName,
+      owner_email: ownerEmail,
+      owner_phone: ownerPhone,
+      gym_name: gymName,
+      city,
+      state,
+      website_url: websiteUrl,
+      message,
+    });
+    setBusy(false);
+    if (error) setErr(error.message || 'Could not submit application.');
+    else onDone(data?.application);
+  }
+
+  return (
+    <form onSubmit={submit} style={{ display: 'grid', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <input className="hz-input" required value={ownerName} onChange={e => setOwnerName(e.target.value)} placeholder="Your name" />
+        <input className="hz-input" required type="email" value={ownerEmail} onChange={e => setOwnerEmail(e.target.value)} placeholder="you@gym.com" />
+      </div>
+      <input className="hz-input" value={ownerPhone} onChange={e => setOwnerPhone(e.target.value)} placeholder="Phone" />
+      <input className="hz-input" required value={gymName} onChange={e => setGymName(e.target.value)} placeholder="Gym name" />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 0.4fr', gap: 10 }}>
+        <input className="hz-input" value={city} onChange={e => setCity(e.target.value)} placeholder="City" />
+        <input className="hz-input" value={state} onChange={e => setState(e.target.value.toUpperCase())} placeholder="State" maxLength={2} />
+      </div>
+      <input className="hz-input" value={websiteUrl} onChange={e => setWebsiteUrl(e.target.value)} placeholder="Website URL" />
+      <textarea className="hz-input" rows={3} value={message} onChange={e => setMessage(e.target.value)} placeholder="Anything we should know?" />
+      {err && <div style={{ color: 'var(--hz-pink)', fontSize: 13 }}>{err}</div>}
+      <button className="hz-btn hz-btn-primary" disabled={busy}>{busy ? 'Submitting...' : 'Submit gym application'}</button>
+    </form>
+  );
+}
+
+function InviteRedeemer({ initialCode = '', onRedeemed }) {
+  const [code, setCode] = useState(initialCode);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function redeem(e) {
+    e.preventDefault();
+    setBusy(true);
+    setErr('');
+    const { data, error } = await window.HZdb.auth.redeemProgramInvite(code);
+    setBusy(false);
+    if (error) setErr(error.message || 'Could not redeem invite.');
+    else onRedeemed(data);
+  }
+
+  return (
+    <form onSubmit={redeem} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+      <div style={{ flex: 1 }}>
+        <input className="hz-input" value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="ABCD-EFG-HI" />
+        {err && <div style={{ color: 'var(--hz-pink)', fontSize: 12, marginTop: 8 }}>{err}</div>}
+      </div>
+      <button className="hz-btn hz-btn-primary" disabled={busy || !code.trim()}>{busy ? 'Checking...' : 'Redeem'}</button>
+    </form>
+  );
+}
+
+function PendingGymOnboarding({ session, initialInviteCode = '', connected = false, preferredGymSlug = DEFAULT_PUBLIC_GYM_SLUG }) {
+  const [selectedProgram, setSelectedProgram] = useState(null);
+  const [packetTarget, setPacketTarget] = useState(null);
+  const [requests, setRequests] = useState([]);
+  const [requestsLoaded, setRequestsLoaded] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [tab, setTab] = useState(initialInviteCode ? 'invite' : 'find');
+  const profile = session.actualProfile || session.profile || {};
+  const { program: defaultProgram } = usePreferredPublicGym(preferredGymSlug);
+
+  const loadRequests = useCallback(async () => {
+    const { data } = await window.HZdb.auth.listMyJoinRequests();
+    setRequests(data?.requests || []);
+    setRequestsLoaded(true);
+  }, []);
+  useEffect(() => { loadRequests(); }, [loadRequests]);
+
+  useEffect(() => {
+    if (connected || initialInviteCode || tab !== 'find') return;
+    if (!requestsLoaded || !defaultProgram?.id || selectedProgram) return;
+    const hasPendingForDefault = requests.some(req => (
+      req.status === 'pending'
+      && (req.program_id === defaultProgram.id || req.programs?.slug === defaultProgram.slug)
+    ));
+    if (!hasPendingForDefault) setSelectedProgram(defaultProgram);
+  }, [connected, defaultProgram, initialInviteCode, requests, requestsLoaded, selectedProgram, tab]);
+
+  return (
+    <AuthFrame
+      title={connected ? 'Invite ready.' : 'Connect to your gym.'}
+      subtitle={connected ? 'You are signed in. Redeem an invite here if staff sent you one.' : 'Your account exists and no extra confirmation email is required. Private gym access starts after staff approval or a valid invite.'}
+    >
+      <div className="hz-card hz-pending-gym-card" style={{ maxWidth: 860, margin: '0 auto', padding: 24 }}>
+        <div className="hz-pending-gym-account" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 18 }}>
+          <div>
+            <div style={{ fontWeight: 800 }}>{profile.display_name || profile.email}</div>
+            <div style={{ color: 'var(--hz-dim)', fontSize: 12 }}>{profile.email}</div>
+          </div>
+          <button className="hz-btn" onClick={async () => { await window.HZdb.auth.signOut(); }}>Sign out</button>
+        </div>
+        <div className="hz-pending-gym-tabs" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 18 }}>
+          <button className={'hz-btn' + (tab === 'find' ? ' hz-btn-primary' : '')} onClick={() => setTab('find')}>Find gym</button>
+          <button className={'hz-btn' + (tab === 'invite' ? ' hz-btn-primary' : '')} onClick={() => setTab('invite')}>Invite code</button>
+          <button className={'hz-btn' + (tab === 'owner' ? ' hz-btn-primary' : '')} onClick={() => setTab('owner')}>Run a gym</button>
+        </div>
+        {notice && <div style={{ padding: 12, borderRadius: 10, background: 'rgba(39,207,215,0.08)', color: 'var(--hz-teal)', marginBottom: 16, fontSize: 13 }}>{notice}</div>}
+        {tab === 'find' && (
+          <div className="hz-pending-gym-find" style={{ display: 'grid', gridTemplateColumns: selectedProgram ? '1fr 1fr' : '1fr', gap: 18 }}>
+            <div style={{ display: 'grid', gap: 12 }}>
+              {defaultProgram && (
+                <DefaultGymCard
+                  program={defaultProgram}
+                  compact={!!selectedProgram}
+                  onSelect={(program) => {
+                    setSelectedProgram(program);
+                    setNotice('');
+                  }}
+                />
+              )}
+              <details className="hz-secondary-gym-search">
+                <summary className="hz-eyebrow" style={{ cursor: 'pointer', color: 'var(--hz-dim)' }}>Search another gym or city</summary>
+                <div style={{ marginTop: 12 }}>
+                  <GymSearchPicker compact onSelect={setSelectedProgram}/>
+                </div>
+              </details>
+            </div>
+            {selectedProgram && (
+              <JoinRequestForm
+                session={session}
+                selectedProgram={selectedProgram}
+                onSubmitted={(request, program) => {
+                  setNotice('Request sent. Staff will approve access before private gym data unlocks.');
+                  setPacketTarget({ request, program });
+                  setSelectedProgram(null);
+                  loadRequests();
+                }}
+              />
+            )}
+          </div>
+        )}
+        {tab === 'invite' && (
+          <div style={{ display: 'grid', gap: 14 }}>
+            <InviteRedeemer initialCode={initialInviteCode} onRedeemed={() => {
+              setNotice('Invite redeemed. Reloading your gym workspace...');
+              setTimeout(() => { location.hash = '#today'; location.reload(); }, 800);
+            }} />
+            <div style={{ color: 'var(--hz-dim)', fontSize: 12 }}>Invite links are for staff-approved access. If you do not have one, request access from the gym search tab.</div>
+          </div>
+        )}
+        {tab === 'owner' && (
+          <OwnerApplicationForm session={session} onDone={() => setNotice('Application submitted. We will review it before creating a live gym workspace.')} />
+        )}
+        {packetTarget && (
+          <div style={{ marginTop: 20 }}>
+            <FamilyInfoPacketCard
+              session={session}
+              request={packetTarget.request}
+              program={packetTarget.program}
+              onSaved={() => setNotice('Family packet saved. Staff can see it in the launch queue.')}
+            />
+          </div>
+        )}
+        {!!requests.length && (
+          <div style={{ marginTop: 22, borderTop: '1px solid var(--hz-line)', paddingTop: 16 }}>
+            <div className="hz-eyebrow" style={{ fontSize: 10, marginBottom: 10 }}>Your requests</div>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {requests.map(req => (
+                <div key={req.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: 12, border: '1px solid var(--hz-line)', borderRadius: 10 }}>
+                  <div>
+                    <div style={{ fontWeight: 700 }}>{req.programs?.public_name || req.programs?.name || 'Selected gym'}</div>
+                    <div style={{ color: 'var(--hz-dim)', fontSize: 12 }}>{ROLE_LABELS[req.requested_role] || req.requested_role} · {new Date(req.created_at).toLocaleDateString()}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <button className="hz-btn hz-btn-sm" onClick={() => setPacketTarget({ request: req, program: req.programs || { id: req.program_id, name: 'Selected gym' } })}>Family packet</button>
+                    <Pill tone={req.status === 'approved' ? 'teal' : req.status === 'rejected' ? 'pink' : 'amber'}>{req.status}</Pill>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </AuthFrame>
+  );
+}
+
+function PasswordResetGate({ session }) {
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [completed, setCompleted] = useState(false);
+  const [flash, setFlash] = useState(null);
+  const email = session?.profile?.email || session?.user?.email || 'your account';
+
+  async function submit(e) {
+    e.preventDefault();
+    setFlash(null);
+    if (next.length < 8) { setFlash({ kind: 'error', text: 'Use at least 8 characters.' }); return; }
+    if (next !== confirm) { setFlash({ kind: 'error', text: 'The two passwords do not match.' }); return; }
+    setBusy(true);
+    try {
+      const { error } = await Promise.race([
+        window.HZdb.auth.updatePassword(next),
+        timeoutAfter(PASSWORD_RESET_TIMEOUT_MS, 'Password update is taking too long. Check your connection and try again.'),
+      ]);
+      if (error) throw error;
+      setNext('');
+      setConfirm('');
+      setCompleted(true);
+      setFlash({ kind: 'success', text: 'Password updated. You can continue into Hit Zero now.' });
+      const destination = firstRouteForRole(session?.profile?.role || 'parent');
+      setTimeout(() => { location.hash = '#' + destination; }, 900);
+    } catch (err) {
+      setFlash({ kind: 'error', text: err?.message || 'Could not update password. Try again or request a fresh reset link.' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <AuthFrame title="Set a new password." subtitle={`This reset link is for ${email}. Choose a new password, then you can continue into Hit Zero.`}>
+      <div className="hz-card" style={{ maxWidth: 520, width: '100%', margin: '0 auto', padding: 28 }}>
+        <form onSubmit={submit} style={{ display: 'grid', gap: 12 }}>
+          <label className="hz-eyebrow" style={{ fontSize: 11 }}>New password</label>
+          <input className="hz-input" type="password" value={next} onChange={e => setNext(e.target.value)} placeholder="8+ characters" autoFocus required />
+          <label className="hz-eyebrow" style={{ fontSize: 11 }}>Confirm password</label>
+          <input className="hz-input" type="password" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="Repeat password" required />
+          {flash && (
+            <div style={{
+              padding: '10px 12px',
+              borderRadius: 10,
+              background: flash.kind === 'success' ? 'rgba(63,231,160,0.08)' : 'rgba(255,94,108,0.08)',
+              border: `1px solid ${flash.kind === 'success' ? 'rgba(63,231,160,0.25)' : 'rgba(255,94,108,0.25)'}`,
+              color: flash.kind === 'success' ? 'var(--hz-green)' : 'var(--hz-pink)',
+              fontSize: 13,
+            }}>{flash.text}</div>
+          )}
+          <button className="hz-btn hz-btn-primary" disabled={busy || completed} style={{ justifyContent: 'center', marginTop: 8 }}>
+            {busy ? 'Updating...' : completed ? 'Password updated' : flash?.kind === 'error' ? 'Retry update' : 'Update password'}
+          </button>
+          {completed && (
+            <button type="button" className="hz-btn hz-btn-ghost" onClick={() => { location.hash = '#' + firstRouteForRole(session?.profile?.role || 'parent'); }}>
+              Continue
+            </button>
+          )}
+        </form>
+      </div>
+    </AuthFrame>
+  );
+}
+
+// ─── Login / auth gate ───
+function Login({ initialMode = 'password', inviteCode = '', preferredGymSlug = DEFAULT_PUBLIC_GYM_SLUG }) {
+  const liveAuth = window.HZdb.auth._supportsMagicLink?.();
+  const [mode, setMode] = useState(initialMode);
+  const rememberedIdentifier = initialMode === 'signup' ? '' : (window.HZdb.auth._lastEmail?.() || '');
+  const [email, setEmail] = useState(rememberedIdentifier);
+  const [identifier, setIdentifier] = useState(rememberedIdentifier);
+  const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [requestedRole, setRequestedRole] = useState('parent');
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+  const [err, setErr] = useState(null);
+  const [publicNotice, setPublicNotice] = useState('');
+  const identifierRef = useRef(null);
+  const passwordRef = useRef(null);
+  const emailRef = useRef(null);
+  const displayNameRef = useRef(null);
+  const { program: defaultProgram } = usePreferredPublicGym(preferredGymSlug);
+
+  useEffect(() => {
+    setMode(initialMode);
+    setErr(null);
+    setSent(false);
+    setResetSent(false);
+    setPublicNotice('');
+  }, [initialMode]);
+
+  async function submit(e) {
+    e.preventDefault();
+    const currentIdentifier = (identifierRef.current?.value || identifier || '').trim();
+    const currentEmail = (emailRef.current?.value || email || '').trim();
+    const currentPassword = passwordRef.current?.value || password || '';
+    const currentDisplayName = (displayNameRef.current?.value || displayName || '').trim();
+    if (mode === 'password' && (!currentIdentifier || !currentPassword)) {
+      setErr('Enter your email or username and password.');
+      return;
+    }
+    if (mode === 'signup' && (!currentEmail || !currentPassword || !currentDisplayName)) {
+      setErr('Enter your name, email, and password.');
+      return;
+    }
+    if (mode === 'reset' && !currentIdentifier && !currentEmail) {
+      setErr('Enter the email or username for the account.');
+      return;
+    }
+    setBusy(true);
     setErr(null);
     try {
-      const { error } = mode === 'password'
-        ? await window.HZdb.auth.signInWithPassword(identifier, password)
-        : await window.HZdb.auth.signInWithMagicLink(email, role);
+      if (mode === 'reset') {
+        const { error } = await window.HZdb.auth.requestPasswordReset(currentEmail || currentIdentifier);
+        if (error) throw error;
+        setResetSent(true);
+        return;
+      }
+      if (mode !== 'password' && mode !== 'signup') return;
+      const { error, data } = mode === 'signup'
+        ? await window.HZdb.auth.signUpFamily({ email: currentEmail, password: currentPassword, display_name: currentDisplayName, requested_role: requestedRole })
+        : await window.HZdb.auth.signInWithPassword(currentIdentifier, currentPassword);
       if (error) throw error;
-      if (mode !== 'password') setSent(true);
+      if (mode === 'signup' && !data?.session) setSent(true);
     } catch (cause) {
-      setErr(cause?.message || (mode === 'password' ? 'We could not sign you in.' : 'We could not send the sign-in link.'));
+      setErr(cause?.message || (mode === 'signup' ? 'We could not create that account.' : 'We could not sign you in.'));
     } finally {
       setBusy(false);
     }
@@ -746,37 +1801,33 @@ function Login() {
 
   if (sent) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40 }}>
-        <div style={{ maxWidth: 560, width: '100%' }}>
-          <div style={{ textAlign: 'center', marginBottom: 32 }}>
-            <HZWordmark size={80} stacked />
-            <div className="hz-eyebrow" style={{ marginTop: 18, fontSize: 11 }}>Magic City Allstars · Minot, ND</div>
-            <div className="hz-display" style={{ fontSize: 28, marginTop: 40 }}>Check your email.</div>
-            <div style={{ color: 'var(--hz-dim)', marginTop: 14, fontSize: 14 }}>
-              We sent a secure sign-in link to <b>{email}</b>. Open it on this device to continue.
-            </div>
-          </div>
+      <AuthFrame title="Check your email." subtitle={`We sent a confirmation link to ${email}. Open it on this device, then sign in and request gym access.`}>
+        <div className="hz-card" style={{ maxWidth: 520, margin: '0 auto', textAlign: 'center' }}>
+          <button className="hz-btn hz-btn-primary" onClick={() => { setSent(false); setMode('password'); }}>Back to sign in</button>
         </div>
-      </div>
+      </AuthFrame>
+    );
+  }
+
+  if (resetSent) {
+    return (
+      <AuthFrame title="Check your email." subtitle="We sent a password reset link. Open it on this device and Hit Zero will ask you for a new password.">
+        <div className="hz-card" style={{ maxWidth: 520, margin: '0 auto', textAlign: 'center' }}>
+          <button className="hz-btn hz-btn-primary" onClick={() => { setResetSent(false); setMode('password'); }}>Back to sign in</button>
+        </div>
+      </AuthFrame>
     );
   }
 
   if (!liveAuth) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40 }}>
+      <AuthFrame title="Prototype sign in." subtitle="Live auth is unavailable here, so role cards are available only for local demo work.">
         <div style={{ maxWidth: 900, width: '100%' }}>
-          <div style={{ textAlign: 'center', marginBottom: 48 }}>
-            <HZWordmark size={80} stacked />
-            <div className="hz-eyebrow" style={{ marginTop: 18, fontSize: 11 }}>Magic City Allstars · Minot, ND</div>
-            <div className="hz-display" style={{ fontSize: 28, marginTop: 40, color: 'var(--hz-dim)', fontWeight: 400, fontStyle: 'italic' }}>
-              Sign in as…
-            </div>
-          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
-            {roles.map(r => (
+            {['coach','owner','athlete','parent'].map(role => (
               <div
-                key={r.id}
-                onClick={async () => { await window.HZdb.auth.signInAsRole(r.id); }}
+                key={role}
+                onClick={async () => { await window.HZdb.auth.signInAsRole(role); }}
                 className="hz-card"
                 style={{
                   cursor: 'pointer', textAlign: 'center', padding: '28px 20px',
@@ -785,98 +1836,194 @@ function Login() {
                 onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.borderColor = 'rgba(249,127,172,0.3)'; }}
                 onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.borderColor = 'var(--hz-line)'; }}
               >
-                <div className="hz-display" style={{ fontSize: 40, marginBottom: 8 }}>{r.label}</div>
-                <div style={{ color: 'var(--hz-dim)', fontSize: 12.5 }}>{r.sub}</div>
+                <div className="hz-display" style={{ fontSize: 40, marginBottom: 8 }}>{ROLE_LABELS[role] || role}</div>
+                <div style={{ color: 'var(--hz-dim)', fontSize: 12.5 }}>Local demo role</div>
               </div>
             ))}
           </div>
-          <div style={{ textAlign: 'center', marginTop: 40, color: 'var(--hz-dimmer)', fontSize: 11 }}>
-            Prototype fallback is active because the live auth client is unavailable.
-          </div>
         </div>
-      </div>
+      </AuthFrame>
     );
   }
 
+  const authTitle = mode === 'signup'
+    ? 'Create your family account.'
+    : mode === 'find'
+      ? 'Find your gym.'
+      : mode === 'owner'
+        ? 'Apply to run a gym.'
+        : mode === 'reset'
+          ? 'Reset your password.'
+          : 'Sign in to your gym.';
+  const authSubtitle = mode === 'signup'
+    ? 'For Minot families, this starts with a gym access request. Private gym access unlocks after staff approval or an invite code.'
+    : 'Already have an account? Sign in. New families should choose Create account first.';
+
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40 }}>
-      <form onSubmit={submit} style={{ maxWidth: 720, width: '100%' }}>
-        <div style={{ textAlign: 'center', marginBottom: 48 }}>
-          <HZWordmark size={80} stacked />
-          <div className="hz-eyebrow" style={{ marginTop: 18, fontSize: 11 }}>Magic City Allstars · Minot, ND</div>
-          <div className="hz-display" style={{ fontSize: 28, marginTop: 40, color: 'var(--hz-dim)', fontWeight: 400, fontStyle: 'italic' }}>
-            Sign in to your gym.
+    <AuthFrame title={authTitle} subtitle={authSubtitle}>
+      <div style={{ maxWidth: 600, width: '100%', margin: '0 auto' }}>
+        <div className="hz-card" style={{ padding: 28 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(104px, 1fr))', gap: 8, marginBottom: 20 }}>
+            <button type="button" className={'hz-btn' + (mode === 'password' ? ' hz-btn-primary' : '')} onClick={() => setMode('password')}>Sign in</button>
+            <button type="button" className={'hz-btn' + (mode === 'signup' ? ' hz-btn-primary' : '')} onClick={() => setMode('signup')}>Create account</button>
+            <button type="button" className={'hz-btn' + (mode === 'find' ? ' hz-btn-primary' : '')} onClick={() => setMode('find')}>Find gym</button>
+            <button type="button" className={'hz-btn' + (mode === 'invite' ? ' hz-btn-primary' : '')} onClick={() => setMode('invite')}>Invite</button>
+            <button type="button" className={'hz-btn' + (mode === 'owner' ? ' hz-btn-primary' : '')} onClick={() => setMode('owner')}>Run a gym</button>
           </div>
-        </div>
-        <div className="hz-card" style={{ maxWidth: 560, margin: '0 auto', padding: 28 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
-            <button type="button" className={'hz-btn' + (mode === 'password' ? ' hz-btn-primary' : '')} onClick={() => setMode('password')}>Username + password</button>
-            <button type="button" className={'hz-btn' + (mode === 'magic' ? ' hz-btn-primary' : '')} onClick={() => setMode('magic')}>Email link</button>
-          </div>
+          {publicNotice && <div style={{ padding: 12, borderRadius: 10, background: 'rgba(39,207,215,0.08)', color: 'var(--hz-teal)', marginBottom: 16, fontSize: 13 }}>{publicNotice}</div>}
           {mode === 'password' ? (
             <>
               <label className="hz-eyebrow" style={{ display: 'block', fontSize: 11, marginBottom: 8 }}>Username or email</label>
               <input
+                ref={identifierRef}
                 className="hz-input"
                 required
                 autoFocus
                 value={identifier}
                 onChange={e => setIdentifier(e.target.value)}
-                placeholder="arlowe"
+                placeholder="parent@example.com or athlete username"
                 autoCapitalize="none"
                 autoCorrect="off"
+                autoComplete="username"
               />
               <label className="hz-eyebrow" style={{ display: 'block', fontSize: 11, marginTop: 18, marginBottom: 8 }}>Password</label>
               <input
+                ref={passwordRef}
                 className="hz-input"
                 type="password"
                 required
                 value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="••••••••"
-              />
-            </>
-          ) : (
-            <>
+	                onChange={e => setPassword(e.target.value)}
+	                placeholder="••••••••"
+	                autoComplete="current-password"
+	              />
+	              <div style={{ textAlign: 'right', marginTop: 10 }}>
+	                <button
+	                  type="button"
+	                  className="hz-btn hz-btn-ghost"
+	                  onClick={() => { setErr(null); setEmail(identifier.includes('@') ? identifier : email); setMode('reset'); }}
+	                  style={{ minHeight: 0, padding: '6px 8px', fontSize: 12 }}
+	                >
+	                  Forgot password?
+	                </button>
+	              </div>
+	            </>
+	          ) : mode === 'reset' ? (
+	            <>
+	              <div style={{ color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.5, marginBottom: 14 }}>
+	                Enter the email or athlete username for the account. We will send a secure reset link.
+	              </div>
+	              <label className="hz-eyebrow" style={{ display: 'block', fontSize: 11, marginBottom: 8 }}>Email or username</label>
+	              <input
+	                ref={emailRef}
+	                className="hz-input"
+	                required
+	                autoFocus
+	                value={email}
+	                onChange={e => setEmail(e.target.value)}
+	                placeholder="you@example.com"
+	                autoCapitalize="none"
+	                autoCorrect="off"
+	              />
+	              <button type="button" className="hz-btn hz-btn-ghost" onClick={() => { setErr(null); setMode('password'); }} style={{ marginTop: 12 }}>
+	                Back to sign in
+	              </button>
+	            </>
+	          ) : mode === 'signup' ? (
+	            <>
+              {defaultProgram && (
+                <div style={{ marginBottom: 18 }}>
+                  <DefaultGymCard
+                    program={defaultProgram}
+                    compact
+                    onSelect={() => setPublicNotice(`${defaultProgram.public_name || defaultProgram.name || DEFAULT_PUBLIC_GYM_NAME} is already selected for the next step.`)}
+                  />
+                </div>
+              )}
+	              <label className="hz-eyebrow" style={{ display: 'block', fontSize: 11, marginBottom: 8 }}>Full name</label>
+	              <input ref={displayNameRef} className="hz-input" required autoFocus value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Your name" autoComplete="name" />
               <label className="hz-eyebrow" style={{ display: 'block', fontSize: 11, marginBottom: 8 }}>Email</label>
               <input
+                ref={emailRef}
                 className="hz-input"
                 type="email"
                 required
                 autoFocus
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="you@gym.com"
+                placeholder="you@example.com"
+                autoComplete="email"
               />
-              <div className="hz-eyebrow" style={{ display: 'block', fontSize: 11, marginTop: 24, marginBottom: 10 }}>Role</div>
+	              <label className="hz-eyebrow" style={{ display: 'block', fontSize: 11, marginTop: 18, marginBottom: 8 }}>Password</label>
+	              <input ref={passwordRef} className="hz-input" type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="8+ characters" autoComplete="new-password" />
+		              <div style={{ color: 'var(--hz-dim)', fontSize: 12, lineHeight: 1.45, marginTop: 10 }}>
+		                After this, request gym access and complete the family packet. If the app takes you straight to that screen, you are already signed in and do not need a separate confirmation email.
+	              </div>
+	              <div className="hz-eyebrow" style={{ display: 'block', fontSize: 11, marginTop: 24, marginBottom: 10 }}>Account type</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
-                {roles.map(r => (
+                {[
+                  { id: 'parent', label: 'Parent', sub: "I manage my athlete's schedule and payments" },
+                  { id: 'athlete', label: 'Athlete', sub: 'I am joining my own gym account' },
+                ].map(r => (
                   <button
                     key={r.id}
                     type="button"
-                    className={'hz-btn' + (role === r.id ? ' hz-btn-primary' : '')}
+                    className={'hz-btn' + (requestedRole === r.id ? ' hz-btn-primary' : '')}
                     style={{ justifyContent: 'flex-start', padding: '14px 16px' }}
-                    onClick={() => setRole(r.id)}
+                    onClick={() => setRequestedRole(r.id)}
                   >
                     <div style={{ textAlign: 'left' }}>
                       <div style={{ fontWeight: 700 }}>{r.label}</div>
-                      <div style={{ color: role === r.id ? 'rgba(255,255,255,0.82)' : 'var(--hz-dim)', fontSize: 11, marginTop: 4 }}>{r.sub}</div>
+                      <div style={{ color: requestedRole === r.id ? 'rgba(255,255,255,0.82)' : 'var(--hz-dim)', fontSize: 11, marginTop: 4 }}>{r.sub}</div>
                     </div>
                   </button>
                 ))}
               </div>
             </>
+	          ) : mode === 'find' ? (
+	            <div style={{ display: 'grid', gap: 12 }}>
+                {defaultProgram && (
+                  <DefaultGymCard
+                    program={defaultProgram}
+                    onSelect={(program) => {
+                      setPublicNotice(`${program.public_name || program.name || DEFAULT_PUBLIC_GYM_NAME} is selected. Create a family account to request access.`);
+                      setMode('signup');
+                    }}
+                  />
+                )}
+                <details className="hz-secondary-gym-search">
+                  <summary className="hz-eyebrow" style={{ cursor: 'pointer', color: 'var(--hz-dim)' }}>Search another gym or city</summary>
+                  <div style={{ marginTop: 12 }}>
+                    <GymSearchPicker compact onSelect={(program) => {
+	                setPublicNotice(`${program.public_name || program.name} is listed. Create a family account to request access.`);
+	                setMode('signup');
+	              }} />
+                  </div>
+                </details>
+	            </div>
+          ) : mode === 'owner' ? (
+            <OwnerApplicationForm session={null} onDone={() => setPublicNotice('Application submitted. We will review it before creating a live gym workspace.')} />
+          ) : (
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div style={{ color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.5 }}>Sign in or create an account first, then redeem the invite code staff sent you.</div>
+              <input className="hz-input" value={inviteCode} readOnly placeholder="Invite code appears here from invite links" />
+              <button type="button" className="hz-btn" onClick={() => setMode('signup')}>Create an account first</button>
+            </div>
           )}
           {err && <div style={{ color: 'var(--hz-pink)', marginTop: 18, fontSize: 13 }}>{err}</div>}
-          <button className="hz-btn hz-btn-primary" type="submit" disabled={busy || (mode === 'password' ? (!identifier || !password) : !email)} style={{ width: '100%', marginTop: 22, justifyContent: 'center' }}>
-            {busy ? (mode === 'password' ? 'Signing in…' : 'Sending…') : (mode === 'password' ? 'Sign in' : 'Send secure sign-in link')}
-          </button>
+	          {(mode === 'password' || mode === 'signup' || mode === 'reset') && (
+	            <button className="hz-btn hz-btn-primary" type="button" onClick={submit} disabled={busy} style={{ width: '100%', marginTop: 22, justifyContent: 'center' }}>
+	              {busy
+	                ? (mode === 'signup' ? 'Creating account...' : mode === 'reset' ? 'Sending reset link...' : 'Signing in...')
+	                : (mode === 'signup' ? 'Create family account' : mode === 'reset' ? 'Send reset link' : 'Sign in')}
+	            </button>
+	          )}
           <div style={{ color: 'var(--hz-dimmer)', marginTop: 16, fontSize: 11, textAlign: 'center' }}>
-            Athletes can use a simple username on iPad. Parents and staff can still use email links.
+            Coaches and owners join by staff invite or approval. Public self-serve is for families.
           </div>
         </div>
-      </form>
-    </div>
+      </div>
+    </AuthFrame>
   );
 }
 window.Login = Login;
@@ -884,24 +2031,24 @@ window.Login = Login;
 function walkthroughStepsForRole(role) {
   const steps = {
     parent: [
-      { title: "Your kid's week", body: 'Start on the family overview: readiness, attendance, wins, balances, and anything the gym needs from you.', action: 'Open Family', nav: 'parent' },
-      { title: 'Skills and routines', body: 'Use Skills to see what Arlowe is working on, and AI Judge to review routine feedback with a coach or parent nearby.', action: 'Open Skills', nav: 'skilltree' },
-      { title: 'The practical stuff', body: 'Billing, schedule, messages, uniforms, volunteers, and medical are grouped under Family so parent jobs are easy to find.', action: 'Open Schedule', nav: 'schedule' },
+      { title: 'Family home', body: 'Start with the family overview: linked athletes, upcoming schedule, recent wins, balances, and anything the gym needs from you.', action: 'Open Home', nav: 'parent' },
+      { title: 'Daily parent jobs', body: 'Schedule, Messages, Medical, Billing, and Gym Feed are the main places to handle logistics without digging through the app.', action: 'Open Schedule', nav: 'schedule' },
+      { title: 'Athlete progress', body: 'Use Skills, Reel, and AI Judge to review progress with context from the gym. These views are read-only for parents unless staff opens an action.', action: 'Open Skills', nav: 'skilltree' },
     ],
     athlete: [
       { title: 'Your reel', body: 'See wins, readiness, attendance, and what to work on next.', action: 'Open My Reel', nav: 'reel' },
       { title: 'Skill tracker', body: 'Open Skill Tree and mark each skill as Not yet, Working, Got it, or Mastered so your profile stays current.', action: 'Open Skill Tree', nav: 'skilltree' },
-      { title: 'Pins', body: 'Create pins, keep them in your basket, and drop them on teammates when they do something cool.', action: 'Open Pins', nav: 'pins' },
-      { title: 'AI Judge', body: 'Upload a routine when a parent or coach says it is okay, then review the scorecard together.', action: 'Open AI Judge', nav: 'ai_judge' },
+      { title: 'Team loop', body: 'Schedule, Messages, and Team Feed show what the gym has released for your team.', action: 'Open Schedule', nav: 'schedule' },
+      { title: 'AI Judge', body: 'Review scorecards and athlete feedback released by your coaches.', action: 'Open AI Judge', nav: 'ai_judge' },
     ],
     coach: [
       { title: 'Run the room', body: 'Today, Roster, Skill Matrix, and Practice Plans are the daily cockpit for coaching the team.', action: 'Open Today', nav: 'today' },
-      { title: 'Build the routine', body: 'Routine Builder, Mock Score, and AI Judge connect reps to scoring and feedback.', action: 'Open AI Judge', nav: 'ai_judge' },
+      { title: 'Score the reps', body: 'Mock Score, Skill Matrix, and AI Judge connect practice reps to scoring and feedback.', action: 'Open AI Judge', nav: 'ai_judge' },
       { title: 'Keep everyone aligned', body: 'Schedule, messages, announcements, volunteers, and medical keep the whole gym moving together.', action: 'Open Schedule', nav: 'schedule' },
     ],
     owner: [
       { title: 'Operate the gym', body: 'Program, Billing, Leads, Teams, Registration, and communications are your ownership command center.', action: 'Open Program', nav: 'admin' },
-      { title: 'Watch performance', body: 'Roster, Skill Matrix, Routine, Mock Score, and AI Judge show what is actually improving.', action: 'Open Roster', nav: 'roster' },
+      { title: 'Watch performance', body: 'Roster, Skill Matrix, Mock Score, and AI Judge show what is actually improving.', action: 'Open Roster', nav: 'roster' },
       { title: 'Switch perspectives', body: 'Use View as to sanity-check what coaches, parents, and athletes experience before rollout.', action: 'Open Today', nav: 'today' },
     ],
   };
@@ -919,7 +2066,7 @@ function RoleWalkthrough({ role, onClose, navigate }) {
         <div className="hz-display" style={{ fontSize: 44, lineHeight: 1 }}>{step.title}</div>
         <div style={{ color: 'var(--hz-dim)', fontSize: 15, lineHeight: 1.6, marginTop: 14 }}>{step.body}</div>
         <div style={{ marginTop: 18, padding: 14, borderRadius: 14, background: 'rgba(39,207,215,0.08)', color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.5 }}>
-          Need this again later? Tap the ? in the header to reopen this walkthrough any time.
+          Need this again later? Reopen it from the ? in the header on desktop, or your account avatar → App tour on a phone.
         </div>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', alignItems: 'center', marginTop: 24 }}>
           <button className="hz-btn hz-btn-ghost" onClick={() => onClose(true)}>Skip</button>
@@ -942,29 +2089,32 @@ function RoleWalkthrough({ role, onClose, navigate }) {
 window.RoleWalkthrough = RoleWalkthrough;
 
 // ─── Command-K palette ───
-function CommandK({ snap, onClose, onNav, openAthlete }) {
+function CommandK({ snap, session, onClose, onNav, openAthlete }) {
   const [q, setQ] = useState('');
+  const scope = window.HZviewerScope ? window.HZviewerScope(snap, session) : null;
+  const navItems = useMemo(
+    () => roleNav(session?.profile?.role || 'coach').filter(item => item.id),
+    [session?.profile?.role]
+  );
   const results = useMemo(() => {
-    if (!q.trim()) return [
-      { kind: 'nav', id: 'today', label: 'Go to Today', icon: 'today' },
-      { kind: 'nav', id: 'roster', label: 'Open Roster', icon: 'roster' },
-      { kind: 'nav', id: 'skills', label: 'Skill Matrix', icon: 'skills' },
-      { kind: 'nav', id: 'routine', label: 'Routine Builder', icon: 'routine' },
-      { kind: 'nav', id: 'score', label: 'Mock Score', icon: 'score' },
-    ];
+    if (!q.trim()) {
+      return navItems.slice(0, 5).map(item => ({ kind: 'nav', id: item.id, label: item.label, icon: item.icon }));
+    }
     const needle = q.toLowerCase();
     const out = [];
-    snap.athletes.forEach(a => {
+    const searchableAthletes = scope?.visibleAthletes || snap.athletes || [];
+    searchableAthletes.forEach(a => {
       if (a.display_name.toLowerCase().includes(needle)) out.push({ kind: 'athlete', id: a.id, label: a.display_name, sub: a.role, icon: 'users' });
     });
     snap.skills.forEach(s => {
       if (s.name.toLowerCase().includes(needle)) out.push({ kind: 'skill', id: s.id, label: s.name, sub: `${s.category.replace('_',' ')} · L${s.level}`, icon: 'skills' });
     });
-    ['today','roster','skills','routine','score','sessions','billing','messages'].forEach(r => {
-      if (r.includes(needle)) out.push({ kind: 'nav', id: r, label: 'Go to ' + r, icon: 'arrow-right' });
+    navItems.forEach(item => {
+      const hay = `${item.id} ${item.label}`.toLowerCase();
+      if (hay.includes(needle)) out.push({ kind: 'nav', id: item.id, label: item.label, icon: item.icon || 'arrow-right' });
     });
     return out.slice(0, 10);
-  }, [q, snap]);
+  }, [q, snap, scope?.visibleAthletes?.length, navItems]);
 
   const pick = (r) => {
     if (r.kind === 'nav') onNav(r.id);

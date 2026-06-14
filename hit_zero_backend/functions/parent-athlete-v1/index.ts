@@ -297,6 +297,33 @@ Deno.serve(async (req) => {
       billingAccount = insertedBilling;
     }
 
+    const explicitRegistrationId = cleanText(body.registration_id, 80);
+    const refreshIds: string[] = [];
+    if (explicitRegistrationId) refreshIds.push(explicitRegistrationId);
+    if (actor.email) {
+      const { data: matchingRegs } = await supa
+        .from('registrations')
+        .select('id')
+        .eq('program_id', team.program_id)
+        .ilike('parent_email', actor.email)
+        .ilike('athlete_name', displayName)
+        .not('class_id', 'is', null)
+        .limit(10);
+      for (const reg of matchingRegs || []) {
+        if (reg?.id && !refreshIds.includes(reg.id)) refreshIds.push(reg.id);
+      }
+    }
+    for (const registrationId of refreshIds) {
+      await supa.rpc('refresh_registration_enrollment', { p_registration_id: registrationId });
+    }
+
+    await supa
+      .from('family_info_packets')
+      .update({ materialized_athlete_id: athlete.id, materialized_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .eq('program_id', team.program_id)
+      .eq('profile_id', actor.id)
+      .is('materialized_athlete_id', null);
+
     return json({ ok: true, athlete, parent_link: link, billing_account: billingAccount });
   } catch (err) {
     return json({ error: err instanceof Error ? err.message : String(err) }, 500);

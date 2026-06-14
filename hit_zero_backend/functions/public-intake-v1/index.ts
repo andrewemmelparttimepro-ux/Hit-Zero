@@ -62,7 +62,7 @@ const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? '';
 const RESEND_FROM = Deno.env.get('RESEND_FROM') ?? 'Hit Zero <onboarding@resend.dev>';
 const RESEND_NOTIFY_EMAIL = Deno.env.get('RESEND_NOTIFY_EMAIL') ?? 'andrewemmelparttimepro@gmail.com';
 
-type IntakeEmailKind = 'registration' | 'class_booking' | 'lead';
+type IntakeEmailKind = 'registration' | 'class_booking' | 'open_gym' | 'lead';
 
 // Best-effort email send. Never throws — intake succeeds even if this
 // fails or RESEND_API_KEY isn't configured yet.
@@ -87,6 +87,7 @@ async function sendIntakeEmail(opts: {
   try {
     const kindLabel =
       opts.kind === 'class_booking' ? 'class booking' :
+      opts.kind === 'open_gym' ? 'open gym participant' :
       opts.kind === 'lead' ? 'free trial / lead' :
       'registration';
     const subjectKind = opts.kind === 'lead' ? 'New lead' : 'New booking';
@@ -95,7 +96,7 @@ async function sendIntakeEmail(opts: {
     const subject = `${subjectKind} · ${headerThing} · ${subjectFor}`;
     const html = [
       `<h2 style="margin:0 0 12px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">New ${kindLabel}</h2>`,
-      `<p style="margin:0 0 16px;color:#555;font-family:-apple-system,Segoe UI,Roboto,sans-serif">${opts.programName || 'Magic City Athletics'} · via the public website</p>`,
+      `<p style="margin:0 0 16px;color:#555;font-family:-apple-system,Segoe UI,Roboto,sans-serif">${opts.programName || 'Your gym'} · via the public website</p>`,
       `<table style="border-collapse:collapse;font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px">`,
       opts.className ? row('Class', opts.className) : '',
       opts.windowTitle ? row('Registration window', opts.windowTitle) : '',
@@ -141,7 +142,31 @@ function escapeHtml(s: string) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-async function resolveProgram(programSlug: string | undefined, programId: string | undefined) {
+function ageFromDob(value: unknown) {
+  if (!value) return null;
+  const dob = new Date(String(value) + 'T00:00:00Z');
+  if (Number.isNaN(dob.getTime())) return null;
+  const now = new Date();
+  let age = now.getUTCFullYear() - dob.getUTCFullYear();
+  const monthDelta = now.getUTCMonth() - dob.getUTCMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && now.getUTCDate() < dob.getUTCDate())) age -= 1;
+  return Math.max(0, Math.min(120, age));
+}
+
+function assertAgeEligible(classRow: any, athleteDob: unknown) {
+  const athleteAge = ageFromDob(athleteDob);
+  if (athleteAge == null) return { ok: true, athleteAge };
+  const min = classRow?.age_range_min == null ? null : Number(classRow.age_range_min);
+  const max = classRow?.age_range_max == null ? null : Number(classRow.age_range_max);
+  if ((min != null && athleteAge < min) || (max != null && athleteAge > max)) {
+    return { ok: false, athleteAge, min, max };
+  }
+  return { ok: true, athleteAge, min, max };
+}
+
+type ProgramResolveResult = { program: any; error?: never } | { program?: never; error: Response };
+
+async function resolveProgram(programSlug: string | undefined, programId: string | undefined): Promise<ProgramResolveResult> {
   let id: string | null = null;
   if (programId && UUID_RE.test(programId)) id = programId;
   else if (programSlug) {
@@ -161,9 +186,10 @@ async function resolveProgram(programSlug: string | undefined, programId: string
   return { program };
 }
 
-async function handleLead(body: any) {
-  const { program } = (await resolveProgram(body.program_slug, body.program_id)) as any;
-  if (!program) return (await resolveProgram(body.program_slug, body.program_id)).error;
+async function handleLead(body: any): Promise<Response> {
+  const resolved = await resolveProgram(body.program_slug, body.program_id);
+  if (resolved.error) return resolved.error;
+  const { program } = resolved;
   if (!program.is_accepting_leads) {
     return bad(403, 'leads_closed', 'this program is not accepting leads right now');
   }
@@ -230,9 +256,10 @@ async function handleLead(body: any) {
   return json({ ok: true, lead_id: data.id });
 }
 
-async function handleRegistration(body: any) {
-  const { program } = (await resolveProgram(body.program_slug, body.program_id)) as any;
-  if (!program) return (await resolveProgram(body.program_slug, body.program_id)).error;
+async function handleRegistration(body: any): Promise<Response> {
+  const resolved = await resolveProgram(body.program_slug, body.program_id);
+  if (resolved.error) return resolved.error;
+  const { program } = resolved;
 
   const athleteName = String(body.athlete_name || '').trim();
   if (!athleteName) return bad(400, 'missing_athlete_name', 'athlete_name is required');
@@ -269,7 +296,7 @@ async function handleRegistration(body: any) {
     }
     const { data: c } = await supa
       .from('program_classes')
-      .select('id, program_id, is_public, registration_open, name, capacity')
+      .select('id, program_id, is_public, registration_open, name, capacity, age_range_min, age_range_max, schedule_summary, starts_at, ends_at, price_cents, price_unit, price_unit_label')
       .eq('id', body.class_id)
       .maybeSingle();
     if (!c) return bad(404, 'class_not_found', 'class not found');
@@ -278,6 +305,15 @@ async function handleRegistration(body: any) {
     }
     if (!c.is_public) return bad(403, 'class_not_public', 'class is not public');
     if (!c.registration_open) return bad(403, 'class_closed', 'this class is not open for sign-ups right now');
+    const ageCheck = assertAgeEligible(c, body.athlete_dob);
+    if (!ageCheck.ok) {
+      return bad(
+        409,
+        'age_not_eligible',
+        `This class is for ${ageCheck.min != null && ageCheck.max != null ? `ages ${ageCheck.min}-${ageCheck.max}` : ageCheck.min != null ? `ages ${ageCheck.min}+` : `ages up to ${ageCheck.max}`}.`,
+        { athlete_age: ageCheck.athleteAge, age_range_min: ageCheck.min, age_range_max: ageCheck.max }
+      );
+    }
     if (c.capacity != null) {
       const { count } = await supa
         .from('registrations')
@@ -310,6 +346,15 @@ async function handleRegistration(body: any) {
     source: body.source ? String(body.source).slice(0, 100) : 'public_website',
     status: 'pending',
     payment_status: 'none',
+    intake_metadata: {
+      ...(typeof body.metadata === 'object' && body.metadata ? body.metadata : {}),
+      athlete_age: ageFromDob(body.athlete_dob),
+      class_name: classRow?.name ?? null,
+      schedule_summary: classRow?.schedule_summary ?? null,
+      age_range_min: classRow?.age_range_min ?? null,
+      age_range_max: classRow?.age_range_max ?? null,
+      public_intake_kind: 'registration',
+    },
   };
   if (body.athlete_dob) {
     // Lazily validated — Postgres will reject malformed dates
@@ -345,6 +390,69 @@ async function handleRegistration(body: any) {
   return json({ ok: true, registration_id: data.id, class: classRow ? { id: classRow.id, name: classRow.name } : null });
 }
 
+async function handleOpenGym(body: any): Promise<Response> {
+  const resolved = await resolveProgram(body.program_slug, body.program_id);
+  if (resolved.error) return resolved.error;
+  const { program } = resolved;
+  const athleteName = String(body.athlete_name || body.participant_name || '').trim();
+  if (!athleteName) return bad(400, 'missing_participant_name', 'participant name is required');
+  const parentName = String(body.parent_name || body.guardian_name || body.emergency_contact_name || '').trim();
+  if (!parentName) return bad(400, 'missing_guardian_name', 'guardian name is required');
+  const parentEmail = body.parent_email ? String(body.parent_email).trim() : null;
+  const parentPhone = body.parent_phone ? String(body.parent_phone).trim() : null;
+  if (!parentEmail && !parentPhone) return bad(400, 'missing_contact', 'email or phone is required');
+  if (parentEmail && !EMAIL_RE.test(parentEmail)) return bad(400, 'bad_parent_email', 'parent_email must be valid');
+  const emergencyName = String(body.emergency_contact_name || body.emergency_name || parentName).trim();
+  const emergencyPhone = String(body.emergency_contact_phone || body.emergency_phone || parentPhone || '').trim();
+  if (!emergencyPhone) return bad(400, 'missing_emergency_phone', 'emergency contact phone is required');
+  const signature = String(body.parent_signature || body.guardian_signature || '').trim();
+  if (!signature) return bad(400, 'missing_signature', 'guardian signature is required for liability coverage');
+
+  const insertRow: Record<string, unknown> = {
+    program_id: program.id,
+    athlete_name: athleteName,
+    athlete_dob: body.athlete_dob || null,
+    parent_name: parentName,
+    parent_email: parentEmail,
+    parent_phone: parentPhone,
+    notes: body.notes ? String(body.notes).slice(0, 2000) : null,
+    source: body.source ? String(body.source).slice(0, 100) : 'open_gym',
+    status: 'accepted',
+    payment_status: 'none',
+    intake_metadata: {
+      participant_kind: 'open_gym',
+      account_required: false,
+      liability_covered: true,
+      guardian_signature: signature,
+      emergency_contact: {
+        name: emergencyName,
+        phone: emergencyPhone,
+        relationship: String(body.emergency_contact_relationship || body.relationship || '').trim() || null,
+      },
+      medical_notes: body.medical_notes ? String(body.medical_notes).slice(0, 1200) : null,
+      visit_context: body.visit_context ? String(body.visit_context).slice(0, 300) : null,
+      athlete_age: ageFromDob(body.athlete_dob),
+    },
+  };
+
+  const { data, error } = await supa.from('registrations').insert(insertRow).select('id').single();
+  if (error) return bad(500, 'insert_failed', error.message);
+  const { data: pn } = await supa.from('programs').select('public_name, brand_name, name').eq('id', program.id).maybeSingle();
+  sendIntakeEmail({
+    kind: 'open_gym',
+    recordId: data.id,
+    programName: pn?.public_name || pn?.brand_name || pn?.name || null,
+    athleteName,
+    parentName,
+    parentEmail,
+    parentPhone,
+    interest: 'Open Gym',
+    notes: insertRow.notes as string | null,
+    source: insertRow.source as string | null,
+  }).catch(() => {});
+  return json({ ok: true, registration_id: data.id, open_gym: true, account_required: false });
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return bad(405, 'method_not_allowed', 'POST only');
@@ -360,7 +468,8 @@ Deno.serve(async (req: Request) => {
   try {
     if (kind === 'lead') return await handleLead(body);
     if (kind === 'registration') return await handleRegistration(body);
-    return bad(400, 'bad_kind', "kind must be 'lead' or 'registration'");
+    if (kind === 'open_gym') return await handleOpenGym(body);
+    return bad(400, 'bad_kind', "kind must be 'lead', 'registration', or 'open_gym'");
   } catch (err) {
     return bad(500, 'unexpected', err instanceof Error ? err.message : String(err));
   }

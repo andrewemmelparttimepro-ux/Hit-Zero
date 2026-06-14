@@ -139,7 +139,7 @@ function isTransientGeminiError(msg: string) {
 }
 
 const SCORE_CALIBRATION_ANCHORS = [{
-  label: 'Magic City comp day anchor',
+  label: 'Known comp day anchor',
   model_pct: 90.3,
   official_pct: 93.65,
   note: 'Single known day-of-competition score supplied by Andrew on 2026-04-23.',

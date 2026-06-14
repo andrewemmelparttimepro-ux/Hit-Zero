@@ -7,23 +7,113 @@
 
 const { useState: _adUS, useMemo: _adUM } = React;
 
-function AthleteDrawer({ athleteId, snap, onClose, pushToast }) {
-  const a = (snap.athletes || []).find(x => x.id === athleteId);
-  const [tab, setTab] = _adUS('overview');
-  if (!a) return null;
+function adMoneyFromCents(cents) {
+  return '$' + ((Number(cents || 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }));
+}
 
+const ATHLETE_TABS = [
+  { id: 'overview', label: 'Overview', icon: 'today' },
+  { id: 'skills',   label: 'Skills',   icon: 'skills' },
+  { id: 'medical',  label: 'Medical',  icon: 'bolt' },
+  { id: 'uniform',  label: 'Uniform',  icon: 'roster' },
+  { id: 'billing',  label: 'Billing',  icon: 'billing' },
+  { id: 'timeline', label: 'Timeline', icon: 'megaphone' },
+];
+
+function tabsForAthleteViewer(session) {
+  const role = session?.actualProfile?.role || session?.profile?.role || '';
+  if (role === 'athlete') return ATHLETE_TABS.filter(t => !['medical', 'uniform', 'billing'].includes(t.id));
+  return ATHLETE_TABS;
+}
+
+// Shared athlete view: identity, quick stats, tab strip, tab content.
+// Used by the overlay drawer (staff/desktop) and the full-screen
+// #athlete/<id> route (parents on phones).
+function AthleteCoreView({ a, snap, session, tab, setTab }) {
   const readiness  = window.HZsel.athleteReadiness(a.id);
   const summary    = window.HZsel.athleteSkillsSummary(a.id);
   const attendance = window.HZsel.athleteAttendance(a.id);
+  const tabs = tabsForAthleteViewer(session);
+  const activeTab = tabs.some(t => t.id === tab) ? tab : 'overview';
 
-  const TABS = [
-    { id: 'overview', label: 'Overview', icon: 'today' },
-    { id: 'skills',   label: 'Skills',   icon: 'skills' },
-    { id: 'medical',  label: 'Medical',  icon: 'bolt' },
-    { id: 'uniform',  label: 'Uniform',  icon: 'roster' },
-    { id: 'billing',  label: 'Billing',  icon: 'billing' },
-    { id: 'timeline', label: 'Timeline', icon: 'megaphone' },
-  ];
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 22 }}>
+        <Avatar name={a.display_name} initials={a.initials} color={a.photo_color} src={a.photo_url} size={72}/>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="hz-display" style={{ fontSize: 36, lineHeight: 1 }}>{a.display_name}</div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 6, textTransform: 'capitalize', letterSpacing: '0.04em' }}>
+            {(a.position || a.role || 'athlete')}{a.age ? ' · Age ' + a.age : ''}{a.joined_at ? ' · since ' + new Date(a.joined_at).toLocaleString('default', { month: 'short', year: 'numeric' }) : ''}
+          </div>
+        </div>
+      </div>
+
+      {/* Quick stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 22 }}>
+        <MiniStat
+          label="Readiness"
+          value={summary.notAssessed ? 'Not assessed' : Math.round(readiness*100) + '%'}
+          sub={summary.notAssessed ? 'coach has not scored yet' : ''}
+          accent="var(--hz-teal)"
+        />
+        <MiniStat
+          label="Attendance"
+          value={attendance.empty ? 'No attendance' : Math.round((attendance.pct || 0)*100) + '%'}
+          sub={attendance.empty ? 'classes not logged yet' : attendance.attended + '/' + attendance.total}
+        />
+        <MiniStat
+          label="Mastered"
+          value={summary.notAssessed ? 'Not assessed' : summary.mastered}
+          sub={summary.notAssessed ? `${summary.total} skills loaded` : (summary.got + summary.mastered) + '/' + summary.total + ' have it'}
+          accent="var(--hz-pink)"
+        />
+      </div>
+
+      {/* Tabs */}
+      <div className="ad-tabs">
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={'ad-tab' + (activeTab === t.id ? ' active' : '')}
+            aria-current={activeTab === t.id}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ marginTop: 20 }}>
+        {activeTab === 'overview' && <OverviewTab a={a} snap={snap}/>}
+        {activeTab === 'skills'   && <SkillsTab   a={a} snap={snap} session={session}/>}
+        {activeTab === 'medical'  && <MedicalTab  a={a}/>}
+        {activeTab === 'uniform'  && <UniformTab  a={a} snap={snap}/>}
+        {activeTab === 'billing'  && <BillingTab  a={a}/>}
+        {activeTab === 'timeline' && <TimelineTab a={a} snap={snap}/>}
+      </div>
+    </>
+  );
+}
+
+function AthleteDrawer({ athleteId, snap, session, onClose, pushToast }) {
+  const scope = window.HZviewerScope ? window.HZviewerScope(snap, session) : null;
+  const [tab, setTab] = _adUS('overview');
+  if (scope && !scope.visibleAthleteIds.has(athleteId)) {
+    return (
+      <div className="drawer-backdrop" onClick={onClose}>
+        <aside className="athlete-drawer" onClick={e => e.stopPropagation()}>
+          <button className="drawer-close" onClick={onClose}>&times;</button>
+          <EmptyState
+            icon="users"
+            title="Athlete not linked."
+            body="This account can only open athletes linked to it by the gym."
+          />
+        </aside>
+      </div>
+    );
+  }
+  const a = (snap.athletes || []).find(x => x.id === athleteId);
+  if (!a) return null;
 
   return (
     <>
@@ -32,55 +122,60 @@ function AthleteDrawer({ athleteId, snap, onClose, pushToast }) {
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 22 }}>
           <div className="hz-eyebrow">Athlete</div>
-          <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={onClose} aria-label="Close">
+          <button className="hz-btn hz-btn-ghost hz-btn-sm drawer-close-button" onClick={onClose} aria-label="Close">
             <window.HZIcon name="x" size={14}/>
           </button>
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 22 }}>
-          <Avatar name={a.display_name} initials={a.initials} color={a.photo_color} src={a.photo_url} size={72}/>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="hz-display" style={{ fontSize: 36, lineHeight: 1 }}>{a.display_name}</div>
-            <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 6, textTransform: 'capitalize', letterSpacing: '0.04em' }}>
-              {(a.position || a.role || 'athlete')}{a.age ? ' · Age ' + a.age : ''}{a.joined_at ? ' · since ' + new Date(a.joined_at).toLocaleString('default', { month: 'short', year: 'numeric' }) : ''}
-            </div>
-          </div>
-        </div>
-
-        {/* Quick stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 22 }}>
-          <MiniStat label="Readiness"  value={Math.round(readiness*100) + '%'} accent="var(--hz-teal)"/>
-          <MiniStat label="Attendance" value={Math.round(attendance.pct*100) + '%'} sub={attendance.attended + '/' + attendance.total}/>
-          <MiniStat label="Mastered"   value={summary.mastered} sub={(summary.got + summary.mastered) + '/' + summary.total + ' have it'} accent="var(--hz-pink)"/>
-        </div>
-
-        {/* Tabs */}
-        <div className="ad-tabs">
-          {TABS.map(t => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={'ad-tab' + (tab === t.id ? ' active' : '')}
-              aria-current={tab === t.id}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ marginTop: 20 }}>
-          {tab === 'overview' && <OverviewTab a={a} snap={snap}/>}
-          {tab === 'skills'   && <SkillsTab   a={a} snap={snap}/>}
-          {tab === 'medical'  && <MedicalTab  a={a}/>}
-          {tab === 'uniform'  && <UniformTab  a={a} snap={snap}/>}
-          {tab === 'billing'  && <BillingTab  a={a}/>}
-          {tab === 'timeline' && <TimelineTab a={a} snap={snap}/>}
-        </div>
+        <AthleteCoreView a={a} snap={snap} session={session} tab={tab} setTab={setTab}/>
       </div>
     </>
   );
 }
 window.AthleteDrawer = AthleteDrawer;
+
+// ─── Full-screen athlete profile route: #athlete/<id>?tab=<tab> ───────────
+// Tab changes live in the hash, so the OS back button / swipe walks back
+// through tabs and then back to wherever the parent came from.
+function AthleteProfile({ route, snap, session, navigate, pushToast }) {
+  const [base, query] = String(route || '').split('?');
+  const athleteId = base.slice('athlete/'.length);
+  const params = new URLSearchParams(query || '');
+  const requested = params.get('tab');
+  const allowedTabs = tabsForAthleteViewer(session);
+  const tab = allowedTabs.some(t => t.id === requested) ? requested : 'overview';
+  const setTab = (t) => {
+    location.hash = '#athlete/' + athleteId + (t && t !== 'overview' ? '?tab=' + t : '');
+  };
+  const goBack = () => {
+    if (window.history.length > 1) window.history.back();
+    else navigate(session?.profile?.role === 'parent' ? 'parent' : 'today');
+  };
+
+  const scope = window.HZviewerScope ? window.HZviewerScope(snap, session) : null;
+  const a = (snap.athletes || []).find(x => x.id === athleteId);
+  const blocked = scope && !scope.visibleAthleteIds.has(athleteId);
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+        <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={goBack} aria-label="Back" style={{ paddingLeft: 8, paddingRight: 10 }}>
+          <window.HZIcon name="chev-left" size={16}/> Back
+        </button>
+        <div className="hz-eyebrow">Athlete</div>
+      </div>
+      {blocked || !a ? (
+        <EmptyState
+          icon="users"
+          title={!a && !blocked ? 'Athlete not found.' : 'Athlete not linked.'}
+          body="This account can only open athletes linked to it by the gym."
+        />
+      ) : (
+        <AthleteCoreView a={a} snap={snap} session={session} tab={tab} setTab={setTab}/>
+      )}
+    </div>
+  );
+}
+window.AthleteProfile = AthleteProfile;
 
 // ─── Overview tab ─────────────────────────────────────────────────────────
 function OverviewTab({ a, snap }) {
@@ -165,7 +260,7 @@ function OverviewTab({ a, snap }) {
 }
 
 // ─── Skills tab (existing skill tree) ─────────────────────────────────────
-function SkillsTab({ a, snap }) {
+function SkillsTab({ a, snap, session }) {
   const skillsByCat = {};
   (snap.skills || []).forEach(s => {
     (skillsByCat[s.category] ||= []).push(s);
@@ -174,8 +269,11 @@ function SkillsTab({ a, snap }) {
 
   const statusMap = {};
   (snap.athlete_skills || []).filter(x => x.athlete_id === a.id).forEach(r => { statusMap[r.skill_id] = r.status; });
+  const summary = window.HZsel.athleteSkillsSummary(a.id);
+  const canEdit = ['coach', 'owner'].includes(session?.profile?.role);
 
   const cycle = async (skillId) => {
+    if (!canEdit) return;
     const order = ['none','working','got_it','mastered'];
     const cur = statusMap[skillId] || 'none';
     const next = order[(order.indexOf(cur) + 1) % order.length];
@@ -188,16 +286,36 @@ function SkillsTab({ a, snap }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {summary.notAssessed && (
+        <div className="hz-card" style={{ padding: 14, borderColor: 'rgba(39,207,215,0.28)', background: 'rgba(39,207,215,0.06)' }}>
+          <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)', marginBottom: 6 }}>Not assessed yet</div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 12.5, lineHeight: 1.45 }}>
+            The skill tree is loaded, but staff have not marked progress for this athlete yet.
+          </div>
+        </div>
+      )}
+      {!canEdit && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+          <span style={{ color: 'var(--hz-dim)', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Legend</span>
+          {[['working','Working','rgba(255,180,84,0.16)','var(--hz-amber)'],['got_it','Got it','rgba(39,207,215,0.18)','var(--hz-teal)'],['mastered','Mastered','linear-gradient(135deg, rgba(39,207,215,0.3), rgba(249,127,172,0.3))','#fff']].map(([id, label, bg, fg]) => (
+            <span key={id} style={{ padding: '3px 10px', borderRadius: 999, fontSize: 10.5, fontWeight: 700, background: bg, color: fg }}>{label}</span>
+          ))}
+          <span style={{ color: 'var(--hz-dim)', fontSize: 11 }}>Dim = not started. Updates live as coaches log progress.</span>
+        </div>
+      )}
       {CAT_ORDER.map(cat => (
         <div key={cat}>
           <div className="hz-eyebrow" style={{ marginBottom: 8 }}>{CAT_LABEL[cat]}</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {(skillsByCat[cat] || []).length === 0 && (
+              <div style={{ color: 'var(--hz-dim)', fontSize: 12 }}>No skills loaded for this category yet.</div>
+            )}
             {(skillsByCat[cat] || []).map(s => {
               const st = statusMap[s.id] || 'none';
               return (
                 <div key={s.id} onClick={() => cycle(s.id)}
                   style={{
-                    padding: '6px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer',
+                    padding: '6px 10px', borderRadius: 6, fontSize: 11, cursor: canEdit ? 'pointer' : 'default',
                     background: st === 'mastered' ? 'linear-gradient(135deg, rgba(39,207,215,0.3), rgba(249,127,172,0.3))'
                       : st === 'got_it' ? 'rgba(39,207,215,0.18)'
                       : st === 'working' ? 'rgba(255,180,84,0.16)'
@@ -208,7 +326,7 @@ function SkillsTab({ a, snap }) {
                       : 'var(--hz-dim)',
                     border: st === 'mastered' ? '1px solid rgba(249,127,172,0.3)' : '1px solid transparent',
                   }}
-                  title={s.name + ' · Level ' + s.level + ' — click to cycle'}>
+                  title={canEdit ? s.name + ' · Level ' + s.level + ' — click to cycle' : s.name + ' · Level ' + s.level}>
                   <span style={{ opacity: 0.6, fontFamily: 'var(--hz-mono)', fontSize: 9, marginRight: 6 }}>L{s.level}</span>
                   {s.name}
                 </div>
@@ -253,9 +371,11 @@ function MedicalTab({ a }) {
             <KV label="Medications"   v={record.medications || '—'}/>
             <KV label="Conditions"    v={record.conditions || '—'}/>
             <KV label="Insurance"     v={record.insurance_carrier || '—'}/>
+            <KV label="Policy #"      v={record.insurance_member_id || '—'}/>
             <KV label="Physician"     v={record.physician_name || '—'}/>
             <KV label="Dr. phone"     v={record.physician_phone || '—'}/>
             <KV label="Last physical" v={record.last_physical || '—'}/>
+            <KV label="Notes"         v={record.notes || '—'}/>
           </div>
         )}
       </div>
@@ -331,30 +451,60 @@ function UniStatus({ status }) {
 // ─── Billing tab ──────────────────────────────────────────────────────────
 function BillingTab({ a }) {
   const b = window.HZsel.athleteBilling(a.id);
-  if (!b) return <div className="hz-card" style={{ padding: 24, color: 'var(--hz-dim)', fontSize: 13, textAlign: 'center' }}>No billing account yet.</div>;
-  const paidPct = Math.min(100, Math.round((b.account.paid / b.account.season_total) * 100));
+  const classEnrollments = window.HZsel.classEnrollmentsForAthlete(a.id);
+  if (!b && classEnrollments.length === 0) return <div className="hz-card" style={{ padding: 24, color: 'var(--hz-dim)', fontSize: 13, textAlign: 'center' }}>No billing account or paid class registration yet.</div>;
+  const seasonTotal = Number(b?.account?.season_total || 0);
+  const paidPct = seasonTotal > 0 ? Math.min(100, Math.round((Number(b.account.paid || 0) / seasonTotal) * 100)) : 0;
   return (
     <div style={{ display: 'grid', gap: 14 }}>
-      <div className="hz-card" style={{ padding: 18 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div>
-            <div className="hz-eyebrow">Balance</div>
-            <div className="hz-display" style={{ fontSize: 32, color: b.account.owed > 0 ? 'var(--hz-amber)' : 'var(--hz-green)', marginTop: 2 }}>
-              {b.account.owed > 0 ? '$' + b.account.owed : 'Paid'}
+      {b && (
+        <div className="hz-card" style={{ padding: 18 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div>
+              <div className="hz-eyebrow">Balance</div>
+              <div className="hz-display" style={{ fontSize: 32, color: b.account.owed > 0 ? 'var(--hz-amber)' : 'var(--hz-green)', marginTop: 2 }}>
+                {b.account.owed > 0 ? '$' + b.account.owed : 'Paid'}
+              </div>
+              {seasonTotal === 0 && <div style={{ color: 'var(--hz-dim)', fontSize: 11, marginTop: 4 }}>Season billing is pending staff setup.</div>}
+            </div>
+            <div style={{ textAlign: 'right', fontSize: 11, color: 'var(--hz-dim)' }}>
+              <div>Season ${b.account.season_total}</div>
+              <div>Paid ${b.account.paid}</div>
+              <div>Autopay {b.account.autopay ? 'on' : 'off'}</div>
             </div>
           </div>
-          <div style={{ textAlign: 'right', fontSize: 11, color: 'var(--hz-dim)' }}>
-            <div>Season ${b.account.season_total}</div>
-            <div>Paid ${b.account.paid}</div>
-            <div>Autopay {b.account.autopay ? 'on' : 'off'}</div>
+          <div style={{ height: 6, background: 'rgba(255,255,255,0.05)', borderRadius: 3, overflow: 'hidden' }}>
+            <div style={{ width: paidPct + '%', height: '100%', background: 'linear-gradient(90deg, var(--hz-teal), var(--hz-pink))' }}/>
           </div>
         </div>
-        <div style={{ height: 6, background: 'rgba(255,255,255,0.05)', borderRadius: 3, overflow: 'hidden' }}>
-          <div style={{ width: paidPct + '%', height: '100%', background: 'linear-gradient(90deg, var(--hz-teal), var(--hz-pink))' }}/>
-        </div>
-      </div>
+      )}
 
-      {b.charges.length > 0 && (
+      {classEnrollments.length > 0 && (
+        <div className="hz-card" style={{ padding: 16 }}>
+          <div className="hz-eyebrow" style={{ marginBottom: 10 }}>Paid registrations</div>
+          {classEnrollments.map(row => (
+            <div key={row.id} style={{ padding: '10px 0', borderBottom: '1px dashed var(--hz-line)', fontSize: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ fontWeight: 700 }}>{row.class_name}</div>
+                  <div style={{ color: 'var(--hz-dim)', marginTop: 3 }}>{row.schedule_summary || 'Class schedule pending'}</div>
+                  <div style={{ color: 'var(--hz-dim)', marginTop: 3 }}>
+                    {row.staff_status === 'accepted' ? 'Accepted by staff' : 'Pending staff review'}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontWeight: 800, color: row.payment_status === 'paid' ? 'var(--hz-green)' : 'var(--hz-amber)' }}>
+                    {row.payment_status === 'paid' ? adMoneyFromCents(row.amount_paid_cents) : row.payment_status}
+                  </div>
+                  {row.receipt_url && <a href={row.receipt_url} target="_blank" rel="noreferrer" style={{ color: 'var(--hz-teal)', fontSize: 11 }}>Receipt</a>}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {b?.charges?.length > 0 && (
         <div className="hz-card" style={{ padding: 16, maxHeight: 340, overflow: 'auto' }}>
           <div className="hz-eyebrow" style={{ marginBottom: 10 }}>Recent charges</div>
           {b.charges.slice(-10).reverse().map(c => (
@@ -430,10 +580,12 @@ function TimelineTab({ a, snap }) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 function MiniStat({ label, value, sub, accent }) {
+  const text = String(value ?? '');
+  const compact = text.length > 8;
   return (
     <div className="hz-card hz-card-dense" style={{ padding: '12px 12px' }}>
       <div className="hz-eyebrow" style={{ fontSize: 9 }}>{label}</div>
-      <div className="hz-display" style={{ fontSize: 24, marginTop: 2, color: accent || '#fff' }}>{value}</div>
+      <div className="hz-display" style={{ fontSize: compact ? 15 : 24, marginTop: 2, color: accent || '#fff', lineHeight: 1.05 }}>{value}</div>
       {sub && <div style={{ fontSize: 10, color: 'var(--hz-dim)', marginTop: 2 }}>{sub}</div>}
     </div>
   );

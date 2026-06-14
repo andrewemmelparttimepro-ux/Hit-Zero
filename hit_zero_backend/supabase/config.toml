@@ -15,10 +15,12 @@ port = 54323
 
 [auth]
 enabled = true
-site_url = "https://hit-zero.vercel.app"
+site_url = "https://thehitzero.net"
 additional_redirect_urls = [
   "http://localhost:5173",
   "http://localhost:5173/auth/callback",
+  "https://thehitzero.net",
+  "https://thehitzero.net/auth/callback",
   "https://hit-zero.vercel.app",
   "https://hit-zero.vercel.app/auth/callback",
   "https://hitzero.app",
@@ -45,3 +47,15 @@ file_size_limit = "500MiB"        # cheer videos get large
 [edge_runtime]
 enabled = true
 policy = "oneshot"
+
+[functions.public-intake-v1]
+verify_jwt = false
+
+[functions.square-checkout-v1]
+verify_jwt = false
+
+[functions.square-admin-v1]
+verify_jwt = false
+
+[functions.join-gym-v1]
+verify_jwt = false

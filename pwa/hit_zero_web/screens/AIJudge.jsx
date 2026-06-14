@@ -12,7 +12,7 @@
 const { useState: _aiUS, useEffect: _aiUE, useMemo: _aiUM, useRef: _aiUR } = React;
 
 const SCORE_CALIBRATION_ANCHORS = [{
-  label: 'Magic City comp day anchor',
+  label: 'Known comp day anchor',
   model_pct: 90.3,
   official_pct: 93.65,
   note: 'Single known day-of-competition score supplied by Andrew on 2026-04-23.',
@@ -52,6 +52,10 @@ function calibrateScorecard(sc) {
 
 function AIJudge({ snap, session, navigate }) {
   const me = session?.profile || { id: 'u_coach', role: 'coach' };
+  const scope = window.HZviewerScope ? window.HZviewerScope(snap, session) : null;
+  const isStaff = me.role === 'coach' || me.role === 'owner';
+  const canUpload = isStaff || me.role === 'parent';
+  const lockedForUnlinkedFamily = !isStaff && scope && !scope.visibleAthletes.length;
   const [, _bump] = _aiUS(0);
   const [view, setView] = _aiUS('results'); // 'results' | 'upload' | 'trend'
   const [activeId, setActiveId] = _aiUS(null);
@@ -70,20 +74,32 @@ function AIJudge({ snap, session, navigate }) {
     (async () => {
       if (!window.HZmirror) return;
       if (window.HZmirror.roster) await window.HZmirror.roster();
+      if (lockedForUnlinkedFamily) return;
       // Re-read the team after mirror — we may have just swapped the seed out.
       const t = window.HZsel?.team?.();
       if (t?.id) await window.HZmirror.recent(t.id, 20);
       if (!cancelled) _bump(n => n + 1);
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [lockedForUnlinkedFamily]);
 
-  const analyses = window.HZsel.recentAnalyses(20);
+  if (lockedForUnlinkedFamily) {
+    return (
+      <EmptyState
+        icon="bolt"
+        title="No athlete linked yet."
+        body="AI Judge unlocks after this account is linked to a specific athlete."
+        action={me.role === 'parent' && <button className="hz-btn hz-btn-primary" onClick={() => navigate && navigate('parent')}>Go to Home</button>}
+      />
+    );
+  }
+
+  const analyses = window.HZsel.recentAnalyses(20).filter(a => isStaff || !scope || scope.visibleTeamIds.has(a.team_id));
   const resolvedActiveId = activeId || analyses[0]?.id || null;
   const active = window.HZsel.analysisById(resolvedActiveId) || analyses[0];
 
   async function startReevaluation(analysis) {
-    if (!analysis || !team) return;
+    if (!canUpload || !analysis || !team) return;
     setActionErr(null);
     setReevaluatingId(analysis.id);
     try {
@@ -118,12 +134,14 @@ function AIJudge({ snap, session, navigate }) {
             24/7 coach in your <span className="hz-zero">pocket</span>.
           </div>
           <div style={{ color: 'var(--hz-dim)', fontSize: 14, marginTop: 8, maxWidth: 600 }}>
-            Upload a full-out, get a USASF-style scorecard, element-by-element timeline, and actionable feedback for coaches, athletes, and parents — in under a minute.
+            {canUpload
+              ? 'Upload a full-out, get a USASF-style scorecard, element-by-element timeline, and actionable feedback for coaches, athletes, and parents - in under a minute.'
+              : 'Review scorecards, athlete feedback, and trend history released for your team.'}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className={'hz-btn ' + (view === 'results' ? 'hz-btn-primary' : 'hz-btn-ghost')} onClick={() => { setActionErr(null); setView('results'); }}>Scorecard</button>
-          <button className={'hz-btn ' + (view === 'upload' ? 'hz-btn-primary' : 'hz-btn-ghost')} onClick={() => { setDraft(null); setActionErr(null); setView('upload'); }}>+ New analysis</button>
+          {canUpload && <button className={'hz-btn ' + (view === 'upload' ? 'hz-btn-primary' : 'hz-btn-ghost')} onClick={() => { setDraft(null); setActionErr(null); setView('upload'); }}>+ New analysis</button>}
           <button className={'hz-btn ' + (view === 'trend' ? 'hz-btn-primary' : 'hz-btn-ghost')} onClick={() => setView('trend')}>Trend</button>
         </div>
       </div>
@@ -134,7 +152,7 @@ function AIJudge({ snap, session, navigate }) {
       <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 18 }}>
         <aside>
           <div className="hz-eyebrow" style={{ marginBottom: 10 }}>History</div>
-          {analyses.length === 0 && <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>No analyses yet. Upload your first full-out.</div>}
+          {analyses.length === 0 && <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>{canUpload ? 'No analyses yet. Upload your first full-out.' : 'No scorecards have been released yet.'}</div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {analyses.map(a => {
               const pct = Number(calibrateScorecard(a.scorecard)?.pct ?? 0).toFixed(0);
@@ -171,12 +189,20 @@ function AIJudge({ snap, session, navigate }) {
         </aside>
 
         <section>
-          {view === 'upload' && <NewAnalysis key={`${team?.id}:${team?.division}:${team?.level}:${draft?.key || 'fresh'}`} team={team} draft={draft} onDone={(id) => { setDraft(null); setActiveId(id); setView('results'); _bump(n => n + 1); }}/>}
+          {view === 'upload' && canUpload && <NewAnalysis key={`${team?.id}:${team?.division}:${team?.level}:${draft?.key || 'fresh'}`} team={team} draft={draft} onDone={(id) => { setDraft(null); setActiveId(id); setView('results'); _bump(n => n + 1); }}/>}
+          {view === 'upload' && !canUpload && (
+            <EmptyState
+              icon="bolt"
+              title="Upload is staff and parent only."
+              body="Athlete accounts can review released scorecards and feedback, but new video analysis must be started by a parent, coach, or owner."
+              action={<button className="hz-btn hz-btn-primary" onClick={() => setView('results')}>Back to scorecards</button>}
+            />
+          )}
           {view === 'trend' && <TrendView snap={snap} team={team}/>}
-          {view === 'results' && active && <Scorecard analysis={active} me={me} snap={snap} onReevaluate={() => startReevaluation(active)} reevaluating={reevaluatingId === active.id}/>}
+          {view === 'results' && active && <Scorecard analysis={active} me={me} snap={snap} onReevaluate={canUpload ? () => startReevaluation(active) : null} reevaluating={reevaluatingId === active.id}/>}
           {view === 'results' && !active && (
             <div className="hz-card" style={{ padding: 40, color: 'var(--hz-dim)', textAlign: 'center' }}>
-              No analyses yet. Click <b style={{ color: '#fff' }}>+ New analysis</b>.
+              {canUpload ? <>No analyses yet. Click <b style={{ color: '#fff' }}>+ New analysis</b>.</> : 'No scorecards have been released yet.'}
             </div>
           )}
         </section>

@@ -33,6 +33,7 @@
       analysis_feedback, analysis_skill_updates,
       // Owner-managed offerings (drives the marketing site)
       program_tracks, program_classes,
+      family_info_packets, class_enrollments,
     ] = await Promise.all([
       q('programs'), q('teams'), q('athletes'), q('skills'), q('athlete_skills'), q('sessions'),
       q('attendance'), q('routines'), q('routine_sections'),
@@ -57,6 +58,7 @@
       q('routine_analyses'), q('analysis_elements'), q('analysis_deductions'),
       q('analysis_feedback'), q('analysis_skill_updates'),
       q('program_tracks'), q('program_classes'),
+      q('family_info_packets'), q('class_enrollments'),
     ]);
     cache = {
       programs, teams, athletes, skills, athlete_skills, sessions, attendance, routines, routine_sections,
@@ -80,6 +82,7 @@
       routine_analyses, analysis_elements, analysis_deductions,
       analysis_feedback, analysis_skill_updates,
       program_tracks, program_classes,
+      family_info_packets, class_enrollments,
     };
     return cache;
   }
@@ -89,9 +92,45 @@
 
   function athleteById(id) { return cache?.athletes.find(a => a.id === id); }
   function skillById(id) { return cache?.skills.find(s => s.id === id); }
-  function programProfile() { return cache?.programs?.[0] || null; }
-  function programPaymentSettings() { return cache?.program_payment_settings?.[0] || null; }
-  function team() { return cache?.teams?.[0]; }
+  function currentSession() {
+    try { return window.HZdb?.auth?._getSession?.() || null; } catch { return null; }
+  }
+  function activeProgramId() {
+    const session = currentSession();
+    return session?.actualProfile?.program_id || session?.profile?.program_id || null;
+  }
+  function programProfile() {
+    const pid = activeProgramId();
+    return (pid ? cache?.programs?.find(p => p.id === pid) : null) || cache?.programs?.[0] || null;
+  }
+  function programPaymentSettings() {
+    const pid = programProfile()?.id;
+    return (pid ? cache?.program_payment_settings?.find(p => p.program_id === pid) : null) || cache?.program_payment_settings?.[0] || null;
+  }
+  function team() {
+    const pid = programProfile()?.id;
+    return (pid ? cache?.teams?.find(t => t.program_id === pid) : null) || cache?.teams?.[0];
+  }
+
+  function programTeams() {
+    const pid = programProfile()?.id;
+    return (cache?.teams || [])
+      .filter(t => !pid || t.program_id === pid)
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }
+
+  function programAthletes() {
+    const teamIds = new Set(programTeams().map(t => t.id));
+    const pid = programProfile()?.id;
+    return (cache?.athletes || [])
+      .filter(a => !a.deleted_at && ((!pid && !teamIds.size) || teamIds.has(a.team_id) || a.program_id === pid))
+      .sort((a, b) => (a.display_name || '').localeCompare(b.display_name || ''));
+  }
+
+  function athletesForTeam(teamId) {
+    return (teamId ? programAthletes().filter(a => a.team_id === teamId) : programAthletes())
+      .sort((a, b) => (a.display_name || '').localeCompare(b.display_name || ''));
+  }
 
   // Owner-managed offerings (drives the marketing site)
   function programTracks() {
@@ -154,14 +193,26 @@
   }
 
   function athleteAttendance(aid) {
-    const done = (cache.sessions || []).filter(s => !s.scheduled);
+    const athlete = athleteById(aid);
+    const now = Date.now();
+    const done = (cache.sessions || []).filter(s => {
+      if (athlete?.team_id && s.team_id && s.team_id !== athlete.team_id) return false;
+      if (s.scheduled === false) return true;
+      const when = new Date(s.scheduled_at || s.date || 0).getTime();
+      return Number.isFinite(when) && when <= now;
+    });
     const presentIds = new Set((cache.attendance || []).filter(a => a.athlete_id === aid && a.status === 'present').map(a => a.session_id));
     const attended = done.filter(s => presentIds.has(s.id)).length;
-    return { attended, total: done.length, pct: done.length ? attended/done.length : 0 };
+    return { attended, total: done.length, pct: done.length ? attended/done.length : null, empty: done.length === 0 };
   }
 
   function teamAttendance() {
-    const done = (cache.sessions || []).filter(s => !s.scheduled);
+    const now = Date.now();
+    const done = (cache.sessions || []).filter(s => {
+      if (s.scheduled === false) return true;
+      const when = new Date(s.scheduled_at || s.date || 0).getTime();
+      return Number.isFinite(when) && when <= now;
+    });
     const nAthletes = (cache.athletes || []).length;
     let sum = 0;
     done.forEach(s => {
@@ -173,15 +224,16 @@
 
   function athleteSkillsSummary(aid) {
     const m = athleteSkills(aid);
-    let got = 0, mastered = 0, working = 0, total = 0;
+    let got = 0, mastered = 0, working = 0, assessed = 0, total = 0;
     (cache.skills || []).forEach(s => {
       total++;
       const st = m[s.id] || 'none';
+      if (st !== 'none') assessed++;
       if (st === 'got_it') got++;
       if (st === 'mastered') mastered++;
       if (st === 'working') working++;
     });
-    return { got, mastered, working, total };
+    return { got, mastered, working, assessed, total, empty: total === 0, notAssessed: total > 0 && assessed === 0 };
   }
 
   function routine() {
@@ -287,10 +339,35 @@
 
   // Billing summary across all athletes
   function programBilling() {
-    const accounts = cache.billing_accounts || [];
-    const paid = accounts.reduce((s,a) => s + (a.paid || 0), 0);
-    const owed = accounts.reduce((s,a) => s + (a.owed || 0), 0);
+    const pid = programProfile()?.id;
+    const athletesInProgram = new Set((cache.athletes || [])
+      .filter(a => {
+        const t = (cache.teams || []).find(team => team.id === a.team_id);
+        return !pid || t?.program_id === pid || a.program_id === pid;
+      })
+      .map(a => a.id));
+    const accounts = (cache.billing_accounts || []).filter(a => !pid || athletesInProgram.has(a.athlete_id));
+    const accountIds = new Set(accounts.map(a => a.id));
+    const charges = (cache.billing_charges || []).filter(c => accountIds.has(c.account_id));
+    const enrollments = (cache.class_enrollments || []).filter(row => !pid || row.program_id === pid);
+    const registrations = (cache.registrations || []).filter(row => !pid || row.program_id === pid);
+    const accountPaid = accounts.reduce((s,a) => s + Number(a.paid || 0), 0);
+    const accountTotal = accounts.reduce((s,a) => s + Number(a.season_total || 0), 0);
+    const chargePaid = charges.reduce((s,c) => s + ((c.paid_at || c.external_status === 'paid') ? Number(c.amount || 0) : 0), 0);
+    const chargeTotal = charges.reduce((s,c) => s + Number(c.amount || 0), 0);
+    const enrollmentPaid = enrollments.reduce((s,row) => s + (row.payment_status === 'paid' ? Number(row.amount_paid_cents || 0) / 100 : 0), 0);
+    const registrationPaid = registrations.reduce((s,row) => s + (row.payment_status === 'paid' ? Number(row.amount_paid_cents || 0) / 100 : 0), 0);
+    const estimatedRegistrationTotal = registrations.reduce((sum, row) => {
+      const klass = classById(row.class_id);
+      const priced = Number(klass?.price_cents || 0) / 100;
+      const paid = Number(row.amount_paid_cents || 0) / 100;
+      return sum + Math.max(priced, paid);
+    }, 0);
+    const paid = round2(Math.max(accountPaid, chargePaid, enrollmentPaid, registrationPaid));
+    const total = round2(Math.max(accountTotal, chargeTotal, estimatedRegistrationTotal, enrollmentPaid, registrationPaid, paid));
+    const owed = round2(Math.max(0, total - paid));
     const delinquent = accounts.filter(a => (a.owed || 0) > 0).length;
+    const pendingRegistrations = registrations.filter(row => ['pending', 'none', 'failed', null, undefined].includes(row.payment_status)).length;
     const syncedPaid = accounts.reduce((s,a) => s + Number(a.synced_paid || 0), 0);
     const syncedOpen = accounts.reduce((s,a) => s + Number(a.synced_open_amount || 0), 0);
     const syncedOpenInvoices = accounts.reduce((s,a) => s + Number(a.synced_open_invoice_count || 0), 0);
@@ -300,8 +377,15 @@
       paid,
       owed,
       delinquent,
-      total: paid + owed,
+      total,
       nAccounts: accounts.length,
+      nCharges: charges.length,
+      registrations: registrations.length,
+      paidRegistrations: registrations.filter(row => row.payment_status === 'paid').length,
+      pendingRegistrations,
+      classEnrollments: enrollments.length,
+      classRevenue: round2(enrollmentPaid),
+      registrationRevenue: round2(registrationPaid),
       syncedPaid: round2(syncedPaid),
       syncedOpen: round2(syncedOpen),
       syncedOpenInvoices,
@@ -316,6 +400,73 @@
     if (!account) return null;
     const charges = (cache.billing_charges || []).filter(c => c.account_id === account.id);
     return { account, charges };
+  }
+
+  function classById(id) {
+    return (cache.program_classes || []).find(c => c.id === id) || null;
+  }
+
+  function decorateClassEnrollment(row) {
+    if (!row) return null;
+    const klass = classById(row.class_id);
+    return {
+      ...row,
+      class: klass,
+      class_name: klass?.name || row.class_name || row.metadata?.class_name || 'Class registration',
+      schedule_summary: row.schedule_summary || klass?.schedule_summary || row.metadata?.schedule_summary || '',
+      starts_at: row.starts_at || klass?.starts_at || null,
+      ends_at: row.ends_at || klass?.ends_at || null,
+      receipt_url: row.receipt_url || row.metadata?.receipt_url || '',
+    };
+  }
+
+  function classEnrollmentsForAthlete(aid) {
+    const athlete = athleteById(aid);
+    const athleteName = String(athlete?.display_name || '').trim().toLowerCase();
+    return (cache.class_enrollments || [])
+      .filter(row => row.athlete_id === aid || (!!athleteName && String(row.athlete_name || '').trim().toLowerCase() === athleteName))
+      .map(decorateClassEnrollment)
+      .sort((a, b) => new Date(a.starts_at || a.created_at || 0) - new Date(b.starts_at || b.created_at || 0));
+  }
+
+  function classEnrollmentsForParent(sessionOrProfile) {
+    const profile = sessionOrProfile?.actualProfile || sessionOrProfile?.profile || sessionOrProfile || {};
+    const email = String(profile.email || '').trim().toLowerCase();
+    const scope = window.HZviewerScope ? window.HZviewerScope(cache, sessionOrProfile?.profile ? sessionOrProfile : { profile }) : null;
+    const visibleIds = scope?.visibleAthleteIds || new Set();
+    const rows = (cache.class_enrollments || []).filter(row => {
+      if (profile.id && row.parent_id === profile.id) return true;
+      if (row.athlete_id && visibleIds.has(row.athlete_id)) return true;
+      return !!email && String(row.parent_email || '').trim().toLowerCase() === email;
+    });
+    const seen = new Set();
+    return rows
+      .map(decorateClassEnrollment)
+      .filter(row => {
+        const key = row.registration_id || row.id;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort((a, b) => new Date(a.starts_at || a.created_at || 0) - new Date(b.starts_at || b.created_at || 0));
+  }
+
+  function classEnrollmentsForProgram(programId) {
+    const pid = programId || programProfile()?.id;
+    return (cache.class_enrollments || [])
+      .filter(row => !pid || row.program_id === pid)
+      .map(decorateClassEnrollment)
+      .sort((a, b) => new Date(a.starts_at || a.created_at || 0) - new Date(b.starts_at || b.created_at || 0));
+  }
+
+  function openGymRegistrationsForProgram(programId) {
+    const pid = programId || programProfile()?.id;
+    return (cache.registrations || [])
+      .filter(row => {
+        const meta = row.intake_metadata || {};
+        return (!pid || row.program_id === pid) && (meta.participant_kind === 'open_gym' || meta.account_required === false);
+      })
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
   }
 
   // ─── Tier 1 / Tier 2 selectors ───────────────────────────────────────────
@@ -357,7 +508,8 @@
     const rows = (cache.session_availability || []).filter(r => r.session_id === sessionId);
     const tally = { going: 0, maybe: 0, no: 0, unknown: 0 };
     rows.forEach(r => tally[r.status] = (tally[r.status] || 0) + 1);
-    const total = (cache.athletes || []).length;
+    const session = (cache.sessions || []).find(s => s.id === sessionId);
+    const total = (cache.athletes || []).filter(a => !session?.team_id || a.team_id === session.team_id).length;
     tally.unknown = Math.max(0, total - tally.going - tally.maybe - tally.no);
     return tally;
   }
@@ -366,9 +518,20 @@
   function upcomingSessions(limit = 10) {
     const now = Date.now();
     return (cache.sessions || [])
-      .filter(s => s.scheduled && new Date(s.scheduled_at).getTime() >= now - 86400000)
+      .filter(s => (s.scheduled !== false) && new Date(s.scheduled_at).getTime() >= now - 86400000)
       .sort((a,b) => new Date(a.scheduled_at) - new Date(b.scheduled_at))
       .slice(0, limit);
+  }
+
+  function staffScheduleSessions(limit = 16) {
+    const teamIds = new Set(programTeams().map(t => t.id));
+    const rows = (cache.sessions || [])
+      .filter(s => (s.scheduled !== false) && (!teamIds.size || teamIds.has(s.team_id)))
+      .sort((a,b) => new Date(a.scheduled_at || a.date || 0) - new Date(b.scheduled_at || b.date || 0));
+    const now = Date.now();
+    const future = rows.filter(s => new Date(s.scheduled_at || s.date || 0).getTime() >= now - 86400000);
+    if (future.length) return future.slice(0, limit);
+    return rows.reverse().slice(0, Math.min(limit, 8));
   }
 
   // Medical roll-up per athlete
@@ -448,11 +611,16 @@
   }
 
   // Registrations
+  function isCheckoutHold(row) {
+    const meta = row?.intake_metadata || {};
+    return row?.payment_status !== 'paid'
+      && (meta.payment_gate_required === true || meta.payment_gate_state === 'checkout_started');
+  }
   function pendingRegistrations() {
-    return (cache.registrations || []).filter(r => r.status === 'pending').sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+    return (cache.registrations || []).filter(r => r.status === 'pending' && !isCheckoutHold(r)).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
   }
   function registrationSummary() {
-    return (cache.registrations || []).reduce((out, row) => {
+    return (cache.registrations || []).filter(r => !isCheckoutHold(r)).reduce((out, row) => {
       out.total += 1;
       out[row.status] = (out[row.status] || 0) + 1;
       return out;
@@ -553,19 +721,22 @@
     // getters (sync — require snapshot() first)
     cache: () => cache,
     team, athleteById, skillById, routine,
+    programTeams, programAthletes, athletesForTeam,
     athleteSkills, athleteReadiness, teamReadiness, categoryReadiness,
     athleteAttendance, teamAttendance, athleteSkillsSummary,
     predictedScore, daysToComp, needsWorkQueue, programProfile, programPaymentSettings, programBilling, athleteBilling,
+    classById, classEnrollmentsForAthlete, classEnrollmentsForParent,
+    classEnrollmentsForProgram, openGymRegistrationsForProgram,
     // Tier 1/2
     inboxThreads, threadMessages, threadMembers,
-    sessionRsvp, upcomingSessions,
+    sessionRsvp, upcomingSessions, staffScheduleSessions,
     athleteMedical,
     uniformsWithItems, athleteUniformOrders,
     leadsByStage, leadTouches, leadSummary,
     formTemplatesActive, formResponsesForTemplate,
     volunteerRolesAndAssignments,
     practicePlanForSession, allPracticePlans,
-    pendingRegistrations, registrationSummary,
+    pendingRegistrations, registrationSummary, isCheckoutHold,
     pinDesignById, pinInventory, pinDropsForAthlete, pinQuests, pinStats,
     // AI Judge
     activeRubric, rubricCategories,

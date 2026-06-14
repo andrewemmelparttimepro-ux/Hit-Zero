@@ -187,6 +187,31 @@ const Toast = ({ toast, onClose }) => {
 };
 window.Toast = Toast;
 
+// ─── Skeleton loading blocks ───
+const SkeletonLine = ({ width = '100%', height = 12, style }) => (
+  <div
+    className="hz-skeleton"
+    aria-hidden="true"
+    style={{ width, height, borderRadius: Math.max(4, Math.min(10, height / 2)), ...style }}
+  />
+);
+window.SkeletonLine = SkeletonLine;
+
+const SkeletonCard = ({ rows = 4, title = true, style }) => (
+  <div className="hz-card hz-skeleton-card" role="status" aria-label="Loading" style={style}>
+    {title && <SkeletonLine width="38%" height={16} style={{ marginBottom: 18 }} />}
+    {Array.from({ length: rows }).map((_, idx) => (
+      <SkeletonLine
+        key={idx}
+        width={idx % 3 === 0 ? '92%' : idx % 3 === 1 ? '74%' : '56%'}
+        height={idx === rows - 1 ? 10 : 12}
+        style={{ marginTop: idx === 0 ? 0 : 10 }}
+      />
+    ))}
+  </div>
+);
+window.SkeletonCard = SkeletonCard;
+
 // ─── Empty state ───
 const EmptyState = ({ icon = 'star', title, body, action }) => (
   <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--hz-dim)' }}>
@@ -199,3 +224,73 @@ const EmptyState = ({ icon = 'star', title, body, action }) => (
   </div>
 );
 window.EmptyState = EmptyState;
+
+// ─── Viewer scope ───
+// Live auth must never fall back to seeded/demo athletes. Screens use this to
+// decide exactly which private athlete rows the current viewer may see.
+function HZviewerScope(snap = {}, session = {}) {
+  const effectiveProfile = session?.profile || {};
+  const actualProfile = session?.actualProfile || effectiveProfile;
+  const profileId = actualProfile?.id || effectiveProfile?.id || session?.user?.id || null;
+  const role = effectiveProfile?.role || actualProfile?.role || 'guest';
+  const actualRole = actualProfile?.role || role;
+  const programId = actualProfile?.program_id || effectiveProfile?.program_id || null;
+  const isLive = session?.mode === 'live' || window.HZdb?.auth?._mode?.() === 'live';
+  const isStaffFamilyView = role === 'parent' && ['owner', 'coach'].includes(actualRole);
+  const athletes = Array.isArray(snap.athletes) ? snap.athletes : [];
+  const teams = Array.isArray(snap.teams) ? snap.teams : [];
+  const teamProgram = new Map(teams.map(team => [team.id, team.program_id]));
+  const inProgram = athlete => !programId || teamProgram.get(athlete.team_id) === programId || athlete.program_id === programId;
+  const programAthletes = athletes.filter(inProgram);
+  const staffProgramAthletes = programAthletes.length ? programAthletes : athletes;
+  const ownAthlete = profileId ? athletes.find(athlete => athlete.profile_id === profileId && inProgram(athlete)) || null : null;
+  const linkedAthleteIds = new Set(
+    (snap.parent_links || [])
+      .filter(link => link.parent_id === profileId)
+      .map(link => link.athlete_id)
+  );
+  const linkedAthletes = athletes.filter(athlete => linkedAthleteIds.has(athlete.id) && inProgram(athlete));
+  let visibleAthletes = [];
+
+  if (role === 'athlete') {
+    visibleAthletes = ownAthlete ? [ownAthlete] : [];
+  } else if (role === 'parent') {
+    visibleAthletes = linkedAthletes.length ? linkedAthletes : (isStaffFamilyView ? staffProgramAthletes : []);
+  } else if (role === 'coach' || role === 'owner') {
+    visibleAthletes = staffProgramAthletes;
+  }
+
+  if (!isLive && !visibleAthletes.length && athletes.length) {
+    if (role === 'athlete') visibleAthletes = [athletes.find(a => a.profile_id === profileId) || athletes.find(Boolean)].filter(Boolean);
+    if (role === 'parent') visibleAthletes = linkedAthletes.length ? linkedAthletes : athletes.slice(0, 1);
+  }
+
+  const visibleAthleteIds = new Set(visibleAthletes.map(athlete => athlete.id));
+  const visibleAthleteTeamIds = new Set(visibleAthletes.map(athlete => athlete.team_id).filter(Boolean));
+  const visibleTeamIds = new Set(
+    teams
+      .filter(team => {
+        if (role === 'coach' || role === 'owner') return !programId || team.program_id === programId || visibleAthleteTeamIds.has(team.id);
+        return visibleAthletes.some(athlete => athlete.team_id === team.id);
+      })
+      .map(team => team.id)
+  );
+
+  return {
+    profileId,
+    role,
+    actualRole,
+    programId,
+    isLive,
+    isStaffFamilyView,
+    ownAthleteId: ownAthlete?.id || null,
+    ownAthlete,
+    linkedAthleteIds,
+    linkedAthletes,
+    visibleAthleteIds,
+    visibleAthletes,
+    visibleTeamIds,
+    visibleTeams: teams.filter(team => visibleTeamIds.has(team.id)),
+  };
+}
+window.HZviewerScope = HZviewerScope;

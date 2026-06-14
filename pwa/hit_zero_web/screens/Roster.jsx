@@ -10,7 +10,59 @@ function initialsFor(name) {
   return name.trim().split(/\s+/).slice(0, 2).map(p => p[0]).join('').toUpperCase();
 }
 
-function Roster({ snap, openAthlete, navigate }) {
+function rosterLiveMode() {
+  return Boolean(window.HZsupa && window.HZdb?.auth?._mode?.() === 'live');
+}
+
+function rosterIsUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
+}
+
+async function refreshRosterData(action) {
+  if (window.HZsel?._refresh) await window.HZsel._refresh();
+  window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table: 'athletes', action } }));
+}
+
+async function insertRosterAthlete(payload) {
+  if (rosterLiveMode()) {
+    const { data, error } = await window.HZsupa
+      .from('athletes')
+      .insert(payload)
+      .select('*')
+      .single();
+    if (error) return { data: null, error };
+    await window.HZdb.from('athletes').upsert(data, { onConflict: 'id' });
+    // refreshRosterData awaits HZsel?._refresh and emits hz:refresh.
+    await refreshRosterData('insert');
+    return { data, error: null };
+  }
+  const out = await window.HZdb.from('athletes').insert(payload);
+  // refreshRosterData awaits HZsel?._refresh and emits hz:refresh.
+  if (!out.error) await refreshRosterData('insert');
+  return out;
+}
+
+async function updateRosterAthlete(id, patch) {
+  if (rosterLiveMode() && rosterIsUuid(id)) {
+    const { data, error } = await window.HZsupa
+      .from('athletes')
+      .update(patch)
+      .eq('id', id)
+      .select('*')
+      .single();
+    if (error) return { data: null, error };
+    await window.HZdb.from('athletes').upsert(data, { onConflict: 'id' });
+    // refreshRosterData awaits HZsel?._refresh and emits hz:refresh.
+    await refreshRosterData('update');
+    return { data, error: null };
+  }
+  const out = await window.HZdb.from('athletes').update(patch).eq('id', id);
+  // refreshRosterData awaits HZsel?._refresh and emits hz:refresh.
+  if (!out.error) await refreshRosterData('update');
+  return out;
+}
+
+function Roster({ snap, openAthlete, navigate, pushToast }) {
   const isMobile = (typeof window !== 'undefined' && window.useIsMobile) ? window.useIsMobile() : false;
   const [sort, setSort] = React.useState({ col: 'readiness', dir: 'desc' });
   const [filter, setFilter] = React.useState('all');
@@ -18,17 +70,41 @@ function Roster({ snap, openAthlete, navigate }) {
   const [showAdd, setShowAdd] = React.useState(false);
   const [editingId, setEditingId] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
-  const team = (snap.teams || [])[0] || null;
+  const session = window.HZdb?.auth?._getSession?.() || null;
+  const scope = window.HZviewerScope ? window.HZviewerScope(snap, session) : null;
+  const visibleAthletes = scope?.visibleAthletes?.length ? scope.visibleAthletes : (window.HZsel.programAthletes?.() || snap.athletes || []);
+  const visibleAthleteIds = new Set(visibleAthletes.map(a => a.id));
+  const team = scope?.visibleTeams?.[0] || window.HZsel.programTeams?.()[0] || (snap.teams || [])[0] || null;
   const teamLabel = team
     ? `${team.division || team.name || 'Team'}${team.level ? ` · L${team.level}` : ''}`
     : 'Team';
+  const classEnrollments = (window.HZsel.classEnrollmentsForProgram?.() || []).filter(row => !row.athlete_id || visibleAthleteIds.has(row.athlete_id));
+  const classEnrollmentByAthlete = classEnrollments.reduce((out, row) => {
+    if (!row.athlete_id) return out;
+    out[row.athlete_id] = out[row.athlete_id] || [];
+    out[row.athlete_id].push(row);
+    return out;
+  }, {});
+  const openGymParticipants = window.HZsel.openGymRegistrationsForProgram?.() || [];
+  const paidClassCount = classEnrollments.filter(row => row.payment_status === 'paid').length;
 
-  const rows = snap.athletes.map(a => {
+  const rows = visibleAthletes.map(a => {
     const r = window.HZsel.athleteReadiness(a.id);
     const att = window.HZsel.athleteAttendance(a.id);
     const sum = window.HZsel.athleteSkillsSummary(a.id);
     const bill = window.HZsel.athleteBilling(a.id);
-    return { ...a, readiness: r, attendance: att.pct, mastered: sum.mastered, working: sum.working, owed: bill?.account.owed || 0 };
+    const enrollments = classEnrollmentByAthlete[a.id] || [];
+    return {
+      ...a,
+      readiness: r,
+      attendance: att.pct,
+      attendanceEmpty: att.empty,
+      mastered: sum.mastered,
+      working: sum.working,
+      owed: bill?.account.owed || 0,
+      enrollments,
+      paidClasses: enrollments.filter(row => row.payment_status === 'paid').length,
+    };
   });
 
   const filtered = rows.filter(r => filter === 'all' ? true : (r.position || '').toLowerCase() === filter);
@@ -39,9 +115,15 @@ function Roster({ snap, openAthlete, navigate }) {
   });
 
   const toggle = (col) => setSort(s => ({ col, dir: s.col === col && s.dir === 'desc' ? 'asc' : 'desc' }));
+  const notifyError = (title, body) => {
+    (pushToast || window.HZToast)?.({ kind: 'error', eyebrow: 'Roster', title, body });
+  };
 
   async function addAthlete(values) {
-    if (!team?.id) { alert('No team loaded — please create a team first.'); return; }
+    if (!team?.id) {
+      notifyError('No team loaded', 'Create a team before adding athletes.');
+      return;
+    }
     setBusy(true);
     try {
       const payload = {
@@ -51,8 +133,12 @@ function Roster({ snap, openAthlete, navigate }) {
         age: values.age ? parseInt(values.age, 10) : null,
         position: values.position || null,
       };
-      const { error } = await window.HZdb.from('athletes').insert(payload);
-      if (error) { console.error('[athletes] insert', error); alert('Could not add athlete: ' + error.message); return; }
+      const { error } = await insertRosterAthlete(payload);
+      if (error) {
+        console.error('[athletes] insert', error);
+        notifyError('Could not add athlete', error.message);
+        return;
+      }
       setShowAdd(false);
     } finally { setBusy(false); }
   }
@@ -60,8 +146,12 @@ function Roster({ snap, openAthlete, navigate }) {
   async function patchAthlete(id, patch) {
     setBusy(true);
     try {
-      const { error } = await window.HZdb.from('athletes').update(patch).eq('id', id);
-      if (error) { console.error('[athletes] update', error); alert('Could not save: ' + error.message); return false; }
+      const { error } = await updateRosterAthlete(id, patch);
+      if (error) {
+        console.error('[athletes] update', error);
+        notifyError('Could not save athlete', error.message);
+        return false;
+      }
       return true;
     } finally { setBusy(false); }
   }
@@ -70,14 +160,17 @@ function Roster({ snap, openAthlete, navigate }) {
     if (!confirm(`Remove ${athlete.display_name} from the roster?`)) return;
     setBusy(true);
     try {
-      const { error } = await window.HZdb.from('athletes').update({ deleted_at: new Date().toISOString() }).eq('id', athlete.id);
-      if (error) { console.error('[athletes] soft-delete', error); alert('Could not remove: ' + error.message); }
+      const { error } = await updateRosterAthlete(athlete.id, { deleted_at: new Date().toISOString() });
+      if (error) {
+        console.error('[athletes] soft-delete', error);
+        notifyError('Could not remove athlete', error.message);
+      }
     } finally { setBusy(false); }
   }
 
   return (
     <div>
-      <SectionHeading eyebrow={`${snap.athletes.length} athletes · ${teamLabel}`} title="The roster." trailing={
+      <SectionHeading eyebrow={`${visibleAthletes.length} athletes · ${teamLabel}`} title="The roster." trailing={
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button onClick={() => { setShowAdd(s => !s); setEditingId(null); }} className="hz-btn hz-btn-primary hz-btn-sm">
             {showAdd ? 'Cancel' : '+ Add athlete'}
@@ -96,6 +189,27 @@ function Roster({ snap, openAthlete, navigate }) {
           </div>
         </div>
       }/>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 14 }}>
+        <RosterStat label="Roster" value={visibleAthletes.length} accent="var(--hz-teal)"/>
+        <RosterStat label="Paid classes" value={paidClassCount}/>
+        <RosterStat label="Class rows" value={classEnrollments.length}/>
+        <RosterStat label="Open gym" value={openGymParticipants.length} accent="var(--hz-amber)"/>
+      </div>
+
+      {openGymParticipants.length > 0 && (
+        <div className="hz-card" style={{ marginBottom: 14, padding: 16, borderColor: 'rgba(255,180,84,0.28)' }}>
+          <div className="hz-eyebrow" style={{ color: 'var(--hz-amber)', marginBottom: 10 }}>Open gym participants</div>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {openGymParticipants.slice(0, 8).map(row => (
+              <div key={row.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13 }}>
+                <strong>{row.athlete_name || 'Participant'}</strong>
+                <span style={{ color: 'var(--hz-dim)' }}>{row.parent_name || row.parent_email || 'Contact captured'} · {row.status || 'registered'}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {showAdd && (
         <AddAthleteCard onSave={addAthlete} onCancel={() => setShowAdd(false)} disabled={busy}/>
@@ -142,7 +256,9 @@ function Roster({ snap, openAthlete, navigate }) {
                       <span style={{ fontFamily: 'var(--hz-mono)', fontSize: 12 }}>{Math.round(r.readiness*100)}</span>
                     </div>
                   </td>
-                  <td style={{ fontFamily: 'var(--hz-mono)', color: r.attendance < 0.7 ? 'var(--hz-amber)' : '#fff' }} onClick={() => openAthlete(r.id)}>{Math.round(r.attendance*100)}%</td>
+                  <td style={{ fontFamily: 'var(--hz-mono)', color: !r.attendanceEmpty && r.attendance < 0.7 ? 'var(--hz-amber)' : '#fff' }} onClick={() => openAthlete(r.id)}>
+                    {r.attendanceEmpty ? 'No logs' : `${Math.round((r.attendance || 0)*100)}%`}
+                  </td>
                   <td style={{ fontFamily: 'var(--hz-mono)' }} onClick={() => openAthlete(r.id)}>{r.mastered}</td>
                   <td onClick={() => openAthlete(r.id)}>{r.owed > 0 ? <span className="hz-pill hz-pill-amber">${r.owed}</span> : <span style={{ color: 'var(--hz-dim)', fontSize: 12 }}>Paid</span>}</td>
                   <td>
@@ -176,7 +292,7 @@ function Roster({ snap, openAthlete, navigate }) {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
                 <RosterStat label="Ready" value={Math.round(r.readiness*100)} accent="var(--hz-teal)"/>
-                <RosterStat label="Attend" value={Math.round(r.attendance*100)}/>
+                <RosterStat label="Attend" value={r.attendanceEmpty ? 'No logs' : Math.round((r.attendance || 0)*100)}/>
                 <RosterStat label="Skills" value={r.mastered}/>
               </div>
               <div style={{ display: 'flex', gap: 6, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--hz-line)' }}>

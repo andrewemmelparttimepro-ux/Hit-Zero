@@ -19,6 +19,7 @@ export function VideoRecorder({ athleteId, skillId, programId, onDone, onCancel 
   const [blob, setBlob] = useState<Blob | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -85,6 +86,7 @@ export function VideoRecorder({ athleteId, skillId, programId, onDone, onCancel 
 
   async function upload() {
     if (!blob) return;
+    setErrorMessage(null);
     setPhase('uploading');
     const videoId = crypto.randomUUID();
     const ext = blob.type.includes('webm') ? 'webm' : 'mp4';
@@ -94,7 +96,11 @@ export function VideoRecorder({ athleteId, skillId, programId, onDone, onCancel 
       contentType: blob.type,
       upsert: false
     });
-    if (up.error) { alert(up.error.message); setPhase('review'); return; }
+    if (up.error) {
+      setErrorMessage(up.error.message);
+      setPhase('review');
+      return;
+    }
 
     const { data: { user } } = await db.auth.getUser();
     const { error } = await db.from('videos').insert({
@@ -105,7 +111,11 @@ export function VideoRecorder({ athleteId, skillId, programId, onDone, onCancel 
       storage_path: path,
       kind: 'skill_attempt'
     });
-    if (error) { alert(error.message); setPhase('review'); return; }
+    if (error) {
+      setErrorMessage(error.message);
+      setPhase('review');
+      return;
+    }
 
     haptics.success();
     onDone(videoId);
@@ -133,6 +143,7 @@ export function VideoRecorder({ athleteId, skillId, programId, onDone, onCancel 
       {phase === 'review' && previewUrl && (
         <div className="recorder-review">
           <video src={previewUrl} controls playsInline />
+          {errorMessage && <p role="alert" className="error-text">{errorMessage}</p>}
           <div className="row">
             <button onClick={() => { setBlob(null); setPreviewUrl(null); setPhase('idle'); }}>
               Redo

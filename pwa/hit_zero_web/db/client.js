@@ -14,8 +14,79 @@
   const AUTH_VIEW_ROLE_KEY = 'hz_auth_view_role';
   const VIEW_AS_EMAIL = 'andrew@ndai.pro';
   const VIEW_AS_ROLES = ['owner', 'coach', 'parent', 'athlete'];
+  const PROD_PURGE_KEY = 'hz_prod_purge_version';
+  const PROD_PURGE_VERSION = '2026-05-09-family-packet-v1';
+  const PROD_HOSTS = new Set(['thehitzero.net', 'www.thehitzero.net']);
+  const EMPTY_TABLES = [
+    'programs', 'teams', 'profiles', 'athletes', 'skills', 'athlete_skills', 'sessions', 'attendance',
+    'routines', 'routine_sections', 'routine_audio_assets', 'music_licenses', 'routine_count_maps',
+    'routine_events', 'routine_formations', 'routine_positions', 'routine_assignments',
+    'routine_ai_suggestions', 'routine_exports', 'routine_versions', 'routine_comments',
+    'routine_audio_analysis_jobs', 'routine_remix_requests', 'routine_music_compliance_checks',
+    'celebrations', 'billing_accounts', 'billing_charges', 'program_payment_settings', 'announcements',
+    'message_threads', 'thread_members', 'messages', 'message_reads',
+    'session_availability', 'calendar_tokens', 'registration_windows', 'registrations',
+    'waiver_templates', 'waiver_signatures', 'form_templates', 'form_fields', 'form_responses', 'form_answers',
+    'emergency_contacts', 'medical_records', 'injuries', 'uniforms', 'uniform_items', 'uniform_orders',
+    'leads', 'lead_touches', 'volunteer_roles', 'volunteer_assignments', 'drills', 'practice_plans',
+    'practice_plan_blocks', 'parent_links', 'pin_designs', 'athlete_pins', 'pin_drops', 'pin_quests',
+    'rubric_versions', 'rubric_categories', 'routine_analyses', 'analysis_elements', 'analysis_deductions',
+    'analysis_feedback', 'analysis_skill_updates', 'program_tracks', 'program_classes',
+    'program_join_requests', 'program_owner_applications', 'program_invites', 'program_invite_redemptions',
+    'family_info_packets', 'class_enrollments',
+  ];
   const listeners = new Map(); // table -> Set<fn>
   const authListeners = new Set();
+
+  function isProductionHost() {
+    try { return PROD_HOSTS.has(window.location.hostname); } catch { return false; }
+  }
+  function shouldResetLocalPrototype() {
+    try {
+      return Boolean(window.HZ_FORCE_PROTOTYPE && new URLSearchParams(window.location.search || '').get('fresh') === '1');
+    } catch {
+      return false;
+    }
+  }
+  function emptyData() {
+    return EMPTY_TABLES.reduce((out, table) => {
+      out[table] = [];
+      return out;
+    }, {});
+  }
+  function ensureEmptyTables(existing) {
+    const next = existing && typeof existing === 'object' ? existing : {};
+    EMPTY_TABLES.forEach((table) => {
+      if (!Array.isArray(next[table])) next[table] = [];
+    });
+    return next;
+  }
+  function purgeProductionSeedCache() {
+    if (!isProductionHost()) return;
+    try {
+      if (localStorage.getItem(PROD_PURGE_KEY) === PROD_PURGE_VERSION) return;
+      localStorage.removeItem(LS_KEY);
+      localStorage.removeItem('hz_auth_v2');
+      localStorage.removeItem(AUTH_VIEW_ROLE_KEY);
+      Object.keys(localStorage)
+        .filter(key => /^hz_walkthrough_|^hz_demo_|^hz_role_/.test(key))
+        .forEach(key => localStorage.removeItem(key));
+      localStorage.setItem(PROD_PURGE_KEY, PROD_PURGE_VERSION);
+    } catch {}
+    try {
+      if (window.caches?.keys) {
+        caches.keys().then(keys => keys.filter(key => /^hz-/.test(key)).forEach(key => caches.delete(key)));
+      }
+    } catch {}
+  }
+  purgeProductionSeedCache();
+  if (shouldResetLocalPrototype()) {
+    try {
+      localStorage.removeItem(LS_KEY);
+      localStorage.removeItem('hz_auth_v2');
+      localStorage.removeItem(AUTH_VIEW_ROLE_KEY);
+    } catch {}
+  }
 
   // ─── Seed tables from the existing HZ_* globals ───
   function seed() {
@@ -276,7 +347,7 @@
       country: 'US',
       timezone: 'America/Chicago',
       description: 'All-star cheer gym in Minot, ND. Hit Zero treats this gym as the top-level business object for teams, roster, billing, leads, registrations, and Square.',
-      website_url: 'https://hit-zero.vercel.app',
+      website_url: 'https://mcaminot.com',
       public_email: 'info@magiccityallstars.com',
       public_phone: '',
       address_line1: 'Minot, ND',
@@ -311,15 +382,21 @@
       updated_at: new Date().toISOString(),
     }];
 
+    const demoAthlete = roster.find(a => a.id === 'a01') || roster[0] || null;
+
     return {
       programs: [program],
       program_payment_settings: programPaymentSettings,
+      program_join_requests: [],
+      program_owner_applications: [],
+      program_invites: [],
+      program_invite_redemptions: [],
       teams: [{ id: team.id, program_id: 'p_mca', name: team.name, division: team.division, level: team.level, season_start: team.seasonStart }],
       profiles: [
         { id: 'u_coach', program_id: 'p_mca', role: 'coach', display_name: 'Coach Brynn', email: 'brynn@magiccityallstars.com' },
         { id: 'u_coach_2', program_id: 'p_mca', role: 'coach', display_name: 'Carlie Wilson', email: 'carlie@magiccityallstars.com' },
         { id: 'u_owner', program_id: 'p_mca', role: 'owner', display_name: 'Erin Magic', email: 'erin@magiccityallstars.com' },
-        { id: 'u_athlete', program_id: 'p_mca', role: 'athlete', display_name: 'Kenzie Rhodes', email: 'kenzie@demo.com' },
+        { id: 'u_athlete', program_id: 'p_mca', role: 'athlete', display_name: demoAthlete?.name || 'Athlete Demo', email: 'athlete@demo.com' },
         { id: 'u_parent', program_id: 'p_mca', role: 'parent', display_name: 'Sam Rhodes', email: 'sam@demo.com' },
       ],
       athletes: roster.map(a => ({
@@ -441,14 +518,10 @@
 
     // ─── Registrations ───
     const registration_windows = [
-      { id: 'rw1', program_id: 'p_mca', slug: '2026-tryouts', title: '2026–27 Tryouts',
-        description: 'All-Star tryouts for the 2026–27 season. Levels 1–6.',
-        opens_at: iso(-days(7)), closes_at: iso(days(14)), fee_amount: 45, is_public: true,
+      { id: 'rw1', program_id: 'p_mca', slug: 'all-star-evaluations', title: 'All-Star Evaluations',
+        description: 'Evaluation dates are TBD in August. Families should use the public interest form so staff can place athletes on the correct team.',
+        opens_at: iso(days(90)), closes_at: iso(days(120)), fee_amount: 0, is_public: false,
         created_at: iso(-days(14)) },
-      { id: 'rw2', program_id: 'p_mca', slug: 'summer-camp', title: 'Summer Tumble Camp',
-        description: 'Week-long tumbling intensive. 3 sessions/day. Ages 6–18.',
-        opens_at: iso(-days(3)), closes_at: iso(days(30)), fee_amount: 299, is_public: true,
-        created_at: iso(-days(3)) },
     ];
     const registrations = [
       { id: 'reg1', window_id: 'rw1', program_id: 'p_mca', athlete_name: 'Ava Lindgren',  parent_name: 'Kristi Lindgren', parent_email: 'kristi@demo.com', parent_phone: '701-555-0148', level_interest: 3, source: 'referral',  status: 'pending',  created_at: iso(-days(1)) },
@@ -595,8 +668,8 @@
     // ─── Athlete social loop: collectible pins + drops ───
     const pin_designs = [
       { id: 'pin_hit_zero',          program_id: 'p_mca', name: 'Hit Zero',          emoji: '⚡', rarity: 'common',    accent_start: '#27CFD7', accent_end: '#8EE3F0', unlock_hint: 'Starter pin for every athlete.', lore: 'The first pin on the bag.' },
-      { id: 'pin_red_bow',           program_id: 'p_mca', name: 'Red Bow Energy',    emoji: '🎀', rarity: 'common',    accent_start: '#F97FAC', accent_end: '#F4B1C8', unlock_hint: 'Earned from perfect attendance weeks.', lore: 'For girls who look comp-ready before warm-ups even start.' },
-      { id: 'pin_clothespin',        program_id: 'p_mca', name: 'Lucky Clothespin',  emoji: '📍', rarity: 'rare',      accent_start: '#FFD76B', accent_end: '#FF9F6E', unlock_hint: 'Reward for dropping 3 pins at one competition.', lore: 'The digital version of the decorated clothespins girls clip on each other’s bags.' },
+      { id: 'pin_red_bow',           program_id: 'p_mca', name: 'Red Bow Energy',    emoji: '🎀', rarity: 'common',    accent_start: '#F97FAC', accent_end: '#F4B1C8', unlock_hint: 'Earned from perfect attendance weeks.', lore: 'For athletes who look comp-ready before warm-ups even start.' },
+      { id: 'pin_clothespin',        program_id: 'p_mca', name: 'Lucky Clothespin',  emoji: '📍', rarity: 'rare',      accent_start: '#FFD76B', accent_end: '#FF9F6E', unlock_hint: 'Reward for sharing 3 pins at one competition.', lore: 'The digital version of decorated clothespins teammates clip on each other’s bags.' },
       { id: 'pin_stunt_stack',       program_id: 'p_mca', name: 'Stunt Stack',       emoji: '🏆', rarity: 'rare',      accent_start: '#88F7B3', accent_end: '#27CFD7', unlock_hint: 'Unlocked after a clean stunt full-out.', lore: 'Big trust energy.' },
       { id: 'pin_confetti_heart',    program_id: 'p_mca', name: 'Confetti Heart',    emoji: '💖', rarity: 'epic',      accent_start: '#F97FAC', accent_end: '#FFD76B', unlock_hint: 'Gifted when another athlete pins you for hype.', lore: 'You made somebody’s weekend.' },
       { id: 'pin_country_crossover', program_id: 'p_mca', name: 'Country Crossover', emoji: '🗺️', rarity: 'legendary', accent_start: '#C8A6FF', accent_end: '#6CE5E8', unlock_hint: 'Pin an athlete from another gym at a major comp.', lore: 'The one everybody notices on the bag.' },
@@ -614,12 +687,12 @@
       { id: 'pd1', design_id: 'pin_confetti_heart', from_athlete_id: 'a07', to_athlete_id: 'a01', recipient_name: 'Kenzie Rhodes', recipient_program: 'Magic City Allstars', recipient_city: 'Minot, ND', event_name: 'Comp warm-up', message: 'You looked unreal in warm-ups.', created_at: iso(-hours(18)), status: 'received' },
       { id: 'pd2', design_id: 'pin_hit_zero',       from_athlete_id: 'a01', to_athlete_id: 'a03', recipient_name: 'Brooklyn Hale', recipient_program: 'Magic City Allstars', recipient_city: 'Minot, ND', event_name: 'Friday full-out',  message: 'That jump section ate.', created_at: iso(-days(2)),  status: 'sent' },
       { id: 'pd3', design_id: 'pin_red_bow',        from_athlete_id: 'a03', to_athlete_id: 'a01', recipient_name: 'Kenzie Rhodes', recipient_program: 'Magic City Allstars', recipient_city: 'Minot, ND', event_name: 'Bus ride',         message: 'Thanks for the pep talk.', created_at: iso(-days(3)),  status: 'received' },
-      { id: 'pd4', design_id: 'pin_country_crossover', from_athlete_id: 'a01', to_athlete_id: null, recipient_name: 'Tatum Lee', recipient_program: 'Cheer Athletics', recipient_city: 'Dallas, TX', event_name: 'Next major comp', message: 'Save this one for a girl you meet out of state.', created_at: iso(days(7)), status: 'planned' },
+      { id: 'pd4', design_id: 'pin_country_crossover', from_athlete_id: 'a01', to_athlete_id: null, recipient_name: 'Tatum Lee', recipient_program: 'Cheer Athletics', recipient_city: 'Dallas, TX', event_name: 'Next major comp', message: 'Save this one for an athlete you meet out of state.', created_at: iso(days(7)), status: 'planned' },
     ];
     const pin_quests = [
       { id: 'pq1', athlete_id: 'a01', title: 'Warm-up Whisperer',      body: 'Drop 2 hype pins before the team takes the floor.', progress: 1, goal: 2, reward_design_id: 'pin_clothespin', expires_at: iso(days(2)), category: 'competition' },
       { id: 'pq2', athlete_id: 'a01', title: 'Meet somebody new',      body: 'Pin an athlete from another gym this weekend.',      progress: 0, goal: 1, reward_design_id: 'pin_country_crossover', expires_at: iso(days(10)), category: 'social' },
-      { id: 'pq3', athlete_id: 'a07', title: 'Bench energy captain',   body: 'Send 3 pins after full-out to girls who hit clean.', progress: 2, goal: 3, reward_design_id: 'pin_confetti_heart', expires_at: iso(days(1)), category: 'team' },
+      { id: 'pq3', athlete_id: 'a07', title: 'Bench energy captain',   body: 'Send 3 pins after full-out to teammates who hit clean.', progress: 2, goal: 3, reward_design_id: 'pin_confetti_heart', expires_at: iso(days(1)), category: 'team' },
     ];
 
     // ─── AI Judge: rubric + one seeded completed analysis ───
@@ -741,6 +814,7 @@
 
   // ─── Load / save ───
   function migrateData(existing) {
+    if (isProductionHost()) return { data: ensureEmptyTables(existing), changed: false };
     const fresh = seed();
     let changed = false;
     [
@@ -828,6 +902,11 @@
         return migrated.data;
       }
     } catch {}
+    if (isProductionHost()) {
+      const fresh = emptyData();
+      save(fresh);
+      return fresh;
+    }
     const fresh = seed();
     save(fresh);
     return fresh;
@@ -837,6 +916,9 @@
   }
 
   let data = load();
+  ['program_join_requests', 'program_owner_applications', 'program_invites', 'program_invite_redemptions', 'family_info_packets'].forEach((table) => {
+    if (!Array.isArray(data[table])) data[table] = [];
+  });
 
   // ─── Notify listeners on mutations ───
   function emit(table, event) {
@@ -987,7 +1069,7 @@
     authListeners.forEach(fn => fn(session ? 'SIGNED_IN' : 'SIGNED_OUT', session));
   }
   function hasRealAuth() {
-    return Boolean(window.HZsupa && window.HZsupa.auth);
+    return Boolean(!window.HZ_FORCE_PROTOTYPE && window.HZsupa && window.HZsupa.auth);
   }
   function rememberEmail(email) {
     try { if (email) localStorage.setItem(AUTH_EMAIL_KEY, email); } catch {}
@@ -1004,21 +1086,28 @@
     return raw.includes('@') ? raw : `${raw.replace(/^@+/, '')}@${ATHLETE_LOGIN_DOMAIN}`;
   }
   function canUseViewAs(raw, profile) {
+    return allowedViewRoles(raw, profile).length > 1;
+  }
+  function allowedViewRoles(raw, profile) {
     const email = normalizeEmail(profile?.email || raw?.user?.email || raw?.email);
-    return email === VIEW_AS_EMAIL;
+    const actualRole = profile?.role;
+    if (email === VIEW_AS_EMAIL) return [...VIEW_AS_ROLES];
+    if (actualRole === 'owner' || actualRole === 'coach') return [...new Set([actualRole, 'parent'])];
+    return [];
   }
   function readViewRole(raw, profile) {
     if (!canUseViewAs(raw, profile)) return null;
     try {
       const role = localStorage.getItem(AUTH_VIEW_ROLE_KEY);
-      return VIEW_AS_ROLES.includes(role) ? role : null;
+      return allowedViewRoles(raw, profile).includes(role) ? role : null;
     } catch {
       return null;
     }
   }
-  function writeViewRole(role) {
+  function writeViewRole(role, raw = getSession(), profile = raw?.actualProfile || raw?.profile) {
     try {
-      if (VIEW_AS_ROLES.includes(role)) localStorage.setItem(AUTH_VIEW_ROLE_KEY, role);
+      const allowed = allowedViewRoles(raw, profile);
+      if (allowed.includes(role)) localStorage.setItem(AUTH_VIEW_ROLE_KEY, role);
       else localStorage.removeItem(AUTH_VIEW_ROLE_KEY);
     } catch {}
   }
@@ -1038,10 +1127,156 @@
     return {
       id: user?.id,
       email: user?.email || '',
-      role: meta.role || 'parent',
+      role: meta.requested_role === 'athlete' ? 'athlete' : 'parent',
       display_name: meta.display_name || (user?.email ? user.email.split('@')[0] : 'Hit Zero Member'),
-      program_id: meta.program_id || data.teams?.[0]?.program_id || null,
+      program_id: null,
     };
+  }
+	  async function liveToken() {
+	    if (!hasRealAuth()) return null;
+	    const { data: authData, error } = await window.HZsupa.auth.getSession();
+	    if (error) throw error;
+	    return authData?.session?.access_token || null;
+	  }
+	  function withTimeout(promise, ms, message) {
+	    let timer = null;
+	    const timeout = new Promise((_, reject) => {
+	      timer = setTimeout(() => reject(new Error(message)), ms);
+	    });
+	    return Promise.race([promise, timeout]).finally(() => {
+	      if (timer) clearTimeout(timer);
+	    });
+	  }
+	  async function callLaunchFunction(action, payload = {}, opts = {}) {
+    if (!hasRealAuth() || !window.HZ_FN_BASE || !window.HZ_ANON_KEY) {
+      return { data: null, error: new Error('Live launch services are unavailable in prototype mode.') };
+    }
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutMs = Number(opts.timeoutMs || 30000);
+    const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+    try {
+      const token = opts.allowAnon ? null : await liveToken();
+      if (!opts.allowAnon && !token) throw new Error('Sign in first.');
+      const res = await fetch(window.HZ_FN_BASE + '/functions/v1/join-gym-v1', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + (token || window.HZ_ANON_KEY),
+          'apikey': window.HZ_ANON_KEY,
+        },
+        body: JSON.stringify({ action, ...payload }),
+        signal: controller?.signal,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || `Launch action failed: ${action}`);
+      return { data: body, error: null };
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        return { data: null, error: new Error(`Launch action timed out: ${action}`) };
+      }
+      return { data: null, error: err instanceof Error ? err : new Error(String(err)) };
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+  }
+  function localProgramSearch(query = '') {
+    const q = String(query || '').trim().toLowerCase();
+    const programs = (data.programs || [])
+      .filter(p => p.is_public !== false && !p.deleted_at)
+      .filter(p => {
+        if (!q) return true;
+        const hay = [p.public_name, p.brand_name, p.name, p.city, p.state, ...(p.directory_tags || [])].join(' ').toLowerCase();
+        return hay.includes(q);
+      })
+      .map(p => ({
+        id: p.id,
+        slug: p.slug,
+        public_name: p.public_name || p.name,
+        brand_name: p.brand_name || p.public_name || p.name,
+        description: p.description,
+        city: p.city,
+        state: p.state,
+        logo_url: p.logo_url,
+        directory_tags: p.directory_tags || [],
+        is_accepting_leads: p.is_accepting_leads !== false,
+      }));
+    return programs.slice(0, 12);
+  }
+  function localUpsertJoinRequest(input = {}) {
+    const current = getSession();
+    if (!current?.profile?.id) return { data: null, error: new Error('Sign in first.') };
+    const row = {
+      id: 'jr_' + Math.random().toString(36).slice(2, 10),
+      program_id: input.program_id,
+      profile_id: current.profile.id,
+      requested_role: input.requested_role === 'athlete' ? 'athlete' : 'parent',
+      parent_name: input.parent_name || current.profile.display_name,
+      athlete_name: input.athlete_name || null,
+      athlete_age: input.athlete_age || null,
+      phone: input.phone || null,
+      email: input.email || current.profile.email,
+      message: input.message || null,
+      status: 'pending',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const existingIdx = (data.program_join_requests || []).findIndex(r => r.program_id === row.program_id && r.profile_id === row.profile_id && r.status === 'pending');
+    if (existingIdx >= 0) data.program_join_requests[existingIdx] = { ...data.program_join_requests[existingIdx], ...row, id: data.program_join_requests[existingIdx].id };
+    else data.program_join_requests = [...(data.program_join_requests || []), row];
+    save(data);
+    emit('program_join_requests', { eventType: existingIdx >= 0 ? 'UPDATE' : 'INSERT', new: existingIdx >= 0 ? data.program_join_requests[existingIdx] : row, old: null });
+    return { data: { ok: true, request: row }, error: null };
+  }
+  function packetCompletionStatus(input = {}) {
+    const ec = input.emergency_contact || {};
+    const hs = input.health_safety || {};
+    const sig = input.signatures || {};
+    return input.parent_name && input.parent_email && input.parent_phone && input.athlete_name && ec.name && ec.phone && hs.insurance_name && hs.policy_number && sig.parent_signature
+      ? 'complete'
+      : 'incomplete';
+  }
+  function localUpsertFamilyPacket(input = {}) {
+    const current = getSession();
+    if (!current?.profile?.id) return { data: null, error: new Error('Sign in first.') };
+    const row = {
+      id: input.id || 'fp_' + Math.random().toString(36).slice(2, 10),
+      program_id: input.program_id,
+      profile_id: current.profile.id,
+      join_request_id: input.join_request_id || null,
+      requested_role: input.requested_role === 'athlete' ? 'athlete' : 'parent',
+      parent_name: input.parent_name || current.profile.display_name || null,
+      parent_email: input.parent_email || current.profile.email || null,
+      parent_phone: input.parent_phone || null,
+      preferred_contact: input.preferred_contact || null,
+      relationship: input.relationship || null,
+      secondary_phone: input.secondary_phone || null,
+      mailing_address: input.mailing_address || null,
+      athlete_name: input.athlete_name || null,
+      athlete_age: input.athlete_age || null,
+      athlete_dob: input.athlete_dob || null,
+      grade: input.grade || null,
+      cheer_experience: input.cheer_experience || null,
+      nickname: input.nickname || null,
+      tshirt_size: input.tshirt_size || null,
+      interest: input.interest || null,
+      emergency_contact: input.emergency_contact || {},
+      secondary_emergency_contact: input.secondary_emergency_contact || {},
+      health_safety: input.health_safety || {},
+      agreements: input.agreements || {},
+      signatures: input.signatures || {},
+      notes: input.notes || null,
+      completion_status: packetCompletionStatus(input),
+      submitted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      created_at: input.created_at || new Date().toISOString(),
+    };
+    const idx = (data.family_info_packets || []).findIndex(p => p.program_id === row.program_id && p.profile_id === row.profile_id);
+    if (idx >= 0) data.family_info_packets[idx] = { ...data.family_info_packets[idx], ...row, id: data.family_info_packets[idx].id };
+    else data.family_info_packets = [row, ...(data.family_info_packets || [])];
+    const saved = idx >= 0 ? data.family_info_packets[idx] : row;
+    save(data);
+    emit('family_info_packets', { eventType: idx >= 0 ? 'UPDATE' : 'INSERT', new: saved, old: null });
+    return { data: { ok: true, packet: saved }, error: null };
   }
   async function loadProfile(user) {
     if (!user) return null;
@@ -1092,13 +1327,24 @@
       mode,
     };
   }
-  async function syncSupabaseSession(rawSession) {
+  function isPasswordRecoveryReturn(authEvent) {
+    if (authEvent === 'PASSWORD_RECOVERY') return true;
+    try {
+      const params = new URLSearchParams(window.location.search || '');
+      if (params.get('next') === 'reset-password') return true;
+      if (params.get('type') === 'recovery') return true;
+      if ((window.location.hash || '').includes('type=recovery')) return true;
+    } catch {}
+    return false;
+  }
+  async function syncSupabaseSession(rawSession, authEvent = null) {
     if (!rawSession?.user) {
       setSession(null);
       return null;
     }
     const profile = await loadProfile(rawSession.user);
     const wrapped = wrapSession(rawSession, profile);
+    if (isPasswordRecoveryReturn(authEvent)) wrapped.recovery = true;
     if (wrapped?.user?.email) rememberEmail(wrapped.user.email);
     setSession(wrapped);
     if (window.location.pathname === '/auth/callback') history.replaceState({}, '', '/');
@@ -1106,8 +1352,8 @@
   }
   function ensureRealAuthSubscription() {
     if (!hasRealAuth() || realAuthSub) return;
-    const { data: sub } = window.HZsupa.auth.onAuthStateChange(async (_evt, session) => {
-      try { await syncSupabaseSession(session); }
+    const { data: sub } = window.HZsupa.auth.onAuthStateChange(async (evt, session) => {
+      try { await syncSupabaseSession(session, evt); }
       catch (err) { console.warn('[HZ] auth sync failed', err); }
     });
     realAuthSub = sub.subscription;
@@ -1143,10 +1389,10 @@
       return { data: { session }, error: null };
     },
     async viewAsRole(role) {
-      if (!VIEW_AS_ROLES.includes(role)) return { data: null, error: new Error('Unknown role.') };
       const current = getSession();
-      if (!current?.canViewAs) return { data: null, error: new Error('View-as is only available to the credentialed owner account.') };
-      writeViewRole(role);
+      const allowed = allowedViewRoles(current, current?.actualProfile || current?.profile);
+      if (!allowed.includes(role)) return { data: null, error: new Error('That view is not available for this account.') };
+      writeViewRole(role, current, current.actualProfile || current.profile);
       const next = wrapSession(current, current.actualProfile || current.profile, current.mode);
       setSession(next);
       return { data: { session: next }, error: null };
@@ -1180,15 +1426,521 @@
         return { data: null, error: err instanceof Error ? err : new Error(String(err)) };
       }
     },
-    async signInWithPassword(identifier, password) {
+	    async signInWithPassword(identifier, password) {
       if (!hasRealAuth()) return { data: null, error: new Error('Password auth is unavailable in prototype mode.') };
       const email = loginEmail(identifier);
       if (!email || !password) return { data: null, error: new Error('Username and password are required.') };
       rememberEmail(identifier);
       const { data: authData, error } = await window.HZsupa.auth.signInWithPassword({ email, password });
       if (error) return { data: null, error };
-      const session = await syncSupabaseSession(authData.session);
-      return { data: { session }, error: null };
+	      const session = await syncSupabaseSession(authData.session);
+	      return { data: { session }, error: null };
+	    },
+	    async requestPasswordReset(identifier) {
+	      if (!hasRealAuth()) return { data: null, error: new Error('Password reset is unavailable in prototype mode.') };
+	      const email = loginEmail(identifier);
+	      if (!email) return { data: null, error: new Error('Enter your email or username first.') };
+	      rememberEmail(identifier);
+	      const { data: out, error } = await window.HZsupa.auth.resetPasswordForEmail(email, {
+	        redirectTo: window.location.origin + '/auth/callback?next=reset-password',
+	      });
+	      if (error) return { data: null, error };
+	      return { data: out || { ok: true }, error: null };
+	    },
+	    async updatePassword(password) {
+	      if (!hasRealAuth()) return { data: null, error: new Error('Password update is unavailable in prototype mode.') };
+	      if (!password || String(password).length < 8) return { data: null, error: new Error('Use at least 8 characters.') };
+		      const { data: out, error } = await withTimeout(
+		        window.HZsupa.auth.updateUser({ password }),
+		        18000,
+		        'Password update timed out. Check your connection and try again.'
+		      );
+		      if (error) return { data: null, error };
+		      const { data: sessionData } = await withTimeout(
+		        window.HZsupa.auth.getSession(),
+		        12000,
+		        'Password updated, but Hit Zero could not refresh the session. Sign in with the new password.'
+		      );
+	      await syncSupabaseSession(sessionData?.session, 'PASSWORD_UPDATED');
+	      try {
+	        if (new URLSearchParams(window.location.search || '').get('next') === 'reset-password') {
+	          history.replaceState({}, '', '/');
+	        }
+	      } catch {}
+	      return { data: out || { ok: true }, error: null };
+	    },
+	    async signUpFamily(input = {}) {
+      const email = normalizeEmail(input.email);
+      const password = String(input.password || '');
+      const displayName = String(input.display_name || '').trim();
+      const requestedRole = input.requested_role === 'athlete' ? 'athlete' : 'parent';
+      if (!email || !displayName || password.length < 8) {
+        return { data: null, error: new Error('Name, email, and an 8+ character password are required.') };
+      }
+      rememberEmail(email);
+      if (hasRealAuth()) {
+        const { data: authData, error } = await window.HZsupa.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: window.location.origin + '/auth/callback',
+            data: { display_name: displayName, requested_role: requestedRole },
+          },
+        });
+        if (error) return { data: null, error };
+        if (authData?.session) await syncSupabaseSession(authData.session);
+        return { data: authData, error: null };
+      }
+      const profile = {
+        id: 'u_' + Math.random().toString(36).slice(2, 10),
+        email,
+        role: requestedRole,
+        display_name: displayName,
+        program_id: null,
+        created_at: new Date().toISOString(),
+      };
+      upsertLocalProfile(profile);
+      setSession({ user: { id: profile.id, email }, profile, actualProfile: profile, actualRole: profile.role, mode: 'prototype' });
+      return { data: { user: { id: profile.id, email }, session: getSession() }, error: null };
+    },
+    async searchPrograms(query = '') {
+      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) {
+        return callLaunchFunction('search_programs', { query }, { allowAnon: true });
+      }
+      return { data: { ok: true, programs: localProgramSearch(query) }, error: null };
+    },
+    async submitJoinRequest(input = {}) {
+      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) {
+        const out = await callLaunchFunction('submit_join_request', input);
+        if (!out.error && out.data?.request) {
+          data.program_join_requests = [
+            ...(data.program_join_requests || []).filter(r => r.id !== out.data.request.id),
+            out.data.request,
+          ];
+          save(data);
+          emit('program_join_requests', { eventType: 'INSERT', new: out.data.request, old: null });
+        }
+        return out;
+      }
+      return localUpsertJoinRequest(input);
+    },
+    async listMyJoinRequests() {
+      const current = getSession();
+      if (!current?.profile?.id) return { data: { ok: true, requests: [] }, error: null };
+      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) return callLaunchFunction('my_requests', {});
+      return {
+        data: {
+          ok: true,
+          requests: (data.program_join_requests || [])
+            .filter(r => r.profile_id === current.profile.id)
+            .map(r => ({ ...r, programs: (data.programs || []).find(p => p.id === r.program_id) || null })),
+        },
+        error: null,
+      };
+    },
+    async myFamilyPacket(programId = '') {
+      const current = getSession();
+      if (!current?.profile?.id) return { data: { ok: true, packet: null }, error: null };
+      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) return callLaunchFunction('my_family_packet', { program_id: programId || current.profile.program_id || null });
+      const packets = (data.family_info_packets || [])
+        .filter(p => p.profile_id === current.profile.id && (!programId || p.program_id === programId))
+        .sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at));
+      return { data: { ok: true, packet: packets[0] || null }, error: null };
+    },
+    async submitFamilyPacket(input = {}) {
+      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) {
+        const out = await callLaunchFunction('submit_family_packet', input);
+        if (!out.error && out.data?.packet) {
+          data.family_info_packets = [
+            out.data.packet,
+            ...(data.family_info_packets || []).filter(p => p.id !== out.data.packet.id && !(p.program_id === out.data.packet.program_id && p.profile_id === out.data.packet.profile_id)),
+          ];
+          save(data);
+          emit('family_info_packets', { eventType: 'UPDATE', new: out.data.packet, old: null });
+        }
+        return out;
+      }
+      return localUpsertFamilyPacket(input);
+    },
+    async submitOwnerApplication(input = {}) {
+      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) {
+        return callLaunchFunction('submit_owner_application', input, { allowAnon: true });
+      }
+      const row = {
+        id: 'oa_' + Math.random().toString(36).slice(2, 10),
+        ...input,
+        status: 'pending',
+        created_at: new Date().toISOString(),
+      };
+      data.program_owner_applications = [...(data.program_owner_applications || []), row];
+      save(data);
+      emit('program_owner_applications', { eventType: 'INSERT', new: row, old: null });
+      return { data: { ok: true, application: row }, error: null };
+    },
+    async staffLaunchQueue() {
+      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) return callLaunchFunction('staff_queue', {});
+      const current = getSession();
+      const programId = current?.profile?.program_id;
+      const teamIds = new Set((data.teams || []).filter(t => !programId || t.program_id === programId).map(t => t.id));
+      const athletes = (data.athletes || []).filter(a => teamIds.has(a.team_id));
+      const linkedParentIds = new Set((data.parent_links || []).map(l => l.parent_id));
+      return {
+        data: {
+          ok: true,
+          requests: (data.program_join_requests || []).filter(r => r.program_id === programId && r.status === 'pending'),
+          invites: (data.program_invites || []).filter(r => r.program_id === programId),
+          unlinked_parents: (data.profiles || []).filter(p => p.program_id === programId && p.role === 'parent' && !linkedParentIds.has(p.id)),
+          athletes,
+        },
+        error: null,
+      };
+    },
+    async approveJoinRequest(requestId, status = 'approved') {
+      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) {
+        const out = await callLaunchFunction('approve_join_request', { request_id: requestId, status });
+        if (!out.error && out.data?.request) {
+          data.program_join_requests = (data.program_join_requests || []).map(r => r.id === requestId ? out.data.request : r);
+          if (out.data.profile) upsertLocalProfile(out.data.profile);
+          save(data);
+          emit('program_join_requests', { eventType: 'UPDATE', new: out.data.request, old: null });
+        }
+        return out;
+      }
+      const current = getSession();
+      const req = (data.program_join_requests || []).find(r => r.id === requestId);
+      if (!req) return { data: null, error: new Error('Request not found.') };
+      req.status = status === 'rejected' ? 'rejected' : 'approved';
+      req.decided_by = current?.profile?.id || null;
+      req.decided_at = new Date().toISOString();
+      const profile = (data.profiles || []).find(p => p.id === req.profile_id);
+      if (profile && req.status === 'approved') {
+        profile.program_id = req.program_id;
+        profile.role = req.requested_role === 'athlete' ? 'athlete' : 'parent';
+        upsertLocalProfile(profile);
+      }
+      save(data);
+      emit('program_join_requests', { eventType: 'UPDATE', new: req, old: null });
+      return { data: { ok: true, request: req, profile }, error: null };
+    },
+    async linkParentAthlete(parentId, athleteId, relation = 'parent', options = {}) {
+      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) {
+        const out = await callLaunchFunction('link_parent_athlete', {
+          parent_id: parentId,
+          athlete_id: athleteId,
+          relation,
+          create_athlete: !!options.create_athlete,
+          athlete_name: options.athlete_name || null,
+          athlete_age: options.athlete_age || null,
+          team_id: options.team_id || null,
+        });
+        if (!out.error && out.data?.parent_link) {
+          data.parent_links = data.parent_links || [];
+          data.parent_links = [
+            ...data.parent_links.filter(l => !(l.parent_id === out.data.parent_link.parent_id && l.athlete_id === out.data.parent_link.athlete_id)),
+            out.data.parent_link,
+          ];
+          if (out.data.athlete) {
+            data.athletes = data.athletes || [];
+            data.athletes = [
+              ...data.athletes.filter(a => a.id !== out.data.athlete.id),
+              out.data.athlete,
+            ];
+            emit('athletes', { eventType: options.create_athlete ? 'INSERT' : 'UPDATE', new: out.data.athlete, old: null });
+          }
+          if (out.data.family_packet) {
+            data.family_info_packets = [
+              out.data.family_packet,
+              ...(data.family_info_packets || []).filter(p => p.id !== out.data.family_packet.id),
+            ];
+          }
+          save(data);
+          emit('parent_links', { eventType: 'INSERT', new: out.data.parent_link, old: null });
+          if (out.data.billing_account) {
+            data.billing_accounts = data.billing_accounts || [];
+            data.billing_accounts = [
+              ...data.billing_accounts.filter(a => a.id !== out.data.billing_account.id),
+              out.data.billing_account,
+            ];
+            emit('billing_accounts', { eventType: 'INSERT', new: out.data.billing_account, old: null });
+          }
+          if (window.HZmirror?.roster) await window.HZmirror.roster();
+          if (window.HZsel?._refresh) await window.HZsel._refresh();
+          window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table: 'parent_links', action: 'staff_link' } }));
+        }
+        return out;
+      }
+      const parent = (data.profiles || []).find(p => p.id === parentId && p.role === 'parent');
+      let athlete = (data.athletes || []).find(a => a.id === athleteId);
+      if (!athlete && options.create_athlete) {
+        const team = (data.teams || [])[0];
+        if (!team?.id) return { data: null, error: new Error('Create a team/roster group before linking parents to athletes.') };
+        const name = String(options.athlete_name || '').trim();
+        if (!name) return { data: null, error: new Error('This parent does not have an athlete name in their packet yet.') };
+        athlete = {
+          id: 'a_' + Math.random().toString(36).slice(2, 10),
+          profile_id: null,
+          team_id: team.id,
+          display_name: name,
+          initials: name.split(' ').filter(Boolean).map(s => s[0]).join('').slice(0, 2).toUpperCase() || 'HZ',
+          age: options.athlete_age ? Number(options.athlete_age) : null,
+          position: 'all-around',
+          photo_color: '#F97FAC',
+          joined_at: new Date().toISOString().slice(0, 10),
+        };
+        data.athletes = [...(data.athletes || []), athlete];
+        emit('athletes', { eventType: 'INSERT', new: athlete, old: null });
+      }
+      if (!parent || !athlete) return { data: null, error: new Error('Choose a parent and athlete.') };
+      const link = { parent_id: parent.id, athlete_id: athlete.id, relation, is_primary: true, created_at: new Date().toISOString() };
+      data.parent_links = [
+        ...(data.parent_links || []).filter(l => !(l.parent_id === parent.id && l.athlete_id === athlete.id)),
+        link,
+      ];
+      save(data);
+      emit('parent_links', { eventType: 'INSERT', new: link, old: null });
+      return { data: { ok: true, parent, athlete, parent_link: link }, error: null };
+    },
+    async createProgramInvite(input = {}) {
+      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) return callLaunchFunction('create_invite', input);
+      const current = getSession();
+      const code = Math.random().toString(36).slice(2, 6).toUpperCase() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
+      const invite = {
+        id: 'inv_' + Math.random().toString(36).slice(2, 10),
+        program_id: current?.profile?.program_id,
+        label: input.label || null,
+        role: input.role || 'parent',
+        email: input.email || null,
+        max_uses: Number(input.max_uses) || 1,
+        uses_count: 0,
+        expires_at: new Date(Date.now() + (Number(input.expires_in_days) || 14) * 86400000).toISOString(),
+        created_at: new Date().toISOString(),
+        code,
+      };
+      data.program_invites = [invite, ...(data.program_invites || [])];
+      save(data);
+      emit('program_invites', { eventType: 'INSERT', new: invite, old: null });
+      return { data: { ok: true, invite, code, url: window.location.origin + '/#invite/' + encodeURIComponent(code) }, error: null };
+    },
+    async createAssistedRegistration(input = {}) {
+      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) {
+        const out = await callLaunchFunction('create_assisted_registration', input);
+        if (!out.error && out.data?.registration) {
+          data.registrations = [out.data.registration, ...(data.registrations || []).filter(r => r.id !== out.data.registration.id)];
+          if (out.data.invite) data.program_invites = [out.data.invite, ...(data.program_invites || []).filter(i => i.id !== out.data.invite.id)];
+          save(data);
+          emit('registrations', { eventType: 'INSERT', new: out.data.registration, old: null });
+          if (out.data.invite) emit('program_invites', { eventType: 'INSERT', new: out.data.invite, old: null });
+        }
+        return out;
+      }
+      const current = getSession();
+      const now = new Date().toISOString();
+      const code = Math.random().toString(36).slice(2, 6).toUpperCase() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
+      const registration = {
+        id: 'reg_' + Math.random().toString(36).slice(2, 10),
+        program_id: current?.profile?.program_id || input.program_id || null,
+        class_id: input.class_id || null,
+        athlete_name: input.athlete_name || '',
+        athlete_dob: input.athlete_dob || null,
+        parent_name: input.parent_name || '',
+        parent_email: normalizeEmail(input.parent_email),
+        parent_phone: input.parent_phone || null,
+        level_interest: input.level_interest || null,
+        source: input.source || 'staff_assisted_meet_greet',
+        status: 'pending',
+        notes: input.notes || null,
+        payment_status: 'none',
+        intake_metadata: { staff_assisted: true, assisted_by: current?.profile?.id || null, assisted_at: now, interest: input.interest || null },
+        created_at: now,
+      };
+      const invite = {
+        id: 'inv_' + Math.random().toString(36).slice(2, 10),
+        program_id: registration.program_id,
+        label: `Assisted registration · ${registration.athlete_name}`,
+        role: 'parent',
+        email: registration.parent_email,
+        max_uses: 1,
+        uses_count: 0,
+        expires_at: new Date(Date.now() + 30 * 86400000).toISOString(),
+        created_at: now,
+      };
+      data.registrations = [registration, ...(data.registrations || [])];
+      data.program_invites = [invite, ...(data.program_invites || [])];
+      save(data);
+      emit('registrations', { eventType: 'INSERT', new: registration, old: null });
+      emit('program_invites', { eventType: 'INSERT', new: invite, old: null });
+      return { data: { ok: true, registration, invite, code, url: window.location.origin + '/#invite/' + encodeURIComponent(code), email_attempted: false }, error: null };
+    },
+    async registrationPaymentInfo(registrationId) {
+      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) {
+        return callLaunchFunction('registration_payment_info', { registration_id: registrationId }, { allowAnon: true });
+      }
+      const reg = (data.registrations || []).find(r => r.id === registrationId);
+      if (!reg) return { data: null, error: new Error('Registration not found.') };
+      const klass = reg.class_id ? (data.program_classes || []).find(c => c.id === reg.class_id) : null;
+      const win = reg.window_id ? (data.registration_windows || []).find(w => w.id === reg.window_id) : null;
+      const program = (data.programs || []).find(p => p.id === reg.program_id) || data.programs?.[0] || {};
+      const item = klass || (win ? { id: win.id, program_id: reg.program_id, name: win.title, price_cents: Math.round(Number(win.fee_amount || 0) * 100) } : null);
+      if (!item?.price_cents) return { data: null, error: new Error('This registration does not have a payable amount yet.') };
+      return { data: { ok: true, registration: reg, item, program: { ...program, public_checkout_enabled: true }, amount_cents: item.price_cents, currency: 'USD' }, error: null };
+    },
+    async sendPaymentReminders(registrationIds = []) {
+      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) {
+        return callLaunchFunction('send_payment_reminders', { registration_ids: registrationIds }, { timeoutMs: 45000 });
+      }
+      return { data: { ok: true, sent: 0, skipped: registrationIds.length || 0, failed: 0, email_configured: false, results: [] }, error: null };
+    },
+    async createScheduleSession(input = {}) {
+      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) {
+        const out = await callLaunchFunction('create_schedule_session', input);
+        if (!out.error && out.data?.session) {
+          data.sessions = [out.data.session, ...(data.sessions || []).filter(s => s.id !== out.data.session.id)];
+          save(data);
+          emit('sessions', { eventType: 'INSERT', new: out.data.session, old: null });
+        }
+        return out;
+      }
+      const row = { ...input, id: 'sess_' + Math.random().toString(36).slice(2, 10), scheduled: true, created_at: new Date().toISOString() };
+      data.sessions = [row, ...(data.sessions || [])];
+      save(data);
+      emit('sessions', { eventType: 'INSERT', new: row, old: null });
+      return { data: { ok: true, session: row }, error: null };
+    },
+    async updateScheduleSession(sessionId, patch = {}) {
+      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) {
+        const out = await callLaunchFunction('update_schedule_session', { session_id: sessionId, ...patch });
+        if (!out.error && out.data?.session) {
+          data.sessions = (data.sessions || []).map(s => s.id === sessionId ? out.data.session : s);
+          save(data);
+          emit('sessions', { eventType: 'UPDATE', new: out.data.session, old: null });
+        }
+        return out;
+      }
+      const row = (data.sessions || []).find(s => s.id === sessionId);
+      if (!row) return { data: null, error: new Error('Session not found.') };
+      Object.assign(row, patch, { scheduled: true });
+      save(data);
+      emit('sessions', { eventType: 'UPDATE', new: row, old: null });
+      return { data: { ok: true, session: row }, error: null };
+    },
+    async deleteScheduleSession(sessionId) {
+      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) {
+        const out = await callLaunchFunction('delete_schedule_session', { session_id: sessionId });
+        if (!out.error) {
+          const old = (data.sessions || []).find(s => s.id === sessionId) || null;
+          data.sessions = (data.sessions || []).filter(s => s.id !== sessionId);
+          save(data);
+          emit('sessions', { eventType: 'DELETE', new: null, old });
+        }
+        return out;
+      }
+      const old = (data.sessions || []).find(s => s.id === sessionId) || null;
+      data.sessions = (data.sessions || []).filter(s => s.id !== sessionId);
+      save(data);
+      emit('sessions', { eventType: 'DELETE', new: null, old });
+      return { data: { ok: true, session_id: sessionId }, error: null };
+    },
+    async updateRegistrationDecision(registrationId, status, notes = '', extra = {}) {
+      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) {
+        const out = await callLaunchFunction('update_registration_decision', { registration_id: registrationId, status, notes, ...extra });
+        if (!out.error && out.data?.registration) {
+          data.registrations = (data.registrations || []).map(r => r.id === out.data.registration.id ? out.data.registration : r);
+          save(data);
+          emit('registrations', { eventType: 'UPDATE', new: out.data.registration, old: null });
+        }
+        return out;
+      }
+      const patch = { status, notes, decision_reason: extra.decision_reason || null, decided_at: new Date().toISOString(), decided_by: getSession()?.profile?.id || null };
+      if (extra.class_id !== undefined) patch.class_id = extra.class_id || null;
+      const row = (data.registrations || []).find(r => r.id === registrationId);
+      if (!row) return { data: null, error: new Error('Registration not found.') };
+      Object.assign(row, patch);
+      save(data);
+      emit('registrations', { eventType: 'UPDATE', new: row, old: null });
+      return { data: { ok: true, registration: row }, error: null };
+    },
+    async updateRegistrationNotes(registrationId, notes = '') {
+      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) {
+        const out = await callLaunchFunction('update_registration_notes', { registration_id: registrationId, notes });
+        if (!out.error && out.data?.registration) {
+          data.registrations = (data.registrations || []).map(r => r.id === out.data.registration.id ? out.data.registration : r);
+          save(data);
+          emit('registrations', { eventType: 'UPDATE', new: out.data.registration, old: null });
+        }
+        return out;
+      }
+      const row = (data.registrations || []).find(r => r.id === registrationId);
+      if (!row) return { data: null, error: new Error('Registration not found.') };
+      Object.assign(row, { notes, updated_at: new Date().toISOString() });
+      save(data);
+      emit('registrations', { eventType: 'UPDATE', new: row, old: null });
+      return { data: { ok: true, registration: row }, error: null };
+    },
+    async redeemProgramInvite(code) {
+      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) {
+        try {
+          const token = await liveToken();
+          if (!token) throw new Error('Sign in first.');
+          const res = await fetch(window.HZ_FN_BASE + '/functions/v1/redeem-invite-v1', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + token,
+              'apikey': window.HZ_ANON_KEY,
+            },
+            body: JSON.stringify({ code }),
+          });
+          const payload = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(payload?.error || 'Invite redemption failed.');
+          if (payload?.profile) {
+            upsertLocalProfile(payload.profile);
+            const raw = getSession();
+            if (raw) setSession(wrapSession(raw, payload.profile, raw.mode));
+          }
+          return { data: payload, error: null };
+        } catch (err) {
+          return { data: null, error: err instanceof Error ? err : new Error(String(err)) };
+        }
+      }
+      return { data: null, error: new Error('Invite redemption needs live auth.') };
+    },
+    async createMessageThread(input = {}) {
+      const current = getSession();
+      if (!current?.profile?.id) return { data: null, error: new Error('Sign in first.') };
+      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) {
+        const out = await callLaunchFunction('create_message_thread', input);
+        if (!out.error && out.data?.thread) {
+          data.message_threads = [out.data.thread, ...(data.message_threads || []).filter(t => t.id !== out.data.thread.id)];
+          data.thread_members = [
+            ...(data.thread_members || []).filter(m => !(out.data.members || []).some(next => next.thread_id === m.thread_id && next.profile_id === m.profile_id)),
+            ...(out.data.members || []),
+          ];
+          data.profiles = [
+            ...(data.profiles || []).filter(p => !(out.data.profiles || []).some(next => next.id === p.id)),
+            ...(out.data.profiles || []),
+          ];
+          save(data);
+          emit('message_threads', { eventType: 'INSERT', new: out.data.thread, old: null });
+          (out.data.members || []).forEach(member => emit('thread_members', { eventType: 'INSERT', new: member, old: null }));
+        }
+        return out;
+      }
+      const thread = {
+        id: 'thread_' + Math.random().toString(36).slice(2, 10),
+        program_id: current.profile.program_id || null,
+        kind: 'dm',
+        title: input.title || 'Message staff',
+        created_by: current.profile.id,
+        created_at: new Date().toISOString(),
+        last_message_at: new Date().toISOString(),
+      };
+      const member = { thread_id: thread.id, profile_id: current.profile.id, role_in_thread: 'owner', joined_at: new Date().toISOString() };
+      data.message_threads = [thread, ...(data.message_threads || [])];
+      data.thread_members = [member, ...(data.thread_members || [])];
+      save(data);
+      emit('message_threads', { eventType: 'INSERT', new: thread, old: null });
+      emit('thread_members', { eventType: 'INSERT', new: member, old: null });
+      return { data: { ok: true, thread, members: [member], profiles: [current.profile] }, error: null };
     },
     async createChildAthlete(input = {}) {
       const current = getSession();
@@ -1343,7 +2095,12 @@
     _supportsMagicLink: hasRealAuth,
     _mode: () => hasRealAuth() ? 'live' : 'prototype',
     _lastEmail: lastEmail,
-    _viewRoles: () => [...VIEW_AS_ROLES],
+    _viewRoles: () => {
+      const current = getSession();
+      return current?.mode === 'prototype'
+        ? [...VIEW_AS_ROLES]
+        : allowedViewRoles(current, current?.actualProfile || current?.profile);
+    },
   };
 
   // ═══════════════════════════════════════════════════════════════════════

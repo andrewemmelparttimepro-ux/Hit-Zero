@@ -11,9 +11,23 @@
     <meta name="theme-color" content="#0B0D12" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <!-- Product analytics: keep the authenticated app masked in Clarity. -->
+    <script>
+      (function () {
+        var host = window.location.hostname || '';
+        if (/^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(host)) return;
+        window.clarity = window.clarity || function () {
+          (window.clarity.q = window.clarity.q || []).push(arguments);
+        };
+        var script = document.createElement('script');
+        script.async = true;
+        script.src = 'https://www.clarity.ms/tag/wt6hw0o9i1';
+        document.head.appendChild(script);
+      })();
+    </script>
     <title>Hit Zero</title>
   </head>
-  <body>
+  <body data-clarity-mask="true">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

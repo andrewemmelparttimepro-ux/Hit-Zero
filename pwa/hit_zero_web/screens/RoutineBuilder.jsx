@@ -53,7 +53,7 @@ const ASSIGNMENT_ROLES = [
 ];
 
 const MCA_SHOWCASE_SEQUENCE = [
-  { id: 'm', formationId: 'rf_mca_showcase_m', letter: 'M', count: 1, label: 'MCA 1 - opening M', variant: 'wide', note: 'Opening 8-count: snap into a clean wide M for Magic.' },
+  { id: 'm', formationId: 'rf_mca_showcase_m', letter: 'M', count: 1, label: 'MCA 1 - opening M', variant: 'wide', note: 'Opening 8-count: snap into a clean wide M for the program.' },
   { id: 'c', formationId: 'rf_mca_showcase_c', letter: 'C', count: 5, label: 'MCA 2 - standing C', variant: 'front', note: 'Standing tumbling phrase: travel into a clear C for City.' },
   { id: 'a', formationId: 'rf_mca_showcase_a', letter: 'A', count: 11, label: 'MCA 3 - stunt A', variant: 'triangle', note: 'Stunt entry phrase: hit an A-shaped triangle for Allstars.' },
   { id: 'm2', formationId: 'rf_mca_showcase_m2', letter: 'M', count: 19, label: 'MCA 4 - jump M', variant: 'compact', note: 'Jump phrase: reset into a tighter M so the floor breathes.' },
@@ -351,7 +351,7 @@ function buildRemixBrief({ routine, team, audio, license, countMap, remixRequest
   lines.push(remixRequest?.style_prompt || 'High-energy cheer mix with clean 8-count accents, confident youth-friendly voiceover, and clear stunt/pyramid hits.');
   lines.push('');
   lines.push('Voiceover copy:');
-  lines.push(remixRequest?.voiceover_script || 'Magic City. Hit Zero. Clean counts, big smiles, no panic.');
+  lines.push(remixRequest?.voiceover_script || 'Hit Zero. Clean counts, big energy, no panic.');
   lines.push('');
   lines.push('Count cue map:');
   [...(routine.sections || [])].sort((a, b) => a.start_count - b.start_count).forEach((sec) => {
@@ -568,7 +568,186 @@ function validateRoutinePlan({ routine, countMap, license, athletes }) {
   return issues.slice(0, 8);
 }
 
-function RoutineBuilder({ snap, navigate, pushToast }) {
+function RoutineBuilder({ snap, session, navigate, pushToast }) {
+  const role = session?.profile?.role || session?.actualProfile?.role || '';
+  if (role === 'athlete' || role === 'parent') {
+    return <AthleteRoutineView snap={snap} session={session} navigate={navigate}/>;
+  }
+  return <CoachRoutineBuilder snap={snap} navigate={navigate} pushToast={pushToast}/>;
+}
+
+function AthleteRoutineView({ snap, session, navigate }) {
+  const scope = window.HZviewerScope ? window.HZviewerScope(snap, session) : null;
+  const role = scope?.role || session?.profile?.role || '';
+  const visibleAthletes = scope?.visibleAthletes || [];
+  const [selectedId, setSelectedId] = React.useState(null);
+  const athlete = React.useMemo(() => {
+    if (role === 'athlete') return scope?.ownAthlete || visibleAthletes[0] || null;
+    if (selectedId) return visibleAthletes.find(a => a.id === selectedId) || null;
+    return visibleAthletes.length === 1 ? visibleAthletes[0] : null;
+  }, [role, scope?.ownAthleteId, visibleAthletes.length, selectedId, snap._tick]);
+
+  const routine = React.useMemo(() => window.HZsel?.routine?.() || (snap.routines || [])[0] || null, [snap._tick]);
+  const team = React.useMemo(() => window.HZsel?.team?.() || (snap.teams || [])[0] || null, [snap._tick]);
+
+  if (!scope || !visibleAthletes.length) {
+    return (
+      <EmptyState
+        icon="routine"
+        title="Routine unlocks after athlete linking."
+        body="This view only shows routines for athletes linked to this account."
+        action={role === 'parent' && <button className="hz-btn hz-btn-primary" onClick={() => navigate && navigate('parent')}>Go to family home</button>}
+      />
+    );
+  }
+
+  if (!athlete && visibleAthletes.length > 1) {
+    return (
+      <div>
+        <SectionHeading eyebrow="My Routine" title="Choose an athlete."/>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+          {visibleAthletes.map(a => (
+            <button key={a.id} className="hz-card hz-nosel" onClick={() => setSelectedId(a.id)} style={{ padding: 18, textAlign: 'left', color: '#fff', cursor: 'pointer' }}>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                <Avatar name={a.display_name} initials={a.initials} color={a.photo_color} src={a.photo_url} size={42}/>
+                <div>
+                  <div style={{ fontWeight: 800 }}>{a.display_name}</div>
+                  <div style={{ color: 'var(--hz-dim)', fontSize: 12 }}>{a.position || a.role || 'Athlete'}</div>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (!routine) {
+    return (
+      <EmptyState
+        icon="routine"
+        title="No routine released yet."
+        body="When coaches publish routine counts and formations, this view will show the athlete packet."
+      />
+    );
+  }
+
+  const formations = [...(routine.formations || [])].sort((a, b) => (a.start_count || 0) - (b.start_count || 0));
+  const sections = [...(routine.sections || [])].sort((a, b) => (a.start_count || 0) - (b.start_count || 0));
+  const formationById = new Map(formations.map(f => [f.id, f]));
+  const sectionsById = new Map(sections.map(s => [s.id, s]));
+  const skillById = new Map((snap.skills || []).map(s => [s.id, s]));
+  const athletePositions = (routine.positions || [])
+    .filter(p => p.athlete_id === athlete?.id)
+    .map(p => ({ position: p, formation: formationById.get(p.formation_id) }))
+    .filter(row => row.formation)
+    .sort((a, b) => (a.formation.start_count || 0) - (b.formation.start_count || 0));
+  const athleteAssignments = (routine.assignments || [])
+    .filter(a => a.athlete_id === athlete?.id)
+    .sort((a, b) => (a.count_index || 0) - (b.count_index || 0));
+  const hasPacket = athletePositions.length > 0 || athleteAssignments.length > 0;
+  const countRange = sections.length
+    ? `${sections[0].start_count || 1}-${sections[sections.length - 1].end_count || sections[sections.length - 1].start_count || '?'}`
+    : formations.length
+      ? `${formations[0].start_count || 1}-${formations[formations.length - 1].end_count || formations[formations.length - 1].start_count || '?'}`
+      : 'Pending';
+
+  return (
+    <div>
+      <SectionHeading
+        eyebrow={`${athlete?.display_name || 'Athlete'} - read-only packet`}
+        title="My routine."
+        trailing={visibleAthletes.length > 1 && (
+          <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={() => setSelectedId(null)}>Switch athlete</button>
+        )}
+      />
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 18 }}>
+        <StatTile label="Packet" value={hasPacket ? 'Live' : 'Pending'} sub={`${routine.name || 'Routine'}${team?.name ? ' - ' + team.name : ''}`} size="sm" accent="var(--hz-teal)"/>
+        <StatTile label="Counts" value={countRange} sub={`${sections.length || 0} sections`} size="sm"/>
+        <StatTile label="Formations" value={athletePositions.length} sub={`${formations.length || 0} team pictures`} size="sm" accent="var(--hz-pink)"/>
+        <StatTile label="Assignments" value={athleteAssignments.length} sub="coach-owned roles" size="sm" accent="var(--hz-amber)"/>
+      </div>
+
+      {!hasPacket && (
+        <EmptyState
+          icon="routine"
+          title="Routine packet not assigned yet."
+          body="Coaches have a routine shell, but this athlete does not have released counts or formation positions yet."
+        />
+      )}
+
+      {athletePositions.length > 0 && (
+        <div className="hz-card" style={{ padding: 20, marginBottom: 18 }}>
+          <div className="hz-eyebrow" style={{ marginBottom: 12 }}>Formation positions</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+            {athletePositions.map(({ position, formation }) => (
+              <div key={position.id} style={{ border: '1px solid var(--hz-line)', borderRadius: 12, padding: 14, background: 'rgba(255,255,255,0.035)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontWeight: 800 }}>{formation.label || 'Formation'}</div>
+                    <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>Counts {formation.start_count || '?'}-{formation.end_count || formation.start_count || '?'}</div>
+                  </div>
+                  {position.role && <Pill tone="teal">{position.role}</Pill>}
+                </div>
+                <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, color: 'var(--hz-dim)', fontSize: 12 }}>
+                  <div><b style={{ color: '#fff' }}>{Math.round(Number(position.x || 0) * 100)}%</b> across</div>
+                  <div><b style={{ color: '#fff' }}>{Math.round(Number(position.y || 0) * 100)}%</b> depth</div>
+                </div>
+                {formation.notes && <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 10, lineHeight: 1.45 }}>{formation.notes}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {athleteAssignments.length > 0 && (
+        <div className="hz-card" style={{ padding: 20, marginBottom: 18 }}>
+          <div className="hz-eyebrow" style={{ marginBottom: 12 }}>Assigned moments</div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {athleteAssignments.map(a => {
+              const section = sectionsById.get(a.section_id);
+              const skill = skillById.get(a.skill_id);
+              return (
+                <div key={a.id} style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: 12, padding: 12, borderRadius: 12, background: 'rgba(255,255,255,0.035)', border: '1px solid var(--hz-line)' }}>
+                  <div className="hz-eyebrow">Count {a.count_index || section?.start_count || '?'}</div>
+                  <div>
+                    <div style={{ fontWeight: 800 }}>{section?.label || section?.section_type || 'Routine moment'}</div>
+                    <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>
+                      {[a.role, skill?.name].filter(Boolean).join(' - ') || 'Coach assignment'}
+                    </div>
+                    {a.notes && <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 8 }}>{a.notes}</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="hz-card" style={{ padding: 20 }}>
+        <div className="hz-eyebrow" style={{ marginBottom: 12 }}>Routine sections</div>
+        {sections.length === 0 ? (
+          <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>No count sections have been released.</div>
+        ) : (
+          <div style={{ display: 'grid', gap: 8 }}>
+            {sections.map(s => (
+              <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '9px 0', borderBottom: '1px solid var(--hz-line)' }}>
+                <div>
+                  <div style={{ fontWeight: 700 }}>{s.label || SECTION_TYPES.find(t => t.id === s.section_type)?.label || s.section_type || 'Section'}</div>
+                  {s.notes && <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>{s.notes}</div>}
+                </div>
+                <div style={{ color: 'var(--hz-dim)', fontSize: 12, whiteSpace: 'nowrap' }}>Counts {s.start_count || '?'}-{s.end_count || s.start_count || '?'}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CoachRoutineBuilder({ snap, navigate, pushToast }) {
   const routine = React.useMemo(() => window.HZsel.routine(), [snap._tick]);
   const team = React.useMemo(() => window.HZsel.team(), [snap._tick]);
   const [selected, setSelected] = React.useState(null);
@@ -585,7 +764,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
     workflow_type: 'provider_handoff',
     title: '',
     style_prompt: 'Bright, energetic all-star cheer mix with clear 8-count accents, sharp stunt hits, playful youth-friendly voiceover, and a confident dance finish.',
-    voiceover_script: 'Magic City. Hit Zero. Tiny team, huge energy.',
+    voiceover_script: 'Hit Zero. Tiny team, huge energy.',
     provider_name: '',
     provider_contact: '',
   });
@@ -779,6 +958,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
       if (cancelled) return;
       if (formations.length) {
         await window.HZdb.from('routine_formations').upsert(formations, { onConflict: 'id' });
+        window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table: 'routine_formations', action: 'upsert' } }));
         await remoteInsert('routine_formations', formations);
       }
 
@@ -805,6 +985,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
       if (cancelled) return;
       if (positions.length) {
         await window.HZdb.from('routine_positions').upsert(positions, { onConflict: 'id' });
+        window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table: 'routine_positions', action: 'upsert' } }));
         await remoteInsert('routine_positions', positions);
       }
     };
@@ -813,7 +994,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
     return () => { cancelled = true; };
   }, [routine?.id, routine?.length_counts, snap._tick]);
 
-  if (!routine) return <EmptyState icon="routine" title="No routine yet" body="Start a routine for Magic."/>;
+  if (!routine) return <EmptyState icon="routine" title="No routine yet" body="Start a routine for this program."/>;
 
   const predicted = window.HZsel.predictedScore();
   const comp = window.HZsel.daysToComp();
@@ -1118,6 +1299,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
           if (worker?.job) {
             finalJob = worker.job;
             await window.HZdb.from('routine_audio_analysis_jobs').update(finalJob).eq('id', finalJob.id);
+            window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table: 'routine_audio_analysis_jobs', action: 'update' } }));
           }
         } catch (workerErr) {
           finalJob = { ...job, status: 'ready', error_message: null, result_payload: analysis, updated_at: new Date().toISOString() };
@@ -1633,7 +1815,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
       return (name && raw.includes(name)) || (first.length > 2 && raw.includes(first)) || (initials && raw.includes(initials));
     });
     if (matched.length) return matched;
-    if (/\b(all|everyone|everybody|team|kids|girls|athletes)\b/i.test(text)) return athletes;
+    if (/\b(all|everyone|everybody|team|athletes)\b/i.test(text)) return athletes;
     return athletes.slice(0, Math.min(quickAthleteCount || 8, athletes.length));
   };
 
@@ -2453,7 +2635,7 @@ function RoutineBuilder({ snap, navigate, pushToast }) {
               })}
               {!liveFormationPositions.length && (
                 <div className="routine-live-empty">
-                  Select a section and add athletes to its formation board. This space becomes the coach view for where every girl should be on the music.
+                  Select a section and add athletes to its formation board. This space becomes the coach view for where every athlete should be on the music.
                 </div>
               )}
             </div>

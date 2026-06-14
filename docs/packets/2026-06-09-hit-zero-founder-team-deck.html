@@ -1,0 +1,1379 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hit Zero — Founder Team Deck</title>
+    <link rel="stylesheet" href="value-exchange-assets/fonts/fonts.css" />
+    <style>
+      :root {
+        /* MCA brand tokens (mcaminot.com) */
+        --teal: #27cfd7;
+        --teal-dim: #1a8f94;
+        --teal-glow: #81ffff;
+        --pink: #f97fac;
+        --pink-dim: #b8567a;
+        --pink-glow: #ffb0f9;
+        --cream: #fff6f0;
+        --cream-2: #f4e8dc;
+
+        --plum: #2a0b1f;
+        --plum-2: #1a0612;
+        --ink: #0e0710;
+        --ink-2: #1a0f18;
+        --ink-3: #261622;
+
+        --text: #ffffff;
+        --dim: rgba(255, 255, 255, 0.66);
+        --dimmer: rgba(255, 255, 255, 0.42);
+        --on-grad: #14010a;
+
+        --line: rgba(255, 255, 255, 0.1);
+        --line-2: rgba(255, 255, 255, 0.18);
+        --line-strong: rgba(255, 255, 255, 0.32);
+
+        --serif: "Fraunces", "Times New Roman", serif;
+        --sans: "Inter", -apple-system, system-ui, sans-serif;
+        --mono: "JetBrains Mono", ui-monospace, monospace;
+
+        --grad: linear-gradient(135deg, var(--teal) 0%, var(--pink) 100%);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        background: #120209;
+        color: var(--text);
+        font-family: var(--sans);
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+
+      .deck {
+        display: grid;
+        gap: 26px;
+        padding: 26px;
+      }
+
+      /* ── Slide shell ──────────────────────────────────────── */
+      .slide {
+        position: relative;
+        width: min(100%, 1280px);
+        aspect-ratio: 16 / 9;
+        margin: 0 auto;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        padding: 46px 64px 40px;
+        color: var(--text);
+        background:
+          radial-gradient(900px 600px at 82% -12%, rgba(249, 127, 172, 0.22), transparent 60%),
+          radial-gradient(820px 560px at -8% 28%, rgba(39, 207, 215, 0.16), transparent 60%),
+          radial-gradient(680px 520px at 52% 116%, rgba(249, 127, 172, 0.12), transparent 60%),
+          linear-gradient(165deg, var(--plum) 0%, var(--ink) 60%, var(--plum-2) 100%);
+        box-shadow: 0 28px 72px rgba(8, 2, 8, 0.55);
+      }
+
+      /* alt background rhythm */
+      .slide.band {
+        background:
+          radial-gradient(820px 560px at 12% -10%, rgba(39, 207, 215, 0.2), transparent 58%),
+          radial-gradient(760px 520px at 92% 80%, rgba(249, 127, 172, 0.22), transparent 58%),
+          linear-gradient(180deg, var(--ink-2) 0%, var(--ink) 48%, var(--plum-2) 100%);
+      }
+
+      /* ── Header ───────────────────────────────────────────── */
+      .topbar {
+        flex: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        z-index: 4;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+      }
+
+      .brand img {
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+      }
+
+      .brand b {
+        font-family: var(--serif);
+        font-style: italic;
+        font-weight: 800;
+        font-size: 21px;
+        letter-spacing: -0.03em;
+        line-height: 1;
+      }
+
+      .kicker {
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--teal);
+        white-space: nowrap;
+      }
+
+      .kicker.pink {
+        color: var(--pink);
+      }
+
+      .pageno {
+        position: absolute;
+        right: 34px;
+        bottom: 24px;
+        z-index: 5;
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.16em;
+        color: var(--dimmer);
+      }
+
+      /* ── Body ─────────────────────────────────────────────── */
+      .body {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding-top: 30px;
+      }
+
+      .body.top {
+        justify-content: flex-start;
+        padding-top: 40px;
+      }
+
+      /* ── Type ─────────────────────────────────────────────── */
+      .display {
+        font-family: var(--serif);
+        font-style: italic;
+        font-weight: 800;
+        letter-spacing: -0.045em;
+        line-height: 0.94;
+        font-variation-settings: "opsz" 144;
+        margin: 0;
+      }
+
+      h1.display {
+        font-size: 84px;
+        max-width: 14ch;
+      }
+
+      h2.display {
+        font-size: 56px;
+        max-width: 19ch;
+      }
+
+      .eyebrow {
+        margin: 0 0 18px;
+        font-family: var(--sans);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--pink);
+      }
+
+      .eyebrow.teal {
+        color: var(--teal);
+      }
+
+      .grad {
+        background: var(--grad);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+
+      .lede {
+        max-width: 46ch;
+        margin: 22px 0 0;
+        font-size: 22px;
+        line-height: 1.4;
+        color: var(--dim);
+      }
+
+      .foot {
+        margin: 0;
+        font-family: var(--sans);
+        font-size: 14px;
+        line-height: 1.45;
+        color: var(--dimmer);
+      }
+
+      .body .foot.pin {
+        margin-top: auto;
+        padding-top: 26px;
+      }
+
+      /* ── Pills ────────────────────────────────────────────── */
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 6px 13px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--line-2);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--text);
+      }
+
+      .pill.teal {
+        background: rgba(39, 207, 215, 0.14);
+        border-color: rgba(39, 207, 215, 0.34);
+        color: var(--teal);
+      }
+
+      .pill.pink {
+        background: rgba(249, 127, 172, 0.14);
+        border-color: rgba(249, 127, 172, 0.36);
+        color: var(--pink);
+      }
+
+      .pill .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--teal);
+        box-shadow: 0 0 0 3px rgba(39, 207, 215, 0.22);
+      }
+
+      /* ── Cards ────────────────────────────────────────────── */
+      .grid {
+        display: grid;
+        gap: 18px;
+      }
+
+      .g3 {
+        grid-template-columns: repeat(3, 1fr);
+      }
+
+      .g4 {
+        grid-template-columns: repeat(4, 1fr);
+      }
+
+      .g2 {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .card {
+        position: relative;
+        overflow: hidden;
+        padding: 24px;
+        border-radius: 20px;
+        background: var(--ink-2);
+        border: 1px solid var(--line);
+      }
+
+      .card.glow {
+        background: linear-gradient(180deg, rgba(39, 207, 215, 0.08), rgba(249, 127, 172, 0.06)),
+          var(--ink-2);
+        border-color: var(--line-2);
+      }
+
+      .card h3 {
+        margin: 0;
+        font-family: var(--sans);
+        font-size: 21px;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+        line-height: 1.12;
+      }
+
+      .card p {
+        margin: 10px 0 0;
+        font-size: 15.5px;
+        line-height: 1.45;
+        color: var(--dim);
+      }
+
+      .card .label {
+        display: block;
+        margin: 0 0 12px;
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--teal);
+      }
+
+      .card .label.pink {
+        color: var(--pink);
+      }
+
+      .card .num {
+        display: block;
+        margin-bottom: 10px;
+        font-family: var(--serif);
+        font-style: italic;
+        font-weight: 800;
+        font-size: 46px;
+        line-height: 1;
+        color: var(--teal);
+      }
+
+      .card:nth-child(2) .num {
+        color: var(--pink);
+      }
+
+      .card:nth-child(4) .num {
+        color: var(--pink);
+      }
+
+      /* status badge for proof slide */
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        margin-bottom: 14px;
+        padding: 7px 14px;
+        border-radius: 999px;
+        background: rgba(39, 207, 215, 0.12);
+        border: 1px solid rgba(39, 207, 215, 0.3);
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--teal);
+      }
+
+      .status .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--teal);
+        box-shadow: 0 0 0 4px rgba(39, 207, 215, 0.18);
+      }
+
+      .status.ready {
+        background: rgba(249, 127, 172, 0.12);
+        border-color: rgba(249, 127, 172, 0.32);
+        color: var(--pink);
+      }
+
+      .status.ready .dot {
+        background: var(--pink);
+        box-shadow: 0 0 0 4px rgba(249, 127, 172, 0.18);
+      }
+
+      .card code {
+        font-family: var(--mono);
+        font-size: 13.5px;
+        color: var(--cream-2);
+      }
+
+      /* ── Check list ───────────────────────────────────────── */
+      .stack {
+        display: grid;
+        gap: 13px;
+      }
+
+      .check {
+        display: grid;
+        grid-template-columns: 22px 1fr;
+        gap: 13px;
+        align-items: start;
+        font-size: 18px;
+        line-height: 1.34;
+        color: rgba(255, 255, 255, 0.9);
+      }
+
+      .check::before {
+        content: "";
+        width: 16px;
+        height: 16px;
+        margin-top: 4px;
+        border-radius: 5px;
+        background: var(--grad);
+        box-shadow: 0 4px 14px rgba(249, 127, 172, 0.3);
+      }
+
+      /* ── Quote ────────────────────────────────────────────── */
+      .quote {
+        padding: 32px 34px;
+        border-radius: 20px;
+        background: linear-gradient(180deg, rgba(39, 207, 215, 0.1), rgba(249, 127, 172, 0.08)),
+          var(--ink-2);
+        border: 1px solid var(--line-2);
+        font-family: var(--serif);
+        font-style: italic;
+        font-weight: 600;
+        font-size: 27px;
+        line-height: 1.22;
+      }
+
+      .quote span {
+        display: block;
+        margin-top: 18px;
+        font-family: var(--sans);
+        font-style: normal;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--teal);
+      }
+
+      .two-col {
+        display: grid;
+        grid-template-columns: 0.96fr 1.04fr;
+        gap: 36px;
+        align-items: center;
+        margin-top: 34px;
+      }
+
+      /* ── Table ────────────────────────────────────────────── */
+      .table {
+        width: 100%;
+        margin-top: 30px;
+        border-collapse: separate;
+        border-spacing: 0;
+        overflow: hidden;
+        border-radius: 16px;
+        border: 1px solid var(--line-2);
+        font-size: 17px;
+      }
+
+      .table th,
+      .table td {
+        padding: 16px 18px;
+        text-align: right;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .table th:first-child,
+      .table td:first-child {
+        text-align: left;
+      }
+
+      .table thead th {
+        background: rgba(255, 255, 255, 0.04);
+        font-family: var(--mono);
+        font-size: 11.5px;
+        font-weight: 500;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--dim);
+      }
+
+      .table tbody td {
+        font-variant-numeric: tabular-nums;
+        color: rgba(255, 255, 255, 0.86);
+      }
+
+      .table tbody tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .table .scen {
+        font-family: var(--serif);
+        font-style: italic;
+        font-weight: 700;
+        font-size: 20px;
+      }
+
+      .table .scen.teal {
+        color: var(--teal);
+      }
+      .table .scen.pink {
+        color: var(--pink);
+      }
+      .table tbody tr.base td {
+        background: rgba(39, 207, 215, 0.05);
+      }
+
+      .comp-table {
+        margin-top: 24px;
+        font-size: 13px;
+        line-height: 1.34;
+      }
+
+      .comp-table th,
+      .comp-table td {
+        padding: 11px 13px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      .comp-table th:nth-child(1),
+      .comp-table td:nth-child(1) {
+        width: 20%;
+      }
+
+      .comp-table th:nth-child(2),
+      .comp-table td:nth-child(2) {
+        width: 41%;
+      }
+
+      .comp-table th:nth-child(3),
+      .comp-table td:nth-child(3) {
+        width: 39%;
+      }
+
+      .fineprint {
+        font-size: 11px;
+        line-height: 1.35;
+        color: var(--dimmer);
+      }
+
+      .callout {
+        margin-top: 26px;
+        padding: 21px 24px;
+        border-radius: 18px;
+        background: linear-gradient(135deg, rgba(39, 207, 215, 0.13), rgba(249, 127, 172, 0.11));
+        border: 1px solid var(--line-2);
+        font-size: 20px;
+        line-height: 1.35;
+        color: rgba(255, 255, 255, 0.9);
+      }
+
+      .tight-card p {
+        font-size: 14.5px;
+      }
+
+      /* ── Phones ───────────────────────────────────────────── */
+      .visual {
+        position: relative;
+      }
+
+      .phones {
+        display: flex;
+        gap: 18px;
+        justify-content: center;
+        transform: rotate(-3deg);
+      }
+
+      .phone {
+        width: 184px;
+        height: 372px;
+        border: 9px solid #0a0509;
+        border-radius: 36px;
+        background: #08060b;
+        box-shadow: 0 30px 70px rgba(0, 0, 0, 0.5),
+          0 0 0 1px rgba(255, 255, 255, 0.06);
+        overflow: hidden;
+      }
+
+      .phone:nth-child(2) {
+        margin-top: 40px;
+      }
+
+      .screen {
+        height: 100%;
+        padding: 20px 16px;
+        background:
+          radial-gradient(circle at 20% 12%, rgba(39, 207, 215, 0.26), transparent 38%),
+          radial-gradient(circle at 90% 96%, rgba(249, 127, 172, 0.22), transparent 42%),
+          linear-gradient(180deg, var(--ink-2), var(--ink));
+      }
+
+      .notch {
+        width: 60px;
+        height: 6px;
+        margin: 2px auto 20px;
+        border-radius: 99px;
+        background: rgba(255, 255, 255, 0.16);
+      }
+
+      .screen h4 {
+        margin: 0 0 14px;
+        font-family: var(--serif);
+        font-style: italic;
+        font-weight: 700;
+        font-size: 22px;
+        letter-spacing: -0.02em;
+      }
+
+      .ptag {
+        display: inline-flex;
+        align-items: center;
+        margin-bottom: 14px;
+        padding: 5px 11px;
+        border-radius: 999px;
+        background: rgba(39, 207, 215, 0.16);
+        color: var(--teal);
+        font-family: var(--mono);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .prow {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 11px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        font-size: 13px;
+        color: var(--dim);
+      }
+
+      .prow b {
+        font-size: 14px;
+        color: var(--text);
+      }
+
+      .prow b.gd {
+        background: var(--grad);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+
+      /* ── Photo pane ───────────────────────────────────────── */
+      .split {
+        display: grid;
+        grid-template-columns: 1.06fr 0.94fr;
+        gap: 0;
+        flex: 1 1 auto;
+        min-height: 0;
+        margin: 30px -64px -40px 0;
+      }
+
+      .split .left {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding-right: 36px;
+      }
+
+      .photo {
+        position: relative;
+        overflow: hidden;
+        border-radius: 22px 0 0 0;
+      }
+
+      .photo img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .photo::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(90deg, var(--ink) 0%, rgba(14, 7, 16, 0.1) 26%, transparent 50%),
+          linear-gradient(180deg, transparent 40%, rgba(14, 7, 16, 0.55) 100%),
+          radial-gradient(circle at 78% 26%, rgba(39, 207, 215, 0.18), transparent 46%);
+      }
+
+      /* big number block */
+      .bignum {
+        font-family: var(--serif);
+        font-style: italic;
+        font-weight: 900;
+        font-size: 168px;
+        line-height: 0.82;
+        letter-spacing: -0.03em;
+      }
+
+      /* cover */
+      .cover .body {
+        justify-content: flex-end;
+        padding-bottom: 6px;
+      }
+
+      .cover .photo {
+        position: absolute;
+        inset: 0;
+        border-radius: 0;
+        z-index: 0;
+      }
+
+      .cover .photo::after {
+        background:
+          linear-gradient(95deg, var(--ink) 14%, rgba(14, 7, 16, 0.62) 44%, rgba(14, 7, 16, 0.18) 72%),
+          linear-gradient(0deg, var(--plum-2) 4%, transparent 46%),
+          radial-gradient(circle at 86% 24%, rgba(39, 207, 215, 0.26), transparent 44%);
+      }
+
+      .cover .topbar,
+      .cover .body,
+      .cover .pageno {
+        position: relative;
+        z-index: 2;
+      }
+
+      .pillrow {
+        display: flex;
+        gap: 14px;
+        margin-top: 30px;
+      }
+
+      .stat {
+        flex: 0 0 auto;
+        padding: 16px 22px 15px;
+        border-radius: 16px;
+        background: rgba(14, 7, 16, 0.5);
+        border: 1px solid var(--line-2);
+        backdrop-filter: blur(6px);
+      }
+
+      .stat b {
+        display: block;
+        font-family: var(--serif);
+        font-style: italic;
+        font-weight: 800;
+        font-size: 30px;
+        line-height: 1;
+      }
+
+      .stat span {
+        display: block;
+        margin-top: 7px;
+        font-family: var(--mono);
+        font-size: 10.5px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--dim);
+      }
+
+      /* closing */
+      .closing .body {
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+      }
+
+      .closing .logo {
+        width: 84px;
+        height: 84px;
+        border-radius: 20px;
+        margin-bottom: 24px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
+      }
+
+      .closing h2.display {
+        max-width: 22ch;
+      }
+
+      .closing .lede {
+        max-width: 60ch;
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      /* ── Print ────────────────────────────────────────────── */
+      @media print {
+        @page {
+          size: 13.333in 7.5in;
+          margin: 0;
+        }
+
+        html,
+        body {
+          background: #fff;
+        }
+
+        .deck {
+          display: block;
+          padding: 0;
+          gap: 0;
+        }
+
+        .slide {
+          width: 13.333in;
+          height: 7.5in;
+          margin: 0;
+          box-shadow: none;
+          break-after: page;
+          page-break-after: always;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+
+        .slide:last-child {
+          break-after: auto;
+          page-break-after: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="deck">
+      <!-- 01 — Cover -->
+      <section class="slide cover">
+        <div class="photo">
+          <img src="value-exchange-assets/mca-team.jpeg" alt="Magic City Athletics owners and coaches" />
+        </div>
+        <div class="topbar">
+          <div class="brand">
+            <img src="value-exchange-assets/hitzero-icon.svg" alt="" />
+            <b>Hit Zero</b>
+          </div>
+          <div class="kicker">Private founder-team conversation</div>
+        </div>
+        <div class="body">
+          <p class="eyebrow teal">For Carissa</p>
+          <h1 class="display">Help make the first <span class="grad">10 gyms</span> real.</h1>
+          <p class="lede">
+            Magic City Athletics is live. Hit Zero is live. Carissa is already close to
+            the first real user pain. The open question is whether she wants to help sell
+            something Andrew has already built.
+          </p>
+          <div class="pillrow">
+            <div class="stat"><b>Carissa</b><span>First user voice</span></div>
+            <div class="stat"><b>+9</b><span>The first milestone</span></div>
+            <div class="stat"><b>10</b><span>Then we reassess</span></div>
+          </div>
+        </div>
+        <div class="pageno">01 / 15</div>
+      </section>
+
+      <!-- 02 — Honest origin -->
+      <section class="slide band">
+        <div class="topbar">
+          <div class="brand">
+            <img src="value-exchange-assets/hitzero-icon.svg" alt="" />
+            <b>Hit Zero</b>
+          </div>
+          <div class="kicker">The honest origin</div>
+        </div>
+        <div class="body">
+          <h2 class="display">The story that sells is not<br />&ldquo;Andrew built software.&rdquo;</h2>
+          <div class="two-col">
+            <div class="quote">
+              A real cheer gym had the problem. A real user started living in the
+              product. Now the product needs someone credible enough to open doors.
+              <span>That is a story gym owners can feel.</span>
+            </div>
+            <div class="stack">
+              <div class="check">
+                Gym owners trust people who understand the chaos: team seasons,
+                practices, payment follow-up, parent questions, and staff handoffs.
+              </div>
+              <div class="check">
+                Carissa can sell from lived experience and user pain, not generic
+                software jargon.
+              </div>
+              <div class="check">
+                Andrew stays where he is most valuable: product, demos, onboarding,
+                support, assets, and fast execution.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="pageno">02 / 15</div>
+      </section>
+
+      <!-- 03 — Proof in hand -->
+      <section class="slide">
+        <div class="topbar">
+          <div class="brand">
+            <img src="value-exchange-assets/hitzero-icon.svg" alt="" />
+            <b>Hit Zero</b>
+          </div>
+          <div class="kicker">Proof already in hand</div>
+        </div>
+        <div class="body top">
+          <h2 class="display">Not a concept. Not a deck<br />pretending to be a product.</h2>
+          <div class="grid g3" style="margin-top: 34px">
+            <div class="card glow">
+              <div class="status"><span class="dot"></span>Live</div>
+              <h3>The Hit Zero app</h3>
+              <p><code>thehitzero.net</code> is served on Vercel and wired to the live product stack.</p>
+            </div>
+            <div class="card glow">
+              <div class="status"><span class="dot"></span>Live</div>
+              <h3>The MCA website</h3>
+              <p><code>mcaminot.com</code> is the first public gym front door, powered by the same engine.</p>
+            </div>
+            <div class="card glow">
+              <div class="status ready"><span class="dot"></span>Ready</div>
+              <h3>Production workflow</h3>
+              <p>Owner dashboard, family links, public launch access, paid classes, rosters, and support paths are already in motion.</p>
+            </div>
+          </div>
+          <p class="foot pin">
+            Source of truth: the live deploys, the Supabase backend, the MCA program,
+            and the current Hit Zero repository.
+          </p>
+        </div>
+        <div class="pageno">03 / 15</div>
+      </section>
+
+      <!-- 04 — What it is -->
+      <section class="slide band">
+        <div class="topbar">
+          <div class="brand">
+            <img src="value-exchange-assets/hitzero-icon.svg" alt="" />
+            <b>Hit Zero</b>
+          </div>
+          <div class="kicker">What Hit Zero is</div>
+        </div>
+        <div class="split">
+          <div class="left">
+            <p class="eyebrow">A cheer gym operating system</p>
+            <h2 class="display">One app runs the<br />whole gym.</h2>
+            <p class="lede">
+              Not just a website. Not another form. Not a payment link with a logo. Hit
+              Zero connects the front door to the actual work of running a gym.
+            </p>
+            <div class="stack" style="margin-top: 26px">
+              <div class="check">Public class discovery, trials, and registration</div>
+              <div class="check">Square-connected paid-registration review</div>
+              <div class="check">Parent, athlete, staff, roster, schedule, packet, and owner workflows</div>
+              <div class="check">A platform Andrew keeps extending as gyms ask for more</div>
+            </div>
+          </div>
+          <div class="visual" style="display: flex; align-items: center; justify-content: center">
+            <div class="phones">
+              <div class="phone">
+                <div class="screen">
+                  <div class="notch"></div>
+                  <h4>Owner · Today</h4>
+                  <div class="ptag">Launch</div>
+                  <div class="prow"><span>Approved</span><b>3</b></div>
+                  <div class="prow"><span>Need links</span><b class="gd">Now</b></div>
+                  <div class="prow"><span>Paid class</span><b>Open</b></div>
+                </div>
+              </div>
+              <div class="phone">
+                <div class="screen">
+                  <div class="notch"></div>
+                  <h4>Family</h4>
+                  <div class="ptag">Next step</div>
+                  <div class="prow"><span>Packet</span><b>Open</b></div>
+                  <div class="prow"><span>Class</span><b class="gd">Paid</b></div>
+                  <div class="prow"><span>Athlete</span><b>Linked</b></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="pageno">04 / 15</div>
+      </section>
+
+      <!-- 05 — Why owners care -->
+      <section class="slide">
+        <div class="topbar">
+          <div class="brand">
+            <img src="value-exchange-assets/hitzero-icon.svg" alt="" />
+            <b>Hit Zero</b>
+          </div>
+          <div class="kicker">Why gym owners care</div>
+        </div>
+        <div class="body top">
+          <h2 class="display">Most gyms don&rsquo;t have a coaching<br />problem. They have an operating one.</h2>
+          <div class="grid g2" style="margin-top: 30px">
+            <div class="card">
+              <span class="label pink">The old way</span>
+              <h3>Loose ends, every season</h3>
+              <p>Forms, texts, spreadsheets, DMs, and separate payments: owners chasing the same gaps while parents stay confused.</p>
+            </div>
+            <div class="card glow">
+              <span class="label">The Hit Zero way</span>
+              <h3>One connected loop</h3>
+              <p>Discovery, registration, payment, family setup, staff review, rosters, schedules, and owner visibility in one place.</p>
+            </div>
+            <div class="card">
+              <span class="label pink">What owners buy</span>
+              <h3>Fewer leaks, less drag</h3>
+              <p>More paid registrations, fewer abandoned signups, a cleaner parent experience, and far less admin during peak season.</p>
+            </div>
+            <div class="card glow">
+              <span class="label">Why Carissa matters</span>
+              <h3>She can make it plain</h3>
+              <p>She does not have to prove why the problem matters. She can show an owner the exact pain and the exact better path.</p>
+            </div>
+          </div>
+        </div>
+        <div class="pageno">05 / 15</div>
+      </section>
+
+      <!-- 06 — Competitive landscape -->
+      <section class="slide band">
+        <div class="topbar">
+          <div class="brand">
+            <img src="value-exchange-assets/hitzero-icon.svg" alt="" />
+            <b>Hit Zero</b>
+          </div>
+          <div class="kicker">Competitive analysis</div>
+        </div>
+        <div class="body top">
+          <h2 class="display">The market already<br />knows this category.</h2>
+          <table class="table comp-table">
+            <thead>
+              <tr>
+                <th>Competitor set</th>
+                <th>What they sell</th>
+                <th>What it proves for Hit Zero</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="scen teal">iClassPro + Jackrabbit</span></td>
+                <td>Established cheer/class suites: registration, billing, portals, schedules, reporting, skill tracking, branded app options.</td>
+                <td>Cheer gyms already buy software. Hit Zero does not need to create the category; it needs a sharper early wedge.</td>
+              </tr>
+              <tr class="base">
+                <td><span class="scen">Studio Pro + Studio Director</span></td>
+                <td>Studio-style operations: lead management, class scheduling, tuition, payments, communication, attendance, and private lessons.</td>
+                <td>The pain is not niche. Every class-based youth business fights registration, billing, parent comms, and staff visibility.</td>
+              </tr>
+              <tr>
+                <td><span class="scen pink">SportsEngine + TeamSnap + Amilia</span></td>
+                <td>Broader sports/recreation platforms: registration, payments, schedules, rosters, messaging, websites, reporting, and mobile apps.</td>
+                <td>Big platforms validate the budget, but they are not built from one cheer gym&rsquo;s lived operating workflow.</td>
+              </tr>
+              <tr>
+                <td><span class="scen teal">ClassJuggler + Gymdesk + Sawyer</span></td>
+                <td>Lower-cost or adjacent tools for classes, memberships, payment processing, portals, websites, and customer records.</td>
+                <td>There will always be cheaper tools. Hit Zero wins when the buyer wants cheer-native setup, founder speed, and one accountable partner.</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="foot pin">
+            Market references checked June 13, 2026: iClassPro, Jackrabbit Class,
+            SportsEngine Motion, Amilia, Studio Pro, The Studio Director,
+            Cheer ClassJuggler, TeamSnap, Gymdesk, and Sawyer.
+          </p>
+        </div>
+        <div class="pageno">06 / 15</div>
+      </section>
+
+      <!-- 07 — Hit Zero wedge -->
+      <section class="slide">
+        <div class="topbar">
+          <div class="brand">
+            <img src="value-exchange-assets/hitzero-icon.svg" alt="" />
+            <b>Hit Zero</b>
+          </div>
+          <div class="kicker">Where Hit Zero can win</div>
+        </div>
+        <div class="body top">
+          <h2 class="display">Do not beat everyone.<br />Win the first 10.</h2>
+          <div class="grid g4" style="margin-top: 32px">
+            <div class="card tight-card glow">
+              <span class="num">1</span>
+              <h3>Cheer-native</h3>
+              <p>Built around athletes, parents, teams, camps, classes, packets, skill work, and seasonal chaos.</p>
+            </div>
+            <div class="card tight-card glow">
+              <span class="num">2</span>
+              <h3>One live loop</h3>
+              <p>Website interest can become registration, payment status, staff review, family setup, roster, and schedule context.</p>
+            </div>
+            <div class="card tight-card glow">
+              <span class="num">3</span>
+              <h3>Founder-led</h3>
+              <p>Early gyms talk to the person building the thing. Feedback turns into product instead of a ticket queue.</p>
+            </div>
+            <div class="card tight-card glow">
+              <span class="num">4</span>
+              <h3>OG status</h3>
+              <p>The first 10 gyms shape the product and become the proof network before paid scale is forced.</p>
+            </div>
+          </div>
+          <div class="callout">
+            The wedge is not &ldquo;we have every feature.&rdquo; The wedge is: the first gyms get a live cheer-specific operating layer, built with them, by someone who can ship.
+          </div>
+        </div>
+        <div class="pageno">07 / 15</div>
+      </section>
+
+      <!-- 08 — First milestone -->
+      <section class="slide band">
+        <div class="topbar">
+          <div class="brand">
+            <img src="value-exchange-assets/hitzero-icon.svg" alt="" />
+            <b>Hit Zero</b>
+          </div>
+          <div class="kicker">The first milestone</div>
+        </div>
+        <div class="body top">
+          <h2 class="display">Get 9 more gyms. Reach 10.<br />Then decide what this becomes.</h2>
+          <div class="grid g4" style="margin-top: 32px">
+            <div class="card">
+              <span class="num">1</span>
+              <p>MCA stays the proof gym and first case study.</p>
+            </div>
+            <div class="card">
+              <span class="num">2</span>
+              <p>Carissa opens warm, credible gym-owner conversations.</p>
+            </div>
+            <div class="card">
+              <span class="num">3</span>
+              <p>Andrew handles demo, setup, product, onboarding, fixes, and support.</p>
+            </div>
+            <div class="card">
+              <span class="num">4</span>
+              <p>The first 10 give proof, patterns, testimonials, and pricing evidence.</p>
+            </div>
+          </div>
+          <p class="foot pin">
+            The goal is not to build a huge company tomorrow. It is to prove 10 gyms
+            want this enough that the next chapter becomes obvious.
+          </p>
+        </div>
+        <div class="pageno">08 / 15</div>
+      </section>
+
+      <!-- 09 — Scenario math -->
+      <section class="slide">
+        <div class="topbar">
+          <div class="brand">
+            <img src="value-exchange-assets/hitzero-icon.svg" alt="" />
+            <b>Hit Zero</b>
+          </div>
+          <div class="kicker">Simple scenario math</div>
+        </div>
+        <div class="body top">
+          <h2 class="display">What 10, 25, and 50 gyms<br />can look like.</h2>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Scenario</th>
+                <th>Price / gym / mo</th>
+                <th>10 gyms · MRR / ARR</th>
+                <th>25 gyms · MRR / ARR</th>
+                <th>50 gyms · MRR / ARR</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="scen teal">Conservative</span></td>
+                <td>$299</td>
+                <td>$2,990 / $35,880</td>
+                <td>$7,475 / $89,700</td>
+                <td>$14,950 / $179,400</td>
+              </tr>
+              <tr class="base">
+                <td><span class="scen">Base</span></td>
+                <td>$499</td>
+                <td>$4,990 / $59,880</td>
+                <td>$12,475 / $149,700</td>
+                <td>$24,950 / $299,400</td>
+              </tr>
+              <tr>
+                <td><span class="scen pink">Upside</span></td>
+                <td>$799</td>
+                <td>$7,990 / $95,880</td>
+                <td>$19,975 / $239,700</td>
+                <td>$39,950 / $479,400</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="foot pin">
+            Scenarios, not promises. Optional setup / onboarding revenue sits on top.
+            The first 10 can start as OG reference partners, then convert the model
+            once the proof is real.
+          </p>
+        </div>
+        <div class="pageno">09 / 15</div>
+      </section>
+
+      <!-- 10 — Carissa ask -->
+      <section class="slide band">
+        <div class="topbar">
+          <div class="brand">
+            <img src="value-exchange-assets/hitzero-icon.svg" alt="" />
+            <b>Hit Zero</b>
+          </div>
+          <div class="kicker">Carissa&rsquo;s ask</div>
+        </div>
+        <div class="body top">
+          <h2 class="display">Sell something that<br />already exists.</h2>
+          <div class="grid g4" style="margin-top: 32px">
+            <div class="card">
+              <span class="num">1</span>
+              <h3>Open doors</h3>
+              <p>Identify gym owners who would actually feel this problem and take a founder call.</p>
+            </div>
+            <div class="card">
+              <span class="num">2</span>
+              <h3>Tell the truth</h3>
+              <p>Explain the admin pain in plain cheer-gym language, not SaaS language.</p>
+            </div>
+            <div class="card">
+              <span class="num">3</span>
+              <h3>Qualify fit</h3>
+              <p>Listen for owners who want cleaner registration, paid flow, parent clarity, and staff visibility.</p>
+            </div>
+            <div class="card">
+              <span class="num">4</span>
+              <h3>Help land 9</h3>
+              <p>Bring the right gyms into the OG network so the business becomes undeniable.</p>
+            </div>
+          </div>
+          <p class="foot pin">
+            Not asked of Carissa: build product, write code, manage technical support,
+            own implementation, or carry the whole company. Andrew handles the system.
+          </p>
+        </div>
+        <div class="pageno">10 / 15</div>
+      </section>
+
+      <!-- 11 — Team lanes -->
+      <section class="slide">
+        <div class="topbar">
+          <div class="brand">
+            <img src="value-exchange-assets/hitzero-icon.svg" alt="" />
+            <b>Hit Zero</b>
+          </div>
+          <div class="kicker">The team lanes</div>
+        </div>
+        <div class="body top">
+          <h2 class="display">No one carries the<br />whole thing.</h2>
+          <div class="grid g3" style="margin-top: 32px">
+            <div class="card glow">
+              <span class="label">Carissa</span>
+              <h3>Founding Growth Partner</h3>
+              <p>Opens conversations, tells the first-user story, listens for owner pain, shapes the first 10-gym network, and becomes a trusted customer-facing voice.</p>
+            </div>
+            <div class="card glow">
+              <span class="label">Andrew</span>
+              <h3>Founder — Product &amp; Platform</h3>
+              <p>Maintains the app, builds what gyms need, prepares demos and sales assets, handles technical onboarding, and keeps support moving behind the scenes.</p>
+            </div>
+            <div class="card glow">
+              <span class="label">The first 10 gyms</span>
+              <h3>Proof Network</h3>
+              <p>Use the platform for real work, give feedback, supply testimonials or case-study rights where appropriate, and make the category credible.</p>
+            </div>
+          </div>
+        </div>
+        <div class="pageno">11 / 15</div>
+      </section>
+
+      <!-- 12 — Foundation built -->
+      <section class="slide">
+        <div class="topbar">
+          <div class="brand">
+            <img src="value-exchange-assets/hitzero-icon.svg" alt="" />
+            <b>Hit Zero</b>
+          </div>
+          <div class="kicker">What doesn&rsquo;t need inventing</div>
+        </div>
+        <div class="split">
+          <div class="left">
+            <p class="eyebrow">The hard part is done</p>
+            <h2 class="display">The foundation is<br />already built.</h2>
+            <div class="stack" style="margin-top: 26px">
+              <div class="check">Live PWA app and live MCA public website</div>
+              <div class="check">Supabase database, auth, security, storage, edge functions, and production deploys</div>
+              <div class="check">Registration, family packet, staff review, roster, schedule, billing, and Square paths</div>
+              <div class="check">Existing gym packet, sales playbook, investor brief, and handoff docs</div>
+            </div>
+          </div>
+          <div class="photo">
+            <img src="value-exchange-assets/mca-athletes.jpeg" alt="MCA athletes" />
+          </div>
+        </div>
+        <div class="pageno">12 / 15</div>
+      </section>
+
+      <!-- 13 — Economics -->
+      <section class="slide band">
+        <div class="topbar">
+          <div class="brand">
+            <img src="value-exchange-assets/hitzero-icon.svg" alt="" />
+            <b>Hit Zero</b>
+          </div>
+          <div class="kicker">Why the economics are unusual</div>
+        </div>
+        <div class="body top">
+          <h2 class="display">The expensive part is<br />already absorbed.</h2>
+          <div class="grid g3" style="margin-top: 32px">
+            <div class="card glow">
+              <span class="label">Software-first</span>
+              <h3>Low overhead</h3>
+              <p>No storefront, no inventory, no travel-heavy rollout for the first phase.</p>
+            </div>
+            <div class="card glow">
+              <span class="label">Andrew-built</span>
+              <h3>Fast iteration</h3>
+              <p>Customer feedback becomes product quickly, without waiting on a vendor roadmap.</p>
+            </div>
+            <div class="card glow">
+              <span class="label">Repeatable</span>
+              <h3>High leverage</h3>
+              <p>Every setup, asset, demo, objection, and fix makes the next gym easier to land.</p>
+            </div>
+          </div>
+          <p class="foot pin">
+            It can stay intentionally small and still matter. At 25 or 50 gyms, it starts
+            becoming a real platform company.
+          </p>
+        </div>
+        <div class="pageno">13 / 15</div>
+      </section>
+
+      <!-- 14 — Big picture -->
+      <section class="slide">
+        <div class="topbar">
+          <div class="brand">
+            <img src="value-exchange-assets/hitzero-icon.svg" alt="" />
+            <b>Hit Zero</b>
+          </div>
+          <div class="kicker">After the first 10</div>
+        </div>
+        <div class="body">
+          <h2 class="display">Then it&rsquo;s a brand,<br />not just a tool.</h2>
+          <div class="two-col">
+            <div>
+              <div class="bignum grad">10</div>
+              <p class="lede" style="margin-top: 16px">
+                Ten gyms gives the team proof, patterns, testimonials, pricing evidence,
+                and a real reason to talk about bigger paths.
+              </p>
+            </div>
+            <div class="stack">
+              <div class="check">Sharper sales assets and case studies</div>
+              <div class="check">Premium modules: AI judging, video, clinics, billing, parent comms</div>
+              <div class="check">A national founder-gym story bigger than any one gym</div>
+              <div class="check">Optional investor, strategic partner, or acquisition conversation after proof</div>
+            </div>
+          </div>
+        </div>
+        <div class="pageno">14 / 15</div>
+      </section>
+
+      <!-- 15 — Closing -->
+      <section class="slide closing">
+        <div class="topbar">
+          <div class="brand">
+            <img src="value-exchange-assets/hitzero-icon.svg" alt="" />
+            <b>Hit Zero</b>
+          </div>
+          <div class="kicker pink">The ask</div>
+        </div>
+        <div class="body">
+          <img class="logo" src="value-exchange-assets/hitzero-icon.svg" alt="" />
+          <h2 class="display">Look at what&rsquo;s already here,<br />then decide if it&rsquo;s silly<br />not to try.</h2>
+          <p class="lede">
+            The software exists. The first gym exists. The first user pain exists.
+            The ask is focused: help land 9 more gyms and see what the first 10 prove.
+          </p>
+        </div>
+        <div class="pageno">15 / 15</div>
+      </section>
+    </main>
+  </body>
+</html>

@@ -16,13 +16,38 @@ const DEDUCTIONS = [
   { id: 'choreo_boundary', label: 'Choreo Boundary',       value: 0.25, type: 'minor' },
 ];
 
+function mockScoreLiveMode() {
+  return Boolean(window.HZsupa && window.HZdb?.auth?._mode?.() === 'live');
+}
+
+function mockScoreUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(String(value || ''));
+}
+
+async function persistScoreRun(payload) {
+  if (mockScoreLiveMode() && mockScoreUuid(payload.team_id)) {
+    const { data, error } = await window.HZsupa
+      .from('score_runs')
+      .insert(payload)
+      .select('*')
+      .single();
+    if (error) return { data: null, error };
+    await window.HZdb.from('score_runs').upsert(data || payload, { onConflict: 'id' }); // saveRun follows with HZsel?._refresh + hz:refresh
+    return { data: data || payload, error: null };
+  }
+  return await window.HZdb.from('score_runs').insert(payload).single(); // saveRun follows with HZsel?._refresh + hz:refresh
+}
+
 function MockScore({ snap, navigate, pushToast }) {
   const [deductions, setDeductions] = React.useState([]);
   const [note, setNote] = React.useState('');
-  const team = (snap.teams || [])[0] || null;
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const team = window.HZsel.programTeams?.().find(Boolean) || (snap.teams || []).find(Boolean) || null;
   const teamLabel = team
-    ? `${team.name || 'Magic'} · ${team.division || 'Team'}${team.level ? ` · L${team.level}` : ''}`
-    : 'Magic · Team';
+    ? `${team.name || team.division || 'Team'} · ${team.division || 'Team'}${team.level ? ` · L${team.level}` : ''}`
+    : 'Team';
+  const routine = window.HZsel.routine?.() || (snap.routines || []).find(r => !team?.id || r.team_id === team.id) || null;
 
   const predicted = window.HZsel.predictedScore(deductions);
 
@@ -30,18 +55,29 @@ function MockScore({ snap, navigate, pushToast }) {
   const removeD = (id) => setDeductions(prev => prev.filter(x => x._id !== id));
 
   const saveRun = async () => {
-    const run = await window.HZdb.from('score_runs').insert({
-      team_id: snap.teams[0].id,
-      routine_id: snap.routines[0]?.id,
+    if (!team?.id || saving) return;
+    setSaving(true);
+    setError('');
+    const { error: saveError } = await persistScoreRun({
+      team_id: team.id,
+      routine_id: routine?.id || null,
       run_at: new Date().toISOString(),
       subtotal: predicted.subtotal,
       deductions: predicted.deductions,
       total: predicted.total,
       note,
-    }).single();
-    pushToast({ title: 'Run saved', body: `${predicted.total.toFixed(2)} / 100` });
+    });
+    if (saveError) {
+      setError(saveError.message || 'Could not save score run.');
+      setSaving(false);
+      return;
+    }
+    if (window.HZsel?._refresh) await window.HZsel._refresh();
+    window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table: 'score_runs', action: 'insert' } }));
+    pushToast?.({ title: 'Run saved', body: `${predicted.total.toFixed(2)} / 100` });
     setDeductions([]);
     setNote('');
+    setSaving(false);
   };
 
   return (
@@ -49,9 +85,10 @@ function MockScore({ snap, navigate, pushToast }) {
       <SectionHeading eyebrow="USASF judging panel · live prediction" title="Mock Score." trailing={
         <div style={{ display: 'flex', gap: 10 }}>
           <button className="hz-btn" onClick={() => setDeductions([])}><HZIcon name="x" size={13}/> Clear deductions</button>
-          <button className="hz-btn hz-btn-primary" onClick={saveRun}><HZIcon name="check" size={13}/> Save run</button>
+          <button className="hz-btn hz-btn-primary" onClick={saveRun} disabled={saving || !team?.id}><HZIcon name="check" size={13}/> {saving ? 'Saving...' : 'Save run'}</button>
         </div>
       }/>
+      {error && <div className="hz-card" style={{ color: 'var(--hz-red)', marginBottom: 14, padding: 12 }}>{error}</div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 420px', gap: 24 }}>
         {/* Judging sheet */}

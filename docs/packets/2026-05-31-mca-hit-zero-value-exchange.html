@@ -1,0 +1,697 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hit Zero x Magic City Athletics - Value Exchange Proposal</title>
+  <style>
+    @page {
+      size: Letter;
+      margin: 0;
+    }
+
+    :root {
+      --ink: #08090b;
+      --paper: #fbfaf7;
+      --line: #ded8cb;
+      --muted: #706b62;
+      --teal: #13b9c6;
+      --pink: #ee6b9a;
+      --gold: #d8a54a;
+      --green: #2aa876;
+      --charcoal: #17191d;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #d8d3ca;
+      color: var(--ink);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.36;
+    }
+
+    .page {
+      position: relative;
+      width: 8.5in;
+      height: 11in;
+      overflow: hidden;
+      background: var(--paper);
+      page-break-after: always;
+      padding: 0.55in;
+    }
+
+    .page.dark {
+      color: white;
+      background:
+        linear-gradient(135deg, rgba(8,9,11,0.84), rgba(8,9,11,0.96)),
+        url("value-exchange-assets/mca-team.jpeg") center / cover no-repeat;
+    }
+
+    .page.dark::after {
+      content: "";
+      position: absolute;
+      inset: auto 0 0 0;
+      height: 1.8in;
+      background: linear-gradient(0deg, rgba(8,9,11,0.85), transparent);
+    }
+
+    .topbar {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 24px;
+      font-size: 10px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      font-weight: 800;
+    }
+
+    .brand-lockup {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-lockup img {
+      width: 42px;
+      height: 42px;
+      object-fit: contain;
+      border-radius: 0;
+    }
+
+    .kicker {
+      color: var(--teal);
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      font-weight: 900;
+      margin-bottom: 16px;
+    }
+
+    .cover-copy {
+      position: relative;
+      z-index: 2;
+      max-width: 6.6in;
+      margin-top: 1.15in;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+
+    h1 {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 58px;
+      line-height: 0.94;
+      letter-spacing: -0.035em;
+      max-width: 6.8in;
+    }
+
+    h1 em, h2 em {
+      font-style: italic;
+      color: var(--pink);
+    }
+
+    .cover-lede {
+      margin-top: 24px;
+      max-width: 5.9in;
+      font-size: 18px;
+      color: rgba(255,255,255,0.8);
+    }
+
+    .proposal-card {
+      position: absolute;
+      z-index: 2;
+      left: 0.55in;
+      right: 0.55in;
+      bottom: 0.62in;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.12);
+      backdrop-filter: blur(8px);
+      border-radius: 18px;
+      overflow: hidden;
+    }
+
+    .proposal-cell {
+      padding: 22px;
+      background: rgba(8,9,11,0.58);
+    }
+
+    .proposal-cell b {
+      display: block;
+      color: white;
+      font-size: 11px;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .proposal-cell span {
+      color: rgba(255,255,255,0.74);
+      font-size: 14px;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 30px;
+    }
+
+    .header .title {
+      font-size: 10px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      font-weight: 900;
+      color: var(--muted);
+    }
+
+    .page-num {
+      font-size: 10px;
+      color: var(--muted);
+      font-weight: 800;
+    }
+
+    h2 {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 38px;
+      line-height: 1.02;
+      letter-spacing: -0.025em;
+      margin-bottom: 18px;
+      max-width: 6.5in;
+    }
+
+    h3 {
+      font-size: 14px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .lead {
+      font-size: 17px;
+      color: #3e3a33;
+      max-width: 6.75in;
+      margin-bottom: 24px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .box {
+      border: 1px solid var(--line);
+      background: white;
+      border-radius: 16px;
+      padding: 18px;
+      min-height: 1.25in;
+    }
+
+    .box.accent {
+      color: white;
+      background: linear-gradient(135deg, var(--charcoal), #101317);
+      border-color: transparent;
+    }
+
+    .box.accent .small,
+    .box.accent p { color: rgba(255,255,255,0.72); }
+
+    .small {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .box p, li {
+      color: #474239;
+      font-size: 13.2px;
+    }
+
+    .box strong {
+      color: var(--ink);
+    }
+
+    .box.accent strong { color: white; }
+
+    ul {
+      padding-left: 18px;
+      margin: 10px 0 0;
+    }
+
+    li { margin: 6px 0; }
+
+    .metric-row {
+      display: grid;
+      grid-template-columns: 1.1fr 2fr 1.1fr;
+      border-top: 1px solid var(--line);
+      min-height: 0.62in;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 0;
+      font-size: 12.5px;
+    }
+
+    .metric-row:first-child { border-top: 0; }
+    .metric-row .label { font-weight: 850; }
+    .metric-row .note { color: var(--muted); }
+    .metric-row .value {
+      text-align: right;
+      font-weight: 900;
+      color: var(--charcoal);
+    }
+
+    .callout {
+      margin-top: 20px;
+      padding: 18px 20px;
+      border-radius: 18px;
+      color: white;
+      background:
+        linear-gradient(135deg, rgba(19,185,198,0.92), rgba(238,107,154,0.9));
+    }
+
+    .callout h3 {
+      margin-bottom: 7px;
+      color: white;
+    }
+
+    .callout p {
+      font-size: 14px;
+      color: rgba(255,255,255,0.9);
+    }
+
+    .scope-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 18px;
+      font-size: 12.5px;
+      overflow: hidden;
+      border-radius: 16px;
+    }
+
+    .scope-table th,
+    .scope-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+    }
+
+    .scope-table th {
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      background: #f1ede5;
+    }
+
+    .scope-table td {
+      background: white;
+      color: #454038;
+    }
+
+    .scope-table tr:last-child td { border-bottom: 0; }
+
+    .signature {
+      position: absolute;
+      left: 0.55in;
+      right: 0.55in;
+      bottom: 0.55in;
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 18px;
+      align-items: end;
+    }
+
+    .closing {
+      border-top: 1px solid var(--line);
+      padding-top: 18px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .accept-box {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 16px;
+      background: white;
+    }
+
+    .line {
+      height: 32px;
+      border-bottom: 1px solid #9e978c;
+      margin-top: 10px;
+    }
+
+    .sources {
+      position: absolute;
+      left: 0.55in;
+      right: 0.55in;
+      bottom: 0.32in;
+      color: #8a8378;
+      font-size: 8px;
+      line-height: 1.35;
+    }
+
+    .growth-panel {
+      margin-top: 16px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: white;
+      overflow: hidden;
+    }
+
+    .growth-panel__head {
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .growth-panel__head h3 {
+      margin-bottom: 5px;
+    }
+
+    .growth-panel__head p {
+      color: #514c43;
+      font-size: 12.5px;
+    }
+
+    .growth-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .growth-metric {
+      min-height: 0.9in;
+      padding: 13px 16px;
+      border-left: 1px solid var(--line);
+    }
+
+    .growth-metric:first-child {
+      border-left: 0;
+    }
+
+    .growth-metric b {
+      display: block;
+      color: var(--teal);
+      font-size: 22px;
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+
+    .growth-metric span {
+      display: block;
+      font-size: 10px;
+      letter-spacing: 0.11em;
+      text-transform: uppercase;
+      font-weight: 900;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .growth-metric p {
+      color: #403b34;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <section class="page dark">
+    <div class="topbar">
+      <div class="brand-lockup">
+        <img src="value-exchange-assets/mca-logo.png" alt="" />
+        <div>Hit Zero x Magic City Athletics</div>
+      </div>
+      <div>Prepared May 31, 2026</div>
+    </div>
+
+    <div class="cover-copy">
+      <div class="kicker">A proposed in-kind maintenance partnership</div>
+      <h1>Keeping MCA's digital operation moving, without adding another vendor.</h1>
+      <p class="cover-lede">
+        Hit Zero and the MCA website now form a working operating layer for the gym:
+        registration, payments, family setup, staff review, schedules, rosters, and a live public front door.
+      </p>
+    </div>
+
+    <div class="proposal-card">
+      <div class="proposal-cell">
+        <b>Continued Support From Andrew</b>
+        <span>Maintain, improve, and tailor Hit Zero and mcaminot.com as MCA needs change.</span>
+      </div>
+      <div class="proposal-cell">
+        <b>Requested Exchange</b>
+        <span>Standard gym fees for Arlowe Emmel and Alivia Emmel are covered as the ongoing retainer.</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="header">
+      <div class="title">Executive Summary</div>
+      <div class="page-num">01</div>
+    </div>
+
+    <div class="kicker">The point of the proposal</div>
+    <h2>This keeps the relationship simple: MCA gets ongoing technology support; my family receives a tuition credit.</h2>
+    <p class="lead">
+      I volunteered to help because I care about MCA and because my girls are part of the gym. The work has now become a real business asset: a custom operating system, a custom public website, and a support path MCA can keep using instead of piecing together software, text threads, spreadsheets, and vendor tickets.
+    </p>
+
+    <div class="grid-2">
+      <div class="box accent">
+        <h3>What I am offering</h3>
+        <p>
+          Continued ownership of the technical side: website maintenance, Hit Zero updates, issue intake,
+          workflow improvements, hosting/deployment support, class/registration changes, and practical help when
+          staff or families run into problems.
+        </p>
+      </div>
+      <div class="box">
+        <h3>What I am asking</h3>
+        <p>
+          Cover the standard gym fees for Arlowe, age 8, and Alivia, age 5, while they participate at MCA.
+          This is not a request for a cash retainer. It is an in-kind exchange that keeps costs predictable for the gym
+          and lets me keep supporting the system without treating every request like a billable interruption.
+        </p>
+      </div>
+    </div>
+
+    <div class="callout">
+      <h3>The business reason this is fair</h3>
+      <p>
+        MCA receives the practical value of a custom software partner and website maintainer at a rate far below
+        what a separate software stack, developer, designer, and support vendor would normally cost.
+      </p>
+    </div>
+
+    <div class="grid-3" style="margin-top:18px;">
+      <div class="box">
+        <h3>One source of truth</h3>
+        <p>Classes, signups, payment status, family setup, and staff review live in one workflow instead of scattered messages.</p>
+      </div>
+      <div class="box">
+        <h3>Built for MCA</h3>
+        <p>The system reflects MCA's actual programs, pricing, staff needs, and parent experience, not a generic template.</p>
+      </div>
+      <div class="box">
+        <h3>Ongoing care</h3>
+        <p>Changes can keep coming through a cleaner process, without owners feeling like every request is a burden.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="header">
+      <div class="title">Delivered Value</div>
+      <div class="page-num">02</div>
+    </div>
+
+    <div class="kicker">What MCA already has in hand</div>
+    <h2>A public website and an operating app that work together.</h2>
+    <p class="lead">
+      The value is not just the code. It is the connection between the website, the family experience, staff operations,
+      payment flow, and future changes. That connection is where MCA saves time.
+    </p>
+
+    <table class="scope-table">
+      <thead>
+        <tr>
+          <th>Area</th>
+          <th>Value to MCA</th>
+          <th>Ongoing support included</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Custom MCA website</strong></td>
+          <td>Professional front door for programs, coaches, pricing, trials, account creation, and tuition links.</td>
+          <td>Content changes, page updates, CTA changes, visual polish, deployment, and upkeep.</td>
+        </tr>
+        <tr>
+          <td><strong>Hit Zero operating app</strong></td>
+          <td>Family signup, gym access requests, registration, staff review, roster/schedule workflows, and parent/staff views.</td>
+          <td>Bug fixes, workflow tweaks, staff feedback, new fields, route fixes, and practical iteration.</td>
+        </tr>
+        <tr>
+          <td><strong>Registration and payment flow</strong></td>
+          <td>Paid classes can route into Hit Zero and Square instead of creating unpaid signups that staff has to chase.</td>
+          <td>Class updates, payment link checks, wording improvements, and handoff support.</td>
+        </tr>
+        <tr>
+          <td><strong>Support process</strong></td>
+          <td>Requests can move out of scattered texts/Facebook/calls and into a cleaner, trackable support rhythm.</td>
+          <td>Issue triage, prioritization, follow-up, and small fixes without turning every message into a separate invoice.</td>
+        </tr>
+        <tr>
+          <td><strong>Future tailoring</strong></td>
+          <td>MCA keeps getting software shaped around how the gym actually runs.</td>
+          <td>Reasonable ongoing improvements as MCA learns what it wants from the system.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <h3>Why this matters operationally</h3>
+      <p>
+        A gym does not just need a website. It needs parents to know what to do next, staff to know who is paid or pending,
+        and owners to stop being the only operating system. That is what this work is designed to solve.
+      </p>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="header">
+      <div class="title">Market Context</div>
+      <div class="page-num">03</div>
+    </div>
+
+    <div class="kicker">Replacement value, stated conservatively</div>
+    <h2>The alternative is not free. It is usually several tools plus ongoing human support.</h2>
+    <p class="lead">
+      Public pricing from comparable platforms shows that gym software, websites, payments, branded apps,
+      and support all carry real costs. Hit Zero gives MCA a tailored version of that operating layer without adding
+      another monthly software vendor.
+    </p>
+
+    <div class="metric-row">
+      <div class="label">Class/gym management software</div>
+      <div class="note">Jackrabbit Class publishes pricing that starts at $49/month, with Jackrabbit Plus branded-app pricing starting at $93/month and enterprise options listed higher.</div>
+      <div class="value">$49-$245+/mo</div>
+    </div>
+    <div class="metric-row">
+      <div class="label">Sports business operating platform</div>
+      <div class="note">SportsEngine Motion lists a $295 start cost, plus a 1% technology fee and payment processing fees, for class management, online registration, member management, mobile app, financials, and website tools.</div>
+      <div class="value">$295 + fees</div>
+    </div>
+    <div class="metric-row">
+      <div class="label">Website platform and hosting</div>
+      <div class="note">Squarespace business/commerce plans publicly list monthly platform costs before custom design, edits, business-specific workflows, or developer support.</div>
+      <div class="value">$18-$36+/mo</div>
+    </div>
+    <div class="metric-row">
+      <div class="label">Custom build and maintenance</div>
+      <div class="note">A tailored app plus website normally requires someone to design, build, deploy, maintain, troubleshoot, and keep improving it as the business changes.</div>
+      <div class="value">Not included in SaaS</div>
+    </div>
+
+    <div class="callout">
+      <h3>The trade is deliberately below market</h3>
+      <p>
+        Covering two standard athlete fee accounts is a straightforward, local, relationship-based exchange for a software and website package that would otherwise be purchased, configured, and maintained through multiple vendors.
+      </p>
+    </div>
+
+    <div class="sources">
+      Source context: Jackrabbit Class pricing, https://www.jackrabbitclass.com/pricing/;
+      SportsEngine Motion pricing, https://www.sportsengine.com/motion/pricing/;
+      TeamSnap pricing overview, https://www.teamsnap.com/pricing;
+      Squarespace pricing, https://template-selector.squarespace.com/pricing.
+      Prices and terms can change; figures are included as market context, not as a direct quote for MCA's exact needs.
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="header">
+      <div class="title">Proposed Agreement</div>
+      <div class="page-num">04</div>
+    </div>
+
+    <div class="kicker">Simple, respectful, easy to revisit</div>
+    <h2>Proposed trade: continued MCA technology support in exchange for covering Arlowe and Alivia's standard gym fees.</h2>
+    <p class="lead">
+      My goal is to make this easy on everyone: the owners have a reliable person continuing to care for the digital side,
+      staff can ask for changes without feeling like they are bothering me, and I can keep doing the work while also protecting
+      the business I am building.
+    </p>
+
+    <div class="grid-2">
+      <div class="box">
+        <h3>Included in the exchange</h3>
+        <ul>
+          <li>Maintenance and reasonable ongoing changes for mcaminot.com.</li>
+          <li>Maintenance and reasonable ongoing changes for Hit Zero as used by MCA.</li>
+          <li>Registration, trial, account, class, payment-link, and staff workflow updates.</li>
+          <li>Issue intake and troubleshooting through a cleaner support process.</li>
+          <li>Deployment, source checks, and practical monitoring of live public flows.</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h3>Kept separate if needed</h3>
+        <ul>
+          <li>Third-party fees: Square, domain names, email/SMS providers, app stores, or paid AI/API usage.</li>
+          <li>Large new product modules that are outside normal maintenance.</li>
+          <li>Emergency, same-day work caused by third-party outages outside our control.</li>
+          <li>Legal, accounting, payroll, tax, or compliance advice.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="growth-panel">
+      <div class="growth-panel__head">
+        <h3>Optional growth conversation</h3>
+        <p>
+          I am open to every road for pushing this forward. The first plan is simple:
+          add one more OG gym, bring in the next eight as discounted founding gyms, then find the right cheer-world operator
+          to lead sales and help with funding if needed.
+        </p>
+      </div>
+      <div class="growth-metrics">
+        <div class="growth-metric">
+          <b>10</b>
+          <span>Gyms</span>
+          <p>$5,990 MRR<br>$71,880 ARR</p>
+        </div>
+        <div class="growth-metric">
+          <b>25</b>
+          <span>Gyms</span>
+          <p>$14,975 MRR<br>$179,700 ARR</p>
+        </div>
+        <div class="growth-metric">
+          <b>100</b>
+          <span>Gyms</span>
+          <p>$59,900 MRR<br>$718,800 ARR</p>
+        </div>
+      </div>
+    </div>
+
+    <p class="small" style="margin-top:10px;">
+      At even a low-end $599/month, 10 gyms is where the investor conversation starts to become real:
+      10 gyms means many more coaches, parents, and athletes using the system. If any owner, coach, or cheer parent wants
+      to partner on selling this, I would love to open that conversation.
+    </p>
+
+  </section>
+</body>
+</html>

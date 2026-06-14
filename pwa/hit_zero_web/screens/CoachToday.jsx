@@ -12,48 +12,107 @@ function cleanCoachSessionType(value) {
     .trim();
 }
 
+function StaffLaunchAlerts({ session, navigate }) {
+  const [queue, setQueue] = React.useState({ requests: [], unlinked_parents: [] });
+  const [loading, setLoading] = React.useState(true);
+  const role = session?.actualProfile?.role || session?.profile?.role;
+  const canManage = role === 'coach' || role === 'owner';
+
+  React.useEffect(() => {
+    let alive = true;
+    if (!canManage || !window.HZdb?.auth?.staffLaunchQueue) { setLoading(false); return () => {}; }
+    window.HZdb.auth.staffLaunchQueue().then(({ data }) => {
+      if (!alive) return;
+      setQueue({
+        requests: data?.requests || [],
+        unlinked_parents: data?.unlinked_parents || [],
+      });
+      setLoading(false);
+    }).catch(() => alive && setLoading(false));
+    return () => { alive = false; };
+  }, [canManage]);
+
+  const pendingCount = queue.requests.length;
+  const linkCount = queue.unlinked_parents.length;
+  if (!canManage || loading || (!pendingCount && !linkCount)) return null;
+
+  return (
+    <div className="hz-card" style={{
+      marginBottom: 24,
+      padding: 18,
+      borderColor: 'rgba(255,180,84,0.38)',
+      background: 'linear-gradient(135deg, rgba(255,180,84,0.10), rgba(249,127,172,0.08))',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 18,
+    }}>
+      <div>
+        <div className="hz-eyebrow" style={{ color: 'var(--hz-amber)', marginBottom: 6 }}>Action needed</div>
+        <div style={{ fontWeight: 900, fontSize: 18 }}>
+          {pendingCount ? `${pendingCount} access request${pendingCount === 1 ? '' : 's'} waiting` : 'No pending access requests'}
+          {linkCount ? ` · ${linkCount} approved parent${linkCount === 1 ? '' : 's'} need athlete links` : ''}
+        </div>
+        <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>
+          Parent links are managed under Program → Public launch access.
+        </div>
+      </div>
+      <button className="hz-btn hz-btn-primary" onClick={() => navigate('admin')}>
+        Review now <HZIcon name="arrow-right" size={13}/>
+      </button>
+    </div>
+  );
+}
+
 function CoachToday({ snap, openAthlete, navigate, pushToast, session }) {
   // Defensive: don't render until the store has hydrated.
   const athletesArr = (snap && Array.isArray(snap.athletes)) ? snap.athletes : null;
   if (!athletesArr) {
     return (
-      <div style={{ padding: 48, color: 'var(--hz-dim)', fontSize: 13 }}>Loading today…</div>
+      <SkeletonCard rows={5} style={{ margin: 48, maxWidth: 620 }} />
     );
   }
 
   const safe = (fn, fallback) => { try { const v = fn(); return v == null ? fallback : v; } catch { return fallback; } };
-  const team = (snap.teams || [])[0] || null;
+  const scope = window.HZviewerScope ? window.HZviewerScope(snap, session) : null;
+  const athletes = scope?.visibleAthletes?.length ? scope.visibleAthletes : athletesArr;
+  const visibleAthleteIds = new Set(athletes.map(a => a.id));
+  const team = scope?.visibleTeams?.[0] || window.HZsel.programTeams?.()[0] || (snap.teams || [])[0] || null;
   const teamLine = team
-    ? `${team.name || 'Magic'} — ${team.division || 'Team'}${team.level ? ` L${team.level}` : ''}`
-    : 'Magic — Team';
+    ? `${team.name || team.division || 'Team'} — ${team.division || 'Team'}${team.level ? ` L${team.level}` : ''}`
+    : 'Team';
   const readiness      = safe(() => window.HZsel.teamReadiness(), 0);
   const teamAttendance = safe(() => window.HZsel.teamAttendance(), 0);
   const predicted      = safe(() => window.HZsel.predictedScore(), { total: 0, deductions: 0, rows: [] });
   const comp           = safe(() => window.HZsel.daysToComp(), null);
   const needsWork      = safe(() => window.HZsel.needsWorkQueue(), []) || [];
+  const practicePlans  = safe(() => window.HZsel.allPracticePlans(), []) || [];
+  const classEnrollments = safe(() => window.HZsel.classEnrollmentsForProgram(), []) || [];
+  const openGymParticipants = safe(() => window.HZsel.openGymRegistrationsForProgram(), []) || [];
+  const attendanceRows = (snap.attendance || []).filter(row => visibleAthleteIds.has(row.athlete_id));
   const today = new Date().toLocaleDateString('default', { weekday: 'long', month: 'long', day: 'numeric' });
 
   const celebrations = [...(snap.celebrations || [])]
+    .filter(c => visibleAthleteIds.has(c.athlete_id) && new Date(c.created_at).getTime() >= Date.now() - 1000 * 60 * 60 * 24)
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     .slice(0, 12);
 
-  const upcoming = [...(snap.sessions || [])]
-    .filter(s => new Date(s.scheduled_at) > new Date(Date.now() - 1000 * 60 * 60 * 24))
-    .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at))
-    .slice(0, 5);
+  const upcoming = safe(() => window.HZsel.staffScheduleSessions(5), []) || [];
 
-  const mostImproved = [...athletesArr]
+  const mostImproved = [...athletes]
     .map(a => ({ a, r: safe(() => window.HZsel.athleteReadiness(a.id), 0) }))
     .sort((x, y) => y.r - x.r)
     .slice(0, 4);
 
-  const needsAttention = [...athletesArr]
+  const needsAttention = [...athletes]
     .map(a => ({ a, r: safe(() => window.HZsel.athleteReadiness(a.id), 0), att: safe(() => window.HZsel.athleteAttendance(a.id).pct, 0) }))
     .sort((x, y) => (x.r + x.att) - (y.r + y.att))
     .slice(0, 4);
 
   return (
     <div>
+      <StaffLaunchAlerts session={session} navigate={navigate}/>
+
       {/* Editorial header */}
       <div style={{ marginBottom: 40, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 32 }}>
         <div>
@@ -66,7 +125,8 @@ function CoachToday({ snap, openAthlete, navigate, pushToast, session }) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button className="hz-btn" onClick={() => navigate('sessions')}><HZIcon name="calendar" size={14}/> Schedule</button>
+          <button className="hz-btn" onClick={() => navigate('schedule')}><HZIcon name="calendar" size={14}/> Schedule</button>
+          <button className="hz-btn" onClick={() => navigate('practice')}><HZIcon name="routine" size={14}/> Practice plans</button>
           <button className="hz-btn hz-btn-primary" onClick={() => navigate('skills')}><HZIcon name="plus" size={14}/> Check off a skill</button>
         </div>
       </div>
@@ -76,9 +136,9 @@ function CoachToday({ snap, openAthlete, navigate, pushToast, session }) {
         <div className="hz-card" style={{ padding: 30, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
           <Dial value={readiness} size={180} label="Team Readiness"/>
           <div style={{ marginTop: 20, display: 'flex', gap: 18, fontSize: 11, color: 'var(--hz-dim)' }}>
-            <div><span className="hz-teal" style={{ fontFamily: 'var(--hz-mono)', fontWeight: 700 }}>{Math.round(teamAttendance * 100)}%</span> attendance</div>
+            <div><span className="hz-teal" style={{ fontFamily: 'var(--hz-mono)', fontWeight: 700 }}>{attendanceRows.length ? `${Math.round(teamAttendance * 100)}%` : 'No logs'}</span> attendance</div>
             <div>·</div>
-            <div><span className="hz-pink" style={{ fontFamily: 'var(--hz-mono)', fontWeight: 700 }}>{athletesArr.length}</span> athletes</div>
+            <div><span className="hz-pink" style={{ fontFamily: 'var(--hz-mono)', fontWeight: 700 }}>{athletes.length}</span> athletes</div>
           </div>
         </div>
 
@@ -116,6 +176,13 @@ function CoachToday({ snap, openAthlete, navigate, pushToast, session }) {
             ))}
           </div>
         </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+        <StatTile label="Practice plans" value={practicePlans.length} sub="coach-built" size="md" accent="var(--hz-teal)"/>
+        <StatTile label="Class enrollments" value={classEnrollments.length} sub={`${classEnrollments.filter(r => r.payment_status === 'paid').length} paid`} size="md"/>
+        <StatTile label="Open gym" value={openGymParticipants.length} sub="participant intakes" size="md" accent="var(--hz-amber)"/>
+        <StatTile label="Attendance logs" value={attendanceRows.length} sub="saved rows" size="md"/>
       </div>
 
       {/* Second row — needs work + live ticker */}
@@ -225,7 +292,7 @@ function CoachToday({ snap, openAthlete, navigate, pushToast, session }) {
                 <Avatar name={a.display_name} initials={a.initials} color={a.photo_color} src={a.photo_url} size={32}/>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{a.display_name}</div>
-                  <div style={{ fontSize: 10, color: 'var(--hz-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700 }}>{a.role}</div>
+                    <div style={{ fontSize: 10, color: 'var(--hz-dim)', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700 }}>{a.role || a.position || 'athlete'}</div>
                 </div>
                 <div style={{ fontFamily: 'var(--hz-serif)', fontStyle: 'italic', fontWeight: 700, fontSize: 22, color: 'var(--hz-teal)' }}>{Math.round(r * 100)}</div>
               </div>

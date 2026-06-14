@@ -1,0 +1,1062 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hit Zero OG Gym Marketing Packet</title>
+    <style>
+      :root {
+        --ink: #111318;
+        --muted: #5e6673;
+        --soft: #f3f7f9;
+        --panel: #ffffff;
+        --line: #dde5eb;
+        --black: #050507;
+        --black-2: #101218;
+        --teal: #27cfd7;
+        --teal-2: #0c7f8a;
+        --pink: #f97fac;
+        --pink-2: #ad446d;
+        --cream: #fff8ed;
+        --shadow: 0 24px 70px rgba(5, 5, 7, 0.14);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: #f8fafb;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        line-height: 1.55;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .page {
+        overflow: hidden;
+      }
+
+      .hero {
+        color: #fff;
+        background:
+          linear-gradient(135deg, rgba(5, 5, 7, 0.98), rgba(16, 18, 24, 0.96) 52%, rgba(48, 19, 34, 0.96)),
+          linear-gradient(90deg, rgba(39, 207, 215, 0.18), transparent 34%, rgba(249, 127, 172, 0.2)),
+          #050507;
+      }
+
+      .wrap {
+        width: min(1120px, calc(100% - 40px));
+        margin: 0 auto;
+      }
+
+      .hero-inner {
+        min-height: 620px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
+        gap: 48px;
+        align-items: center;
+        padding: 48px 0 56px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 54px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .mark {
+        display: block;
+        width: 48px;
+        height: 48px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 12px;
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+        object-fit: cover;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        margin: 0 0 18px;
+        color: var(--teal);
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+      }
+
+      .eyebrow::before {
+        content: "";
+        width: 34px;
+        height: 2px;
+        background: currentColor;
+      }
+
+      h1,
+      h2,
+      h3 {
+        margin: 0;
+        line-height: 1.05;
+      }
+
+      h1 {
+        max-width: 790px;
+        font-size: clamp(42px, 7vw, 88px);
+        letter-spacing: 0;
+      }
+
+      .hero-copy {
+        max-width: 690px;
+        margin: 24px 0 0;
+        color: rgba(255, 255, 255, 0.82);
+        font-size: 20px;
+      }
+
+      .cta-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        margin-top: 34px;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 48px;
+        padding: 0 20px;
+        border: 1px solid rgba(255, 255, 255, 0.26);
+        border-radius: 8px;
+        background: #fff;
+        color: var(--black);
+        font-weight: 800;
+        text-decoration: none;
+        box-shadow: 0 12px 28px rgba(5, 5, 7, 0.22);
+      }
+
+      .button.secondary {
+        background: rgba(255, 255, 255, 0.07);
+        color: #fff;
+        box-shadow: none;
+      }
+
+      .hero-card {
+        position: relative;
+        padding: 28px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 12px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.07)),
+          rgba(255, 255, 255, 0.08);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(12px);
+      }
+
+      .logo-preview {
+        width: 96px;
+        height: 96px;
+        margin-bottom: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 24px;
+        box-shadow: 0 18px 36px rgba(0, 0, 0, 0.22);
+      }
+
+      .spots {
+        display: grid;
+        grid-template-columns: repeat(10, 1fr);
+        gap: 8px;
+        margin: 22px 0;
+      }
+
+      .spot {
+        height: 42px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.16);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+      }
+
+      .spot.filled {
+        background: linear-gradient(135deg, var(--teal), var(--pink));
+        border-color: rgba(255, 255, 255, 0.5);
+      }
+
+      .spot.open {
+        background: rgba(255, 255, 255, 0.88);
+      }
+
+      .spot.free {
+        background: #fff;
+        border-color: rgba(39, 207, 215, 0.8);
+        box-shadow: inset 0 0 0 3px rgba(39, 207, 215, 0.35);
+      }
+
+      .spot.discount {
+        background: rgba(255, 255, 255, 0.36);
+        border-color: rgba(249, 127, 172, 0.45);
+      }
+
+      .stat {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+        margin-top: 24px;
+      }
+
+      .stat div {
+        padding: 18px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.12);
+      }
+
+      .stat strong {
+        display: block;
+        color: #fff;
+        font-size: 34px;
+        line-height: 1;
+      }
+
+      .stat span {
+        color: rgba(255, 255, 255, 0.78);
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .section {
+        padding: 78px 0;
+      }
+
+      .section.tight {
+        padding: 52px 0;
+      }
+
+      .section.alt {
+        background: var(--soft);
+      }
+
+      .section.dark {
+        color: #fff;
+        background:
+          linear-gradient(135deg, var(--black), var(--black-2) 55%, #281420),
+          var(--black);
+      }
+
+      .section-head {
+        display: grid;
+        grid-template-columns: minmax(260px, 0.7fr) minmax(0, 1fr);
+        gap: 48px;
+        align-items: start;
+        margin-bottom: 34px;
+      }
+
+      .section-kicker {
+        color: var(--teal-2);
+        font-size: 13px;
+        font-weight: 900;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+      }
+
+      .dark .section-kicker {
+        color: var(--teal);
+      }
+
+      h2 {
+        margin-top: 10px;
+        font-size: clamp(31px, 4.8vw, 58px);
+        letter-spacing: 0;
+      }
+
+      .lead {
+        margin: 0;
+        color: var(--muted);
+        font-size: 19px;
+      }
+
+      .dark .lead {
+        color: rgba(255, 255, 255, 0.78);
+      }
+
+      .grid {
+        display: grid;
+        gap: 18px;
+      }
+
+      .grid.three {
+        grid-template-columns: repeat(3, 1fr);
+      }
+
+      .grid.two {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .panel {
+        padding: 26px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        box-shadow: 0 10px 28px rgba(5, 5, 7, 0.06);
+      }
+
+      .panel h3 {
+        margin-bottom: 12px;
+        font-size: 22px;
+      }
+
+      .panel p {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .panel.accent {
+        border-color: rgba(249, 127, 172, 0.38);
+        background: #fff7fb;
+      }
+
+      .list {
+        display: grid;
+        gap: 12px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .list li {
+        position: relative;
+        padding-left: 28px;
+        color: var(--muted);
+      }
+
+      .list li::before {
+        content: "";
+        position: absolute;
+        top: 0.7em;
+        left: 0;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--teal), var(--pink));
+        box-shadow: inset 0 0 0 3px #fff;
+      }
+
+      .steps {
+        counter-reset: steps;
+        display: grid;
+        gap: 14px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .steps li {
+        counter-increment: steps;
+        display: grid;
+        grid-template-columns: 42px 1fr;
+        gap: 14px;
+        align-items: start;
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+      }
+
+      .steps li::before {
+        content: counter(steps);
+        display: grid;
+        place-items: center;
+        width: 42px;
+        height: 42px;
+        border-radius: 8px;
+        background: linear-gradient(135deg, var(--teal), var(--pink));
+        color: var(--black);
+        font-weight: 900;
+      }
+
+      .quote {
+        margin: 0;
+        padding: 30px;
+        border-left: 6px solid var(--teal);
+        border-radius: 8px;
+        background: #fff;
+        color: var(--black);
+        font-size: clamp(24px, 3vw, 38px);
+        font-weight: 900;
+        line-height: 1.15;
+      }
+
+      .dark .quote {
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+      }
+
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 12px;
+      }
+
+      .flow div {
+        min-height: 112px;
+        padding: 18px;
+        border-radius: 8px;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-top: 4px solid var(--teal);
+        font-weight: 800;
+      }
+
+      .flow div:nth-child(even) {
+        border-top-color: var(--pink);
+      }
+
+      .flow span {
+        display: block;
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 14px;
+        font-weight: 500;
+      }
+
+      .callout {
+        padding: 32px;
+        border-radius: 8px;
+        background: var(--black);
+        color: #fff;
+      }
+
+      .callout.light {
+        background: #fff7fb;
+        color: var(--ink);
+        border: 1px solid rgba(249, 127, 172, 0.36);
+      }
+
+      .callout p {
+        margin: 10px 0 0;
+        color: rgba(255, 255, 255, 0.78);
+      }
+
+      .callout.light p {
+        color: var(--muted);
+      }
+
+      .footer {
+        padding: 34px 0;
+        color: rgba(255, 255, 255, 0.72);
+        background: var(--black);
+        font-size: 14px;
+      }
+
+      .footer .wrap {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+      }
+
+      @media (max-width: 880px) {
+        .hero-inner,
+        .section-head,
+        .grid.three,
+        .grid.two,
+        .flow {
+          grid-template-columns: 1fr;
+        }
+
+        .hero-inner {
+          min-height: auto;
+          padding-top: 34px;
+        }
+
+        .brand {
+          margin-bottom: 40px;
+        }
+
+        .section {
+          padding: 58px 0;
+        }
+
+        .footer .wrap {
+          flex-direction: column;
+        }
+      }
+
+      @media print {
+        body {
+          background: #fff;
+          color: #111;
+        }
+
+        .hero {
+          color: #111;
+          background: #fff;
+          border-bottom: 2px solid #111;
+        }
+
+        .hero-inner {
+          min-height: auto;
+          display: block;
+          padding: 24px 0;
+        }
+
+        .hero-copy,
+        .lead,
+        .panel p,
+        .list li,
+        .flow span {
+          color: #333;
+        }
+
+        .hero-card,
+        .panel,
+        .steps li,
+        .quote,
+        .callout {
+          box-shadow: none;
+          break-inside: avoid;
+        }
+
+        .button,
+        .cta-row {
+          display: none;
+        }
+
+        .section,
+        .section.tight {
+          padding: 26px 0;
+        }
+
+        .section.dark,
+        .footer {
+          color: #111;
+          background: #fff;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <div class="wrap hero-inner">
+          <div>
+            <div class="brand">
+              <img class="mark" src="../../pwa/icons/icon.svg" alt="" />
+              Hit Zero
+            </div>
+            <p class="eyebrow">Founding Gym Offer</p>
+            <h1>One more free-forever OG spot. Eight half-price forever spots after that.</h1>
+            <p class="hero-copy">
+              Hit Zero connects your website, payment system, QuickBooks-ready
+              bookkeeping, family setup, staff review, rosters, schedules, and
+              owner workflows in one cheer-specific operating system.
+            </p>
+            <div class="cta-row">
+              <a class="button" href="#claim">Schedule a walkthrough</a>
+              <a class="button secondary" href="https://mcaminot.com">See the MCA Proof Point</a>
+            </div>
+          </div>
+
+          <aside class="hero-card" aria-label="Founding gym spots">
+            <img class="logo-preview" src="../../pwa/icons/icon.svg" alt="Hit Zero logo" />
+            <p class="eyebrow">Only 10 founding slots</p>
+            <h2>1 free. 8 at 50% forever.</h2>
+            <div class="spots" aria-hidden="true">
+              <div class="spot filled"></div>
+              <div class="spot free"></div>
+              <div class="spot discount"></div>
+              <div class="spot discount"></div>
+              <div class="spot discount"></div>
+              <div class="spot discount"></div>
+              <div class="spot discount"></div>
+              <div class="spot discount"></div>
+              <div class="spot discount"></div>
+              <div class="spot discount"></div>
+            </div>
+            <p>
+              Magic City Athletics is live as the first free-forever founding
+              gym. One more gym gets core platform access free forever. The
+              final 8 founding gyms lock in 50% off the core platform forever.
+            </p>
+            <div class="stat">
+              <div><strong>1</strong><span>Claimed by MCA</span></div>
+              <div><strong>1</strong><span>Free forever left</span></div>
+              <div><strong>8</strong><span>50% forever spots</span></div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="wrap">
+          <div class="section-head">
+            <div>
+              <div class="section-kicker">The Short Version</div>
+              <h2>Your gym keeps its brand. Hit Zero powers the workflow.</h2>
+            </div>
+            <p class="lead">
+              Most cheer-gym owners did not start their gym because they wanted
+              to become full-time software, accounting, and admin people. Hit
+              Zero keeps the tools they already know and connects the messy
+              middle: website interest, payment status, bookkeeping records,
+              family info, rosters, and parent follow-up.
+            </p>
+          </div>
+          <blockquote class="quote">
+            Your website stays the front door. Your payment system still takes the money. QuickBooks gets cleaner records. Hit Zero connects the work in between.
+          </blockquote>
+        </div>
+      </section>
+
+      <section class="section alt">
+        <div class="wrap">
+          <div class="section-head">
+            <div>
+              <div class="section-kicker">The Owner Driver</div>
+              <h2>No new business personality required.</h2>
+            </div>
+            <p class="lead">
+              This is meant to feel like relief, not another complicated system:
+              keep your website, keep your payment account, keep your
+              bookkeeping process, and let Hit Zero make the
+              registration-to-operations path cleaner.
+            </p>
+          </div>
+
+          <div class="grid three">
+            <article class="panel">
+              <h3>Website integration</h3>
+              <p>
+                Hit Zero plugs into the gym's existing public site with account
+                and registration links, so families start where they already
+                start: the gym website.
+              </p>
+            </article>
+            <article class="panel">
+              <h3>Payment connection</h3>
+              <p>
+                Paid registration can connect to the gym's own payment setup,
+                with Square supported today. The owner keeps the merchant
+                account and Hit Zero keeps payment status tied to registration.
+              </p>
+            </article>
+            <article class="panel accent">
+              <h3>QuickBooks-ready books</h3>
+              <p>
+                Registration and payment records are organized so bookkeeping
+                and QuickBooks reconciliation are cleaner, instead of forcing
+                the owner to rebuild the money trail from texts and spreadsheets.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="wrap">
+          <div class="section-head">
+            <div>
+              <div class="section-kicker">The Offer</div>
+              <h2>One more free forever. Then 50% forever.</h2>
+            </div>
+            <p class="lead">
+              We are building the first real proof network before Hit Zero scales
+              to 100, 500, or 1,000 gyms. MCA has the first free-forever spot.
+              One additional gym can still claim free core access forever. The
+              remaining 8 founding gyms lock in a fixed 50% lifetime discount on
+              the core platform.
+            </p>
+          </div>
+
+          <div class="grid three">
+            <article class="panel">
+              <h3>What OG gyms get</h3>
+              <ul class="list">
+                <li>Gym account setup and founder-led onboarding.</li>
+                <li>Website registration and account links.</li>
+                <li>Payment-status workflow tied to the gym's own processor.</li>
+                <li>QuickBooks-ready registration and payment records.</li>
+                <li>Parent, athlete, staff, and owner workflows.</li>
+              </ul>
+            </article>
+            <article class="panel">
+              <h3>What gyms provide</h3>
+              <ul class="list">
+                <li>Real usage during an actual registration cycle.</li>
+                <li>A link from the gym website into Hit Zero.</li>
+                <li>Owner and staff feedback during onboarding.</li>
+                <li>Permission to be referenced as a founding gym.</li>
+              </ul>
+            </article>
+            <article class="panel accent">
+              <h3>What stays yours</h3>
+              <ul class="list">
+                <li>Your brand, website, and customer relationships.</li>
+                <li>Your payment processor, merchant account, and deposits.</li>
+                <li>Your bookkeeping process and QuickBooks account.</li>
+                <li>Your classes, pricing, staff, programs, and operations.</li>
+              </ul>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section dark">
+        <div class="wrap">
+          <div class="section-head">
+            <div>
+              <div class="section-kicker">If I Sent You This</div>
+              <h2>This is the first conversation, not a software contract.</h2>
+            </div>
+            <p class="lead">
+              I am reaching out directly to a limited group of cheer gyms because
+              this needs real owners, real classes, real payments, and real
+              parent workflows. If your gym is a fit, the next step is a short
+              walkthrough and a plain conversation about how your registration
+              flow works today.
+            </p>
+          </div>
+          <div class="grid three">
+            <article class="panel">
+              <h3>Why you got this</h3>
+              <p>
+                Your gym appears to be active enough that registration, payments,
+                parent questions, and bookkeeping can become real operating drag.
+              </p>
+            </article>
+            <article class="panel">
+              <h3>What to do next</h3>
+              <p>
+                Respond wherever I contacted you and say you want to see the Hit
+                Zero walkthrough. No card or platform commitment is needed for
+                the first conversation.
+              </p>
+            </article>
+            <article class="panel">
+              <h3>What I will show</h3>
+              <p>
+                The MCA proof point, the website-to-registration flow, Square
+                payment path, staff review, and how records stay cleaner for
+                QuickBooks follow-up.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="wrap">
+          <div class="section-head">
+            <div>
+              <div class="section-kicker">What Hit Zero Solves</div>
+              <h2>Less chasing. Cleaner registration. Better visibility.</h2>
+            </div>
+            <p class="lead">
+              Hit Zero is built around the real cheer-gym loop: parents,
+              athletes, coaches, owners, classes, camps, clinics, payments,
+              packets, rosters, schedules, and staff review.
+            </p>
+          </div>
+
+          <div class="grid three">
+            <article class="panel">
+              <h3>For owners</h3>
+              <p>
+                Convert more interest into paid registrations, reduce admin drag,
+                and keep website, payment, and bookkeeping records from becoming
+                three separate problems.
+              </p>
+            </article>
+            <article class="panel">
+              <h3>For coaches</h3>
+              <p>
+                See cleaner rosters, class context, family status, and athlete
+                information before practice instead of finding surprises after
+                practice starts.
+              </p>
+            </article>
+            <article class="panel">
+              <h3>For parents</h3>
+              <p>
+                Find programs, register, pay clearly, complete family setup, and
+                understand what still needs to happen before their athlete
+                participates.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section alt">
+        <div class="wrap">
+          <div class="section-head">
+            <div>
+              <div class="section-kicker">Operating Loop</div>
+              <h2>From website interest to staff action.</h2>
+            </div>
+            <p class="lead">
+              The first goal is simple: when a family starts registration,
+              payment, bookkeeping, and operational status should move together.
+            </p>
+          </div>
+          <div class="flow" aria-label="Hit Zero operating flow">
+            <div>Website CTA<span>Families start from the gym's own site.</span></div>
+            <div>Hit Zero booking<span>Class, athlete, and guardian details are captured.</span></div>
+            <div>Square payment<span>Paid classes can route through the gym's Square account.</span></div>
+            <div>Bookkeeping record<span>Payment and registration details stay easier to reconcile in QuickBooks.</span></div>
+            <div>Staff review<span>Staff can see pending, paid, linked, and incomplete items.</span></div>
+            <div>Gym workflow<span>Rosters, schedules, packets, and owner views stay connected.</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="wrap">
+          <div class="section-head">
+            <div>
+              <div class="section-kicker">Why Cheer</div>
+              <h2>Cheer is not generic class software.</h2>
+            </div>
+            <p class="lead">
+              Cheer gyms juggle athletes, parents, teams, camps, clinics,
+              private lessons, evaluations, waivers, medical info, seasonality,
+              tuition, one-time payments, and coach/staff workflows. Hit Zero is
+              being built for that reality.
+            </p>
+          </div>
+          <div class="grid two">
+            <div class="callout light">
+              <h3>Good fit</h3>
+              <p>
+                A gym that wants cleaner operations, will link from its website,
+                has real classes or programs, uses a payment processor and
+                bookkeeping tool, and will actively use the system during a real
+                registration cycle.
+              </p>
+            </div>
+            <div class="callout">
+              <h3>Not a fit</h3>
+              <p>
+                A gym that wants founding pricing but will not link, use, test,
+                give feedback, assign an admin, or let the platform touch a real
+                workflow.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section dark">
+        <div class="wrap">
+          <div class="section-head">
+            <div>
+              <div class="section-kicker">Magic City Athletics</div>
+              <h2>The first public proof point is already live.</h2>
+            </div>
+            <p class="lead">
+              MCA has a public website, class offerings, Hit Zero account
+              creation, paid registration links, Square payment workflow, family
+              packet workflow, staff registration review, roster/schedule
+              infrastructure, and cleaner records for bookkeeping follow-up.
+            </p>
+          </div>
+          <blockquote class="quote">
+            Hit Zero is live now. The next founding gyms help prove the model beyond MCA.
+          </blockquote>
+        </div>
+      </section>
+
+      <section class="section alt">
+        <div class="wrap">
+          <div class="section-head">
+            <div>
+              <div class="section-kicker">Claiming A Spot</div>
+              <h2>What happens if you want to proceed.</h2>
+            </div>
+            <p class="lead">
+              A founding spot is for a gym willing to use Hit Zero in a real
+              public workflow. The setup starts simple and gets more complete
+              as we confirm fit.
+            </p>
+          </div>
+          <ol class="steps">
+            <li>Reply and schedule a short walkthrough.</li>
+            <li>We review how your website, registration, payment, and bookkeeping process works today.</li>
+            <li>If it is a fit, we reserve your founding spot in writing.</li>
+            <li>We set up your gym, class/program links, owner/admin access, and website calls-to-action.</li>
+            <li>If you want paid online registration, we connect the payment path through your Square setup.</li>
+            <li>You use the workflow with real families and give feedback while the platform grows.</li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="wrap">
+          <div class="section-head">
+            <div>
+              <div class="section-kicker">Important Limits</div>
+              <h2>Founder-led, live, and still early.</h2>
+            </div>
+            <p class="lead">
+              Hit Zero is a working early platform, not a bloated enterprise
+              suite. That is exactly why the first 10 gyms matter.
+            </p>
+          </div>
+          <div class="grid three">
+            <article class="panel">
+              <h3>Autopay</h3>
+              <p>
+                Full automatic recurring autopay is not part of the platform yet.
+                Paid class registration and Square-connected payments are the
+                current focus.
+              </p>
+            </article>
+            <article class="panel">
+              <h3>Custom work</h3>
+              <p>
+                Deep custom website redesigns, custom software builds, and
+                unusually high-touch implementation are not included by default.
+              </p>
+            </article>
+            <article class="panel">
+              <h3>Founding pricing</h3>
+              <p>
+                Free forever and 50% forever apply to the core Hit Zero platform.
+                Premium add-ons, custom buildout, payment processing fees, and
+                third-party costs may still be separate later.
+              </p>
+            </article>
+            <article class="panel">
+              <h3>Bookkeeping</h3>
+              <p>
+                Hit Zero can make records cleaner for bookkeeping and
+                QuickBooks reconciliation, but legal/accounting decisions remain
+                the gym's responsibility.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section alt">
+        <div class="wrap">
+          <div class="section-head">
+            <div>
+              <div class="section-kicker">Walkthrough Call</div>
+              <h2>What we cover in 15 minutes.</h2>
+            </div>
+            <p class="lead">
+              The first call is not meant to bury you in features. It is meant
+              to figure out whether Hit Zero can remove real friction from your
+              gym's current process.
+            </p>
+          </div>
+          <div class="grid three">
+            <article class="panel">
+              <h3>Your current flow</h3>
+              <p>
+                How families find classes, register, pay, complete paperwork,
+                and get into the correct roster today.
+              </p>
+            </article>
+            <article class="panel">
+              <h3>The live example</h3>
+              <p>
+                How Magic City Athletics, the first proof point, uses a public
+                website connected to Hit Zero for registration, payment, and
+                staff review.
+              </p>
+            </article>
+            <article class="panel">
+              <h3>The founding fit</h3>
+              <p>
+                Whether your gym should claim the remaining free-forever spot,
+                one of the 50% lifetime spots, or wait until the product is more
+                mature.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="wrap">
+          <div class="section-head">
+            <div>
+              <div class="section-kicker">Quick Fit Check</div>
+              <h2>If several of these are true, it is worth a call.</h2>
+            </div>
+            <p class="lead">
+              Hit Zero is strongest when a gym has enough activity that the
+              owner can feel the drag of disconnected tools, but is still close
+              enough to the business to improve the process quickly.
+            </p>
+          </div>
+          <div class="grid two">
+            <article class="panel">
+              <h3>Worth a walkthrough</h3>
+              <ul class="list">
+                <li>Your website does not cleanly connect to registration and payment.</li>
+                <li>Families sometimes fill something out but do not actually pay.</li>
+                <li>Registration, payment records, and QuickBooks cleanup take too much time.</li>
+                <li>Rosters, class lists, packets, and parent follow-up live in separate places.</li>
+                <li>The owner or one key admin is still the only person who knows what is going on.</li>
+              </ul>
+            </article>
+            <article class="panel">
+              <h3>Probably not the right time</h3>
+              <ul class="list">
+                <li>You do not want to link from your website.</li>
+                <li>No one on staff will be responsible for trying the workflow.</li>
+                <li>You need a finished enterprise suite before using anything.</li>
+                <li>You want free or discounted access but do not want to provide feedback.</li>
+                <li>You are not comfortable using a real registration flow with real families yet.</li>
+              </ul>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section dark" id="claim">
+        <div class="wrap">
+          <div class="section-head">
+            <div>
+              <div class="section-kicker">Next Step</div>
+              <h2>One free-forever spot remains. Eight half-price spots follow.</h2>
+            </div>
+            <p class="lead">
+              If this looks like it could remove friction for your gym, reply to
+              the message, email, text, or voicemail that brought you here and
+              ask for the Hit Zero walkthrough. From there, we can decide whether
+              your gym should claim one of the founding spots.
+            </p>
+          </div>
+          <div class="cta-row">
+            <a class="button" href="https://thehitzero.net">Open Hit Zero</a>
+            <a class="button secondary" href="https://mcaminot.com">View Magic City Athletics</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="wrap">
+        <div>Hit Zero OG Gym Marketing Packet</div>
+        <div>Updated May 29, 2026</div>
+      </div>
+    </footer>
+  </body>
+</html>

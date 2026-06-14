@@ -11,6 +11,10 @@
     {
       "source": "/auth/callback",
       "destination": "/auth/callback.html"
+    },
+    {
+      "source": "/pay/:id",
+      "destination": "/index.html"
     }
   ],
   "headers": [
@@ -30,6 +34,24 @@
     },
     {
       "source": "/index.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/auth/callback.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/hit_zero_web/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/hit_zero/data/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
       ]

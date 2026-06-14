@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>Hit Zero — Magic City Allstars</title>
+<title>Hit Zero</title>
+<base href="/"/>
 
 <!-- PWA -->
 <link rel="manifest" href="manifest.webmanifest"/>
@@ -22,10 +23,23 @@
 
 <!-- Open Graph for text previews -->
 <meta property="og:title" content="Hit Zero"/>
-<meta property="og:description" content="An operating system for all-star cheer — built for Magic City Allstars."/>
+<meta property="og:description" content="An operating system for all-star cheer gyms."/>
 <meta property="og:type" content="website"/>
 
 <link rel="stylesheet" href="hit_zero_web/styles/web.css"/>
+
+<!-- Product analytics: Vercel Web Analytics + Speed Insights + optional Microsoft Clarity.
+     Keep Clarity masked in the authenticated PWA so private athlete/family data is not replayed. -->
+<script>
+  window.HZ_ANALYTICS_CONFIG = {
+    app: 'hit-zero-pwa',
+    clarityId: 'wt6hw0o9i1',
+    privateApp: true
+  };
+</script>
+<script src="analytics.js"></script>
+<script defer src="/_vercel/insights/script.js"></script>
+<script defer src="/_vercel/speed-insights/script.js"></script>
 
 <!-- React + Babel pinned versions -->
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
@@ -35,10 +49,14 @@
      single-request cap. Chunks in 6MB slices and reports real progress. -->
 <script src="https://unpkg.com/tus-js-client@4.3.1/dist/tus.min.js"></script>
 
-<!-- Seed data from the iOS prototype (single source of truth) -->
+<!-- Prototype seed data. Production quarantines this behind the live mirror. -->
 <script src="hit_zero/data/cheer-data.js"></script>
 
 <!-- DB + selectors -->
+<script>
+  window.HZ_FORCE_PROTOTYPE = ['localhost', '127.0.0.1', '::1'].includes(location.hostname)
+    && new URLSearchParams(location.search || '').get('prototype') === '1';
+</script>
 <script src="hit_zero_web/db/client.js"></script>
 <script src="hit_zero_web/db/selectors.js"></script>
 
@@ -47,7 +65,7 @@
 <script type="module">
   import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
   const URL = 'https://ldhzkdqznccfgpdvqyfk.supabase.co';
-  const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkaHprZHF6bmNjZmdwZHZxeWZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzMTY1MTksImV4cCI6MjA5MDg5MjUxOX0.yPihX_N734HXTk8mzf-F85W_5j_J7EXe3Dg1U90ZMYI';
+  const ANON = 'sb_publishable_P2e2aHrrMYP85xBfncIilA_2435TVII';
   window.HZsupa = createClient(URL, ANON, {
     auth: {
       persistSession: true,
@@ -126,33 +144,219 @@
     const d = window.HZdb && window.HZdb._raw && window.HZdb._raw();
     if (!d || !window.HZsupa) return;
     const s = window.HZsupa;
-    const { data: programs } = await s.from('programs').select('*').is('deleted_at', null).order('created_at');
+    const liveSession = window.HZdb?.auth?._getSession?.();
+    const liveProfile = liveSession?.actualProfile || liveSession?.profile || null;
+    const isLiveSession = liveSession?.mode === 'live';
+    const activeProgramId = liveProfile?.program_id || null;
+    const activeRole = liveSession?.profile?.role || liveProfile?.role || null;
+    const isStaff = activeRole === 'coach' || activeRole === 'owner';
+    const clearPrivateRows = () => {
+      [
+        'teams', 'athletes', 'athlete_skills', 'parent_links', 'billing_accounts', 'billing_charges',
+        'attendance', 'sessions', 'session_availability', 'calendar_tokens', 'celebrations',
+        'registration_windows', 'registrations', 'leads', 'lead_touches',
+        'message_threads', 'thread_members', 'messages', 'message_reads', 'announcements',
+        'waiver_templates', 'waiver_signatures', 'form_templates', 'form_fields', 'form_responses',
+        'form_answers', 'emergency_contacts', 'medical_records', 'injuries',
+        'uniforms', 'uniform_items', 'uniform_orders',
+        'volunteer_roles', 'volunteer_assignments', 'drills', 'practice_plans', 'practice_plan_blocks',
+        'pin_designs', 'athlete_pins', 'pin_drops', 'pin_quests',
+        'program_join_requests', 'program_owner_applications', 'program_invites', 'program_invite_redemptions',
+        'family_info_packets', 'class_enrollments',
+        'routines', 'routine_sections', 'routine_audio_assets', 'music_licenses', 'routine_count_maps',
+        'routine_events', 'routine_formations', 'routine_positions', 'routine_assignments',
+        'routine_ai_suggestions', 'routine_exports', 'routine_versions', 'routine_comments',
+        'routine_audio_analysis_jobs', 'routine_remix_requests', 'routine_music_compliance_checks',
+        'routine_analyses', 'analysis_elements', 'analysis_deductions', 'analysis_feedback',
+        'analysis_skill_updates',
+      ].forEach(table => { d[table] = []; });
+      d.profiles = liveProfile ? [liveProfile] : [];
+    };
+
+    if (isLiveSession) clearPrivateRows();
+
+    if (isLiveSession && !activeProgramId) {
+      if (window.HZsel && window.HZsel._refresh) await window.HZsel._refresh();
+      return;
+    }
+
+    const programsQuery = s.from('programs').select('*').is('deleted_at', null).order('created_at');
+    if (isLiveSession && activeProgramId) programsQuery.eq('id', activeProgramId);
+    const { data: programs } = await programsQuery;
     if (programs?.length) {
       d.programs = programs;
       const programIds = programs.map(p => p.id);
       const paymentSettings = await s.from('program_payment_settings').select('*').in('program_id', programIds);
       if (!paymentSettings.error) d.program_payment_settings = paymentSettings.data || [];
+      const [tracks, classes, windows, classEnrollments] = await Promise.all([
+        s.from('program_tracks').select('*').in('program_id', programIds).order('display_order'),
+        s.from('program_classes').select('*').in('program_id', programIds).order('display_order'),
+        s.from('registration_windows').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
+        s.from('class_enrollments').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
+      ]);
+      d.program_tracks = tracks.data || [];
+      d.program_classes = classes.data || [];
+      d.registration_windows = windows.data || [];
+      d.class_enrollments = classEnrollments.error ? [] : (classEnrollments.data || []);
+      const [waiverTemplates, formTemplates, announcements, uniforms, volunteerRoles, drills] = await Promise.all([
+        s.from('waiver_templates').select('*').in('program_id', programIds).order('effective_at', { ascending: false }),
+        s.from('form_templates').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
+        s.from('announcements').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
+        s.from('uniforms').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
+        s.from('volunteer_roles').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
+        s.from('drills').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
+      ]);
+      d.waiver_templates = waiverTemplates.data || [];
+      d.form_templates = formTemplates.data || [];
+      d.announcements = announcements.data || [];
+      d.uniforms = uniforms.data || [];
+      d.volunteer_roles = volunteerRoles.data || [];
+      d.drills = drills.data || [];
+      const formTemplateIds = d.form_templates.map(row => row.id);
+      if (formTemplateIds.length) {
+        const formFields = await s.from('form_fields').select('*').in('template_id', formTemplateIds).order('position');
+        d.form_fields = formFields.data || [];
+      }
+      const uniformIds = d.uniforms.map(row => row.id);
+      if (uniformIds.length) {
+        const uniformItems = await s.from('uniform_items').select('*').in('uniform_id', uniformIds);
+        d.uniform_items = uniformItems.data || [];
+      }
+      if (isStaff) {
+        const [registrations, leads, leadTouches, packets] = await Promise.all([
+          s.from('registrations').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
+          s.from('leads').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
+          s.from('lead_touches').select('*').order('created_at', { ascending: false }).limit(200),
+          s.from('family_info_packets').select('*').in('program_id', programIds).order('updated_at', { ascending: false }),
+        ]);
+        d.registrations = registrations.data || [];
+        d.leads = leads.data || [];
+        const leadIds = new Set(d.leads.map(row => row.id));
+        d.lead_touches = (leadTouches.data || []).filter(row => leadIds.has(row.lead_id));
+        d.family_info_packets = packets.data || [];
+      } else if (isLiveSession) {
+        d.registrations = [];
+        d.leads = [];
+        d.lead_touches = [];
+        const ownPackets = await s.from('family_info_packets').select('*').eq('profile_id', liveProfile.id).order('updated_at', { ascending: false });
+        d.family_info_packets = ownPackets.data || [];
+      }
     }
-    const { data: teams } = await s.from('teams').select('*').is('deleted_at', null).order('created_at');
-    if (!teams || !teams.length) return;
+    const teamsQuery = s.from('teams').select('*').is('deleted_at', null).order('created_at');
+    if (isLiveSession && activeProgramId) teamsQuery.eq('program_id', activeProgramId);
+    const { data: teams } = await teamsQuery;
+    if (!teams || !teams.length) {
+      if (isLiveSession) clearPrivateRows();
+      return;
+    }
     d.teams = teams;
     const ids = teams.map(t => t.id);
-    const [{ data: athletes }, { data: profiles }] = await Promise.all([
+    const profileQuery = activeRole === 'coach' || activeRole === 'owner'
+      ? s.from('profiles').select('*').eq('program_id', activeProgramId).order('display_name')
+      : null;
+    const [{ data: athletes }, profileRows] = await Promise.all([
       s.from('athletes').select('*').in('team_id', ids).is('deleted_at', null),
-      s.from('profiles').select('*').order('display_name'),
+      profileQuery || Promise.resolve({ data: liveProfile ? [liveProfile] : [] }),
     ]);
     d.athletes = athletes || [];
-    if (profiles?.length) d.profiles = profiles;
+    if (profileRows?.data?.length) d.profiles = profileRows.data;
     const aIds = d.athletes.map(a => a.id);
+    const sessionRows = await s.from('sessions').select('*').in('team_id', ids).order('scheduled_at');
+    d.sessions = (sessionRows.data || []).map(row => ({ ...row, scheduled: row.scheduled === false ? false : true }));
+    const planRows = await s.from('practice_plans').select('*').in('team_id', ids).order('created_at', { ascending: false });
+    d.practice_plans = planRows.data || [];
+    const planIds = d.practice_plans.map(row => row.id);
+    if (planIds.length) {
+      const planBlocks = await s.from('practice_plan_blocks').select('*').in('plan_id', planIds).order('position');
+      d.practice_plan_blocks = planBlocks.data || [];
+    } else {
+      d.practice_plan_blocks = [];
+    }
+    const sessionIds = d.sessions.map(row => row.id);
+    if (sessionIds.length) {
+      const [availabilityRows, volunteerAssignments] = await Promise.all([
+        s.from('session_availability').select('*').in('session_id', sessionIds),
+        s.from('volunteer_assignments').select('*').in('session_id', sessionIds),
+      ]);
+      d.session_availability = availabilityRows.data || [];
+      d.volunteer_assignments = volunteerAssignments.data || [];
+      const celebrationRows = await s.from('celebrations').select('*').in('team_id', ids).order('created_at', { ascending: false });
+      d.celebrations = celebrationRows.data || [];
+    } else {
+      d.session_availability = [];
+      d.volunteer_assignments = [];
+      d.celebrations = [];
+    }
     if (aIds.length) {
-      const [ask, pl] = await Promise.all([
+      const [ask, pl, attendanceRows, billingRows, contactRows, medicalRows, injuryRows, waiverRows, uniformOrderRows, formResponseRows] = await Promise.all([
         s.from('athlete_skills').select('*').in('athlete_id', aIds),
         s.from('parent_links').select('*').in('athlete_id', aIds),
+        s.from('attendance').select('*').in('athlete_id', aIds),
+        s.from('billing_accounts').select('*').in('athlete_id', aIds),
+        s.from('emergency_contacts').select('*').in('athlete_id', aIds),
+        s.from('medical_records').select('*').in('athlete_id', aIds),
+        s.from('injuries').select('*').in('athlete_id', aIds),
+        s.from('waiver_signatures').select('*').in('athlete_id', aIds),
+        s.from('uniform_orders').select('*').in('athlete_id', aIds),
+        s.from('form_responses').select('*').in('subject_athlete_id', aIds),
       ]);
       d.athlete_skills = ask.data || [];
       d.parent_links = pl.data || [];
+      d.attendance = attendanceRows.data || [];
+      d.billing_accounts = billingRows.data || [];
+      d.emergency_contacts = contactRows.data || [];
+      d.medical_records = medicalRows.data || [];
+      d.injuries = injuryRows.data || [];
+      d.waiver_signatures = waiverRows.data || [];
+      d.uniform_orders = uniformOrderRows.data || [];
+      d.form_responses = formResponseRows.data || [];
+      const formResponseIds = d.form_responses.map(row => row.id);
+      if (formResponseIds.length) {
+        const answers = await s.from('form_answers').select('*').in('response_id', formResponseIds);
+        d.form_answers = answers.data || [];
+      } else {
+        d.form_answers = [];
+      }
+      const accountIds = d.billing_accounts.map(row => row.id);
+      if (accountIds.length) {
+        const charges = await s.from('billing_charges').select('*').in('account_id', accountIds);
+        d.billing_charges = charges.data || [];
+      } else {
+        d.billing_charges = [];
+      }
     } else {
-      d.athlete_skills = []; d.parent_links = [];
+      d.athlete_skills = []; d.parent_links = []; d.attendance = []; d.billing_accounts = []; d.billing_charges = [];
+      d.emergency_contacts = []; d.medical_records = []; d.injuries = []; d.waiver_signatures = []; d.uniform_orders = []; d.form_responses = []; d.form_answers = [];
+    }
+    if (isLiveSession && liveProfile?.id) {
+      const ownMemberships = await s.from('thread_members').select('*').eq('profile_id', liveProfile.id);
+      const ownRows = ownMemberships.data || [];
+      const threadIds = [...new Set(ownRows.map(row => row.thread_id).filter(Boolean))];
+      if (threadIds.length) {
+        const [threadRows, memberRows, messageRows, readRows] = await Promise.all([
+          s.from('message_threads').select('*').in('id', threadIds).order('last_message_at', { ascending: false }),
+          s.from('thread_members').select('*').in('thread_id', threadIds),
+          s.from('messages').select('*').in('thread_id', threadIds).order('created_at', { ascending: true }),
+          s.from('message_reads').select('*').eq('profile_id', liveProfile.id),
+        ]);
+        d.message_threads = threadRows.data || [];
+        d.thread_members = memberRows.data || ownRows;
+        d.messages = messageRows.data || [];
+        d.message_reads = readRows.data || [];
+        const knownProfileIds = new Set((d.profiles || []).map(profile => profile.id));
+        const memberProfileIds = [...new Set((d.thread_members || []).map(row => row.profile_id).filter(Boolean))].filter(id => !knownProfileIds.has(id));
+        if (memberProfileIds.length) {
+          const profileRows = await s.from('profiles').select('id, email, display_name, role, program_id').in('id', memberProfileIds);
+          if (!profileRows.error && profileRows.data?.length) {
+            d.profiles = [...(d.profiles || []), ...profileRows.data.filter(profile => !knownProfileIds.has(profile.id))];
+          }
+        }
+      } else {
+        d.message_threads = [];
+        d.thread_members = [];
+        d.messages = [];
+        d.message_reads = [];
+      }
     }
     const routineTables = [
       ['routine_audio_assets', 'routine_id'],
@@ -187,8 +391,14 @@
       } else {
         d.routine_positions = [];
       }
+    } else if (isLiveSession) {
+      [
+        'routines', 'routine_sections', 'routine_audio_assets', 'music_licenses', 'routine_count_maps',
+        'routine_events', 'routine_formations', 'routine_positions', 'routine_assignments',
+        'routine_ai_suggestions', 'routine_exports', 'routine_versions', 'routine_comments',
+        'routine_audio_analysis_jobs', 'routine_remix_requests', 'routine_music_compliance_checks',
+      ].forEach(table => { d[table] = []; });
     }
-    const liveSession = window.HZdb?.auth?._getSession?.();
     if (liveSession?.profile) upsert(d.profiles || (d.profiles = []), liveSession.profile);
     if (window.HZsel && window.HZsel._refresh) await window.HZsel._refresh();
   }

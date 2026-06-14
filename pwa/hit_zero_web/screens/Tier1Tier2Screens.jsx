@@ -31,35 +31,151 @@ function cleanSessionType(value) {
     .replace(/\s+·\s+$/g, '')
     .trim();
 }
+function cleanClassScheduleSummary(value) {
+  return String(value || '')
+    .replace(/\s+-\s+/g, ' · ')
+    .replace(/\bTue\s*&\s*Thu\b/ig, 'Tue/Thu')
+    .trim();
+}
 function isUuid(value) { return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '')); }
 function liveMode() { return Boolean(window.HZsupa && window.HZdb?.auth?._mode?.() === 'live'); }
 async function refreshAppData(table, action = 'update') {
   if (window.HZsel?._refresh) await window.HZsel._refresh();
   window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table, action } }));
 }
+async function updatePersistedRow(table, id, patch, onConflict = 'id') {
+  if (liveMode() && isUuid(id)) {
+    const { data, error } = await window.HZsupa.from(table).update(patch).eq('id', id).select('*').single();
+    if (error) return { data: null, error };
+    await window.HZdb.from(table).upsert(data || { ...patch, id }, { onConflict });
+    return { data: data || { ...patch, id }, error: null };
+  }
+  return await window.HZdb.from(table).update(patch).eq('id', id);
+}
+async function insertPersistedRow(table, payload, onConflict = 'id') {
+  if (liveMode()) {
+    const { data, error } = await window.HZsupa.from(table).insert(payload).select('*').single();
+    if (error) return { data: null, error };
+    await window.HZdb.from(table).upsert(data || payload, { onConflict });
+    return { data: data || payload, error: null };
+  }
+  return await window.HZdb.from(table).insert(payload);
+}
+async function upsertPersistedRow(table, payload, onConflict = 'id') {
+  if (liveMode()) {
+    const { data, error } = await window.HZsupa
+      .from(table)
+      .upsert(payload, { onConflict })
+      .select('*')
+      .maybeSingle();
+    if (error) return { data: null, error };
+    await window.HZdb.from(table).upsert(data || payload, { onConflict });
+    return { data: data || payload, error: null };
+  }
+  return await window.HZdb.from(table).upsert(payload, { onConflict });
+}
 function notify(title, body, variant = 'got_it') {
   if (window.HZToast) window.HZToast({ variant, eyebrow: 'Saved', title, body });
 }
+function escapePdfHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[ch]));
+}
+function exportRowsPdf(title, columns, rows, meta = {}) {
+  const generated = new Date().toLocaleString();
+  const heading = escapePdfHtml(title || 'Hit Zero export');
+  const metaRows = Object.entries(meta)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .map(([label, value]) => `<div><strong>${escapePdfHtml(label)}:</strong> ${escapePdfHtml(value)}</div>`)
+    .join('');
+  const tableRows = (rows || []).map(row => (
+    `<tr>${columns.map(col => `<td>${escapePdfHtml(typeof col.value === 'function' ? col.value(row) : row[col.value])}</td>`).join('')}</tr>`
+  )).join('');
+  const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${heading}</title>
+  <style>
+    body { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #18181b; margin: 32px; }
+    h1 { font-size: 24px; margin: 0 0 6px; }
+    .meta { color: #52525b; font-size: 12px; display: grid; gap: 3px; margin: 0 0 18px; }
+    table { border-collapse: collapse; width: 100%; font-size: 11px; }
+    th { background: #111827; color: #fff; text-align: left; padding: 8px; }
+    td { border-bottom: 1px solid #e5e7eb; padding: 7px 8px; vertical-align: top; }
+    tr:nth-child(even) td { background: #f9fafb; }
+    @media print { body { margin: 18mm; } button { display: none; } }
+  </style>
+</head>
+<body>
+  <button onclick="window.print()" style="float:right;padding:8px 12px;border:1px solid #d4d4d8;border-radius:8px;background:#fff">Print / Save PDF</button>
+  <h1>${heading}</h1>
+  <div class="meta"><div><strong>Generated:</strong> ${escapePdfHtml(generated)}</div>${metaRows}<div><strong>Rows:</strong> ${(rows || []).length}</div></div>
+  <table>
+    <thead><tr>${columns.map(col => `<th>${escapePdfHtml(col.label)}</th>`).join('')}</tr></thead>
+    <tbody>${tableRows || `<tr><td colspan="${columns.length}">No rows.</td></tr>`}</tbody>
+  </table>
+  <script>setTimeout(() => window.print(), 250);</script>
+</body>
+</html>`;
+  const popup = window.open('', '_blank');
+  if (popup) {
+    popup.document.open();
+    popup.document.write(html);
+    popup.document.close();
+    return;
+  }
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${String(title || 'hit-zero-export').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'hit-zero-export'}.html`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+window.HZexportRowsPdf = exportRowsPdf;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Messages — left rail of threads, right pane of conversation
 // ═══════════════════════════════════════════════════════════════════════════
 function Messages({ snap, session }) {
-  const me = session?.profile || { id: 'u_coach', display_name: 'Coach Brynn', role: 'coach' };
+  const me = session?.actualProfile || session?.profile || { id: 'u_coach', display_name: 'Coach Brynn', role: 'coach' };
+  const isMobile = window.useIsMobile ? window.useIsMobile(768) : false;
   const threads = window.HZsel.inboxThreads(me.id);
-  const [activeId, setActiveId] = _useState(threads[0]?.id || null);
+  const isStaff = ['coach', 'owner'].includes(me.role || '');
+  const canStartStaffThread = ['parent', 'athlete'].includes(me.role || '');
+  // Phones start on the thread list; desktop preselects the first thread.
+  const [activeId, setActiveId] = _useState(() => (typeof window !== 'undefined' && window.innerWidth <= 768) ? null : (threads[0]?.id || null));
   const [draft, setDraft] = _useState('');
+  const [busyThread, setBusyThread] = _useState(false);
+  const [err, setErr] = _useState('');
+  const [staffThreadKind, setStaffThreadKind] = _useState('team');
+  const [staffThreadTitle, setStaffThreadTitle] = _useState('');
   const paneRef = _useRef(null);
 
-  const active = threads.find(t => t.id === activeId) || threads[0] || null;
+  const active = threads.find(t => t.id === activeId) || (isMobile ? null : (threads[0] || null));
   const msgs = active ? window.HZsel.threadMessages(active.id) : [];
   const members = active ? window.HZsel.threadMembers(active.id) : [];
 
   // Mark as read when a thread becomes active
   _useEffect(() => {
     if (!active) return;
-    window.HZdb.from('message_reads')
-      .upsert({ thread_id: active.id, profile_id: me.id, last_read_at: new Date().toISOString() }, { onConflict: 'thread_id,profile_id' });
+    const row = { thread_id: active.id, profile_id: me.id, last_read_at: new Date().toISOString() };
+    (async () => {
+      if (liveMode() && window.HZsupa) {
+        const { data, error } = await window.HZsupa
+          .from('message_reads')
+          .upsert(row, { onConflict: 'thread_id,profile_id' })
+          .select('*')
+          .maybeSingle();
+        if (!error && data) await window.HZdb.from('message_reads').upsert(data, { onConflict: 'thread_id,profile_id' });
+        if (!error) await refreshAppData('message_reads', 'upsert');
+        return;
+      }
+      await window.HZdb.from('message_reads').upsert(row, { onConflict: 'thread_id,profile_id' });
+      await refreshAppData('message_reads', 'upsert');
+    })();
   }, [active?.id]);
 
   // Auto-scroll to bottom on new messages
@@ -67,29 +183,98 @@ function Messages({ snap, session }) {
     if (paneRef.current) paneRef.current.scrollTop = paneRef.current.scrollHeight;
   }, [msgs.length, activeId]);
 
-  function send() {
+  async function send() {
     if (!draft.trim() || !active) return;
-    window.HZdb.from('messages').insert({
+    setErr('');
+    const { error } = await insertPersistedRow('messages', {
       thread_id: active.id,
       author_id: me.id,
       body: draft.trim(),
       created_at: new Date().toISOString(),
     });
+    if (error) {
+      setErr(error.message || 'Could not send message.');
+      return;
+    }
+    await refreshAppData('messages', 'insert');
     setDraft('');
   }
 
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 0, height: 'calc(100vh - 88px)', marginTop: -16, marginRight: -16 }}>
-      {/* Threads list */}
-      <aside style={{ borderRight: '1px solid var(--hz-line)', overflow: 'auto', paddingRight: 8 }}>
-        <div style={{ padding: '8px 10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div className="hz-display" style={{ fontSize: 24, fontWeight: 600 }}>Messages</div>
-          <button className="hz-btn hz-btn-ghost" onClick={() => alert('New thread picker coming soon')}>
-            <window.HZIcon name="plus" size={16}/> New
-          </button>
+  async function startStaffThread() {
+    if (!window.HZdb?.auth?.createMessageThread) return;
+    setBusyThread(true);
+    setErr('');
+    try {
+      const { data, error } = await window.HZdb.auth.createMessageThread({ kind: 'dm_staff', title: 'Message staff' });
+      if (error) throw error;
+      if (data?.thread) {
+        await window.HZdb.from('message_threads').upsert(data.thread, { onConflict: 'id' });
+        for (const member of data.members || []) await window.HZdb.from('thread_members').upsert(member, { onConflict: 'thread_id,profile_id' });
+        for (const profile of data.profiles || []) await window.HZdb.from('profiles').upsert(profile, { onConflict: 'id' });
+        setActiveId(data.thread.id);
+      }
+      await refreshAppData('message_threads', 'insert');
+    } catch (e) {
+      setErr(e.message || 'Could not start a staff message.');
+    } finally {
+      setBusyThread(false);
+    }
+  }
+
+  async function startStaffGroupThread() {
+    if (!isStaff || !window.HZdb?.auth?.createMessageThread) return;
+    setBusyThread(true);
+    setErr('');
+    try {
+      const teams = window.HZsel.programTeams?.() || snap.teams || [];
+      const team = teams.find(Boolean) || null;
+      const teamAthleteIds = new Set((snap.athletes || []).filter(a => !team?.id || a.team_id === team.id).map(a => a.id));
+      const linkedParentIds = new Set((snap.parent_links || []).filter(link => teamAthleteIds.has(link.athlete_id)).map(link => link.parent_id));
+      const staffIds = (snap.profiles || []).filter(p => p.program_id === me.program_id && ['owner', 'coach'].includes(p.role)).map(p => p.id);
+      const parentIds = (snap.profiles || []).filter(p => linkedParentIds.has(p.id)).map(p => p.id);
+      const memberIds = staffThreadKind === 'coaches'
+        ? staffIds
+        : [...staffIds, ...parentIds];
+      const fallbackTitle = staffThreadKind === 'coaches'
+        ? 'Coach staff'
+        : staffThreadKind === 'parents'
+          ? `${team?.name || 'Team'} parents`
+          : `${team?.name || 'Team'} team`;
+      const { data, error } = await window.HZdb.auth.createMessageThread({
+        kind: staffThreadKind,
+        title: staffThreadTitle.trim() || fallbackTitle,
+        team_id: team?.id || null,
+        member_ids: [...new Set(memberIds)].filter(Boolean),
+      });
+      if (error) throw error;
+      if (data?.thread) {
+        await window.HZdb.from('message_threads').upsert(data.thread, { onConflict: 'id' });
+        for (const member of data.members || []) await window.HZdb.from('thread_members').upsert(member, { onConflict: 'thread_id,profile_id' });
+        for (const profile of data.profiles || []) await window.HZdb.from('profiles').upsert(profile, { onConflict: 'id' });
+        setActiveId(data.thread.id);
+        setStaffThreadTitle('');
+      }
+      await refreshAppData('message_threads', 'insert');
+    } catch (e) {
+      setErr(e.message || 'Could not start a group thread.');
+    } finally {
+      setBusyThread(false);
+    }
+  }
+
+  const threadButtons = (
+    <>
+      {threads.length === 0 && (
+        <div style={{ padding: 24, color: 'var(--hz-dim)', fontSize: 13 }}>
+          No conversations yet. Group chats and direct messages from your gym will appear here.
+          {canStartStaffThread && (
+            <button className="hz-btn hz-btn-primary hz-btn-sm" onClick={startStaffThread} disabled={busyThread} style={{ marginTop: 14 }}>
+              {busyThread ? 'Opening...' : 'Message staff'}
+            </button>
+          )}
         </div>
-        {threads.length === 0 && <div style={{ padding: 24, color: 'var(--hz-dim)', fontSize: 13 }}>No threads yet.</div>}
-        {threads.map(t => (
+      )}
+      {threads.map(t => (
           <button key={t.id} onClick={() => setActiveId(t.id)}
             className="hz-nosel"
             style={{
@@ -115,18 +300,28 @@ function Messages({ snap, session }) {
             </div>
           </button>
         ))}
-      </aside>
+    </>
+  );
 
-      {/* Conversation pane */}
-      <section style={{ display: 'flex', flexDirection: 'column', height: '100%', paddingLeft: 16 }}>
-        {!active && <div style={{ margin: 'auto', color: 'var(--hz-dim)' }}>Pick a thread to start.</div>}
-        {active && (
+  const conversation = active && (
           <>
-            <div style={{ padding: '8px 0 14px', borderBottom: '1px solid var(--hz-line)' }}>
-              <div className="hz-display" style={{ fontSize: 22, fontWeight: 600 }}>
-                {active.title || threadTitle(active, members, me)}
+            <div style={{ padding: '8px 0 14px', borderBottom: '1px solid var(--hz-line)', display: 'flex', alignItems: 'center', gap: 10 }}>
+              {isMobile && (
+                <button
+                  className="hz-btn hz-btn-ghost hz-btn-sm"
+                  onClick={() => setActiveId(null)}
+                  aria-label="Back to all messages"
+                  style={{ flexShrink: 0, paddingLeft: 8, paddingRight: 10 }}
+                >
+                  <window.HZIcon name="chev-left" size={16}/> Back
+                </button>
+              )}
+              <div style={{ minWidth: 0 }}>
+                <div className="hz-display" style={{ fontSize: 22, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {active.title || threadTitle(active, members, me)}
+                </div>
+                <div className="hz-eyebrow" style={{ marginTop: 4 }}>{members.length} members · {active.kind}</div>
               </div>
-              <div className="hz-eyebrow" style={{ marginTop: 4 }}>{members.length} members · {active.kind}</div>
             </div>
             <div ref={paneRef} style={{ flex: 1, overflow: 'auto', padding: '16px 0' }}>
               {msgs.map(m => {
@@ -165,8 +360,59 @@ function Messages({ snap, session }) {
                 <window.HZIcon name="bolt" size={14}/> Send
               </button>
             </div>
+            {err && <div style={{ color: 'var(--hz-pink)', fontSize: 12, paddingBottom: 8 }}>{err}</div>}
           </>
-        )}
+  );
+
+  // Phone: one pane at a time — list first, conversation with a Back button.
+  if (isMobile) {
+    return active ? (
+      <section style={{ display: 'flex', flexDirection: 'column', height: 'calc(100dvh - var(--hz-mobile-topbar-h, 52px) - var(--hz-tabbar-h, 60px) - 44px)' }}>
+        {conversation}
+      </section>
+    ) : (
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', padding: '2px 2px 14px' }}>
+          <div className="hz-display" style={{ fontSize: 28 }}>Messages</div>
+          {canStartStaffThread && <button className="hz-btn hz-btn-primary hz-btn-sm" onClick={startStaffThread} disabled={busyThread}>{busyThread ? 'Opening...' : 'Staff'}</button>}
+        </div>
+        {err && <div style={{ color: 'var(--hz-pink)', fontSize: 12, padding: '0 2px 10px' }}>{err}</div>}
+        {threadButtons}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 0, height: 'calc(100vh - 88px)', marginTop: -16, marginRight: -16 }}>
+      {/* Threads list */}
+      <aside style={{ borderRight: '1px solid var(--hz-line)', overflow: 'auto', paddingRight: 8 }}>
+        <div style={{ padding: '8px 10px 14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+            <div className="hz-display" style={{ fontSize: 24, fontWeight: 600 }}>Messages</div>
+            {canStartStaffThread && <button className="hz-btn hz-btn-primary hz-btn-sm" onClick={startStaffThread} disabled={busyThread}>{busyThread ? 'Opening...' : 'Message staff'}</button>}
+          </div>
+          {isStaff && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 6, marginTop: 10 }}>
+              <select className="hz-input" value={staffThreadKind} onChange={e => setStaffThreadKind(e.target.value)} disabled={busyThread} style={{ padding: '8px 10px' }}>
+                <option value="team">Team</option>
+                <option value="parents">Parents</option>
+                <option value="coaches">Coaches</option>
+              </select>
+              <input className="hz-input" value={staffThreadTitle} onChange={e => setStaffThreadTitle(e.target.value)} disabled={busyThread} placeholder="Thread title" style={{ padding: '8px 10px' }}/>
+              <button className="hz-btn hz-btn-primary hz-btn-sm" onClick={startStaffGroupThread} disabled={busyThread}>
+                {busyThread ? 'Opening...' : 'New'}
+              </button>
+            </div>
+          )}
+          {err && <div style={{ color: 'var(--hz-pink)', fontSize: 12, marginTop: 8 }}>{err}</div>}
+        </div>
+        {threadButtons}
+      </aside>
+
+      {/* Conversation pane */}
+      <section style={{ display: 'flex', flexDirection: 'column', height: '100%', paddingLeft: 16 }}>
+        {!active && <div style={{ margin: 'auto', color: 'var(--hz-dim)' }}>Pick a thread to start.</div>}
+        {conversation}
       </section>
     </div>
   );
@@ -184,21 +430,58 @@ window.Messages = Messages;
 // ═══════════════════════════════════════════════════════════════════════════
 // Schedule — upcoming sessions, RSVP + iCal feed
 // ═══════════════════════════════════════════════════════════════════════════
-function Schedule({ snap, session }) {
-  const me = session?.profile || { id: 'u_coach', role: 'coach' };
-  const upcoming = window.HZsel.upcomingSessions(12);
+function staffScheduleSessionsFromSnap(snap, limit = 16) {
+  const teamIds = new Set((snap.teams || []).map(t => t.id));
+  const rows = (snap.sessions || [])
+    .filter(s => (s.scheduled !== false) && (!teamIds.size || teamIds.has(s.team_id)))
+    .sort((a,b) => new Date(a.scheduled_at || a.date || 0) - new Date(b.scheduled_at || b.date || 0));
+  const now = Date.now();
+  const future = rows.filter(s => new Date(s.scheduled_at || s.date || 0).getTime() >= now - 86400000);
+  return (future.length ? future.slice(0, limit) : rows.reverse().slice(0, Math.min(limit, 8)));
+}
+
+function Schedule({ snap, session, pushToast }) {
+  const me = session?.actualProfile || session?.profile || { id: 'u_coach', role: 'coach' };
+  const scope = window.HZviewerScope ? window.HZviewerScope(snap, session) : null;
   const canEdit = me.role === 'coach' || me.role === 'owner';
+  const selectorUpcoming = canEdit
+    ? (window.HZsel.staffScheduleSessions?.(16) || [])
+    : window.HZsel.upcomingSessions(12);
+  const allUpcoming = canEdit && selectorUpcoming.length === 0
+    ? staffScheduleSessionsFromSnap(snap, 16)
+    : selectorUpcoming;
+  const upcoming = canEdit || !scope
+    ? allUpcoming
+    : allUpcoming.filter(s => scope.visibleTeamIds.has(s.team_id));
+  const classEnrollments = canEdit
+    ? (window.HZsel.classEnrollmentsForProgram?.() || [])
+    : me.role === 'parent'
+      ? window.HZsel.classEnrollmentsForParent(session)
+      : scope?.ownAthleteId
+        ? window.HZsel.classEnrollmentsForAthlete(scope.ownAthleteId)
+        : [];
+  const familyTeamId = !canEdit && scope?.visibleTeamIds?.size === 1
+    ? Array.from(scope.visibleTeamIds)[0]
+    : null;
+  const canSubscribe = canEdit || !!familyTeamId;
   const [adding, setAdding] = _useState(false);
   const [editingId, setEditingId] = _useState(null);
   const [busy, setBusy] = _useState(false);
   const team = (snap.teams || [])[0] || null;
+  const notifyError = (title, body) => {
+    (pushToast || window.HZToast)?.({ kind: 'error', eyebrow: 'Schedule', title, body });
+  };
 
   async function addSession(values) {
-    if (!team?.id) { alert('No team loaded.'); return; }
+    if (!team?.id) {
+      notifyError('No team loaded', 'Create a team before adding sessions.');
+      return;
+    }
     setBusy(true);
     try {
-      const { error } = await window.HZdb.from('sessions').insert({
+      const { data, error } = await window.HZdb.auth.createScheduleSession({
         team_id: team.id,
+        title: values.title || null,
         scheduled_at: values.scheduled_at,
         duration_min: values.duration_min,
         type: values.type,
@@ -206,7 +489,13 @@ function Schedule({ snap, session }) {
         is_competition: values.is_competition,
         notes: values.notes || null,
       });
-      if (error) { console.error('[sessions] insert', error); alert('Could not save: ' + error.message); return; }
+      if (error) {
+        console.error('[sessions] insert', error);
+        notifyError('Could not save session', error.message);
+        return;
+      }
+      if (data?.session) await window.HZdb.from('sessions').upsert(data.session, { onConflict: 'id' });
+      await refreshAppData('sessions', 'insert');
       setAdding(false);
     } finally { setBusy(false); }
   }
@@ -214,8 +503,14 @@ function Schedule({ snap, session }) {
   async function patchSession(id, patch) {
     setBusy(true);
     try {
-      const { error } = await window.HZdb.from('sessions').update(patch).eq('id', id);
-      if (error) { console.error('[sessions] update', error); alert('Could not save: ' + error.message); return false; }
+      const { data, error } = await window.HZdb.auth.updateScheduleSession(id, patch);
+      if (error) {
+        console.error('[sessions] update', error);
+        notifyError('Could not save session', error.message);
+        return false;
+      }
+      if (data?.session) await window.HZdb.from('sessions').upsert(data.session, { onConflict: 'id' });
+      await refreshAppData('sessions', 'update');
       return true;
     } finally { setBusy(false); }
   }
@@ -224,8 +519,12 @@ function Schedule({ snap, session }) {
     if (!confirm('Cancel this session? This removes it from everyone\'s schedule.')) return;
     setBusy(true);
     try {
-      const { error } = await window.HZdb.from('sessions').delete().eq('id', id);
-      if (error) { console.error('[sessions] delete', error); alert('Could not remove: ' + error.message); }
+      const { error } = await window.HZdb.auth.deleteScheduleSession(id);
+      if (error) {
+        console.error('[sessions] delete', error);
+        notifyError('Could not remove session', error.message);
+      }
+      else await refreshAppData('sessions', 'delete');
     } finally { setBusy(false); }
   }
 
@@ -233,7 +532,7 @@ function Schedule({ snap, session }) {
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 20 }}>
         <div>
-          <div className="hz-eyebrow" style={{ marginBottom: 6 }}>Schedule · next 30 days</div>
+          <div className="hz-eyebrow" style={{ marginBottom: 6 }}>{canEdit ? 'Schedule · practice execution' : 'Schedule · next 30 days'}</div>
           <div className="hz-display" style={{ fontSize: 48, lineHeight: 1 }}>
             What's <span className="hz-zero">next</span>.
           </div>
@@ -244,16 +543,24 @@ function Schedule({ snap, session }) {
               {adding ? 'Cancel' : '+ Add session'}
             </button>
           )}
-          <CalendarSubscribeButton me={me}/>
+          {canSubscribe && <CalendarSubscribeButton me={me} teamId={familyTeamId}/>}
         </div>
       </div>
 
       {adding && <SessionForm onSave={addSession} onCancel={() => setAdding(false)} disabled={busy}/>}
 
       <div style={{ display: 'grid', gap: 14 }}>
-        {upcoming.length === 0 && !adding && (
+        {upcoming.length === 0 && classEnrollments.length === 0 && !adding && (
           <div className="hz-card" style={{ padding: 40, color: 'var(--hz-dim)', textAlign: 'center' }}>
-            Nothing on the books. {canEdit ? 'Click "+ Add session" above to put a practice or competition on the calendar.' : 'Check back later.'}
+            Nothing on the books. {canEdit ? 'Click "+ Add session" above to put a practice or competition on the calendar.' : 'Linked team sessions and paid class registrations will appear here.'}
+          </div>
+        )}
+        {classEnrollments.length > 0 && (
+          <div className="hz-card" style={{ padding: 18, borderColor: 'rgba(39,207,215,0.28)' }}>
+            <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)', marginBottom: 12 }}>Registered classes</div>
+            <div style={{ display: 'grid', gap: 10 }}>
+              {classEnrollments.map(row => <ClassEnrollmentRow key={row.id} enrollment={row}/>)}
+            </div>
           </div>
         )}
         {upcoming.map(s => editingId === s.id
@@ -262,7 +569,27 @@ function Schedule({ snap, session }) {
               onCancel={() => setEditingId(null)}
               onRemove={() => removeSession(s.id).then(() => setEditingId(null))}
               disabled={busy}/>
-          : <SessionRow key={s.id} session={s} me={me} canEdit={canEdit} onEdit={() => setEditingId(s.id)}/> )}
+          : <SessionRow key={s.id} session={s} me={me} authSession={session} canEdit={canEdit} snap={snap} onEdit={() => setEditingId(s.id)}/> )}
+      </div>
+    </div>
+  );
+}
+
+function ClassEnrollmentRow({ enrollment }) {
+  const schedule = cleanClassScheduleSummary(enrollment.schedule_summary) || 'Class schedule pending';
+  const status = enrollment.staff_status === 'accepted' ? 'Accepted' : 'Pending staff review';
+  return (
+    <div style={{ display: 'flex', gap: 16, justifyContent: 'space-between', alignItems: 'flex-start', padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.035)', border: '1px solid var(--hz-line)' }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontWeight: 800, fontSize: 15 }}>{enrollment.class_name}</div>
+        <div style={{ color: 'var(--hz-dim)', fontSize: 12.5, marginTop: 4 }}>{schedule}</div>
+        <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>{enrollment.athlete_name || 'Athlete'}</div>
+      </div>
+      <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+        <div style={{ color: enrollment.payment_status === 'paid' ? 'var(--hz-green)' : 'var(--hz-amber)', fontWeight: 800, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          {enrollment.payment_status === 'paid' ? 'Paid' : enrollment.payment_status}
+        </div>
+        <div style={{ color: enrollment.staff_status === 'accepted' ? 'var(--hz-green)' : 'var(--hz-amber)', fontSize: 11, marginTop: 4 }}>{status}</div>
       </div>
     </div>
   );
@@ -275,6 +602,7 @@ function SessionForm({ session: existing, onSave, onCancel, onRemove, disabled }
   const formatLocal = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
   const [scheduledAt, setScheduledAt] = _useState(formatLocal(initialIso));
+  const [title, setTitle] = _useState(existing?.title || '');
   const [type, setType] = _useState(existing?.type || 'practice');
   const [duration, setDuration] = _useState(existing?.duration_min || 90);
   const [location, setLocation] = _useState(existing?.location || '');
@@ -284,6 +612,7 @@ function SessionForm({ session: existing, onSave, onCancel, onRemove, disabled }
   const submit = (e) => {
     e?.preventDefault?.();
     onSave({
+      title: title.trim() || null,
       scheduled_at: new Date(scheduledAt).toISOString(),
       type,
       duration_min: parseInt(duration, 10) || 60,
@@ -296,25 +625,21 @@ function SessionForm({ session: existing, onSave, onCancel, onRemove, disabled }
   return (
     <form onSubmit={submit} className="hz-card" style={{ padding: 18, marginBottom: 14, display: 'grid', gap: 10 }}>
       <div className="hz-eyebrow" style={{ fontSize: 10 }}>{existing ? 'Edit session' : 'New session'}</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 0.7fr 1.4fr', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1.2fr 1fr 0.7fr', gap: 10 }}>
+        <FieldRow label="Title">
+          <input className="hz-input" value={title} onChange={e => setTitle(e.target.value)} disabled={disabled} placeholder="Cheer Prep Academy"/>
+        </FieldRow>
         <FieldRow label="When">
           <input type="datetime-local" className="hz-input" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} disabled={disabled} required/>
         </FieldRow>
         <FieldRow label="Type">
-          <select className="hz-input" value={type} onChange={e => setType(e.target.value)} disabled={disabled}>
-            <option value="practice">Practice</option>
-            <option value="tumbling">Tumbling</option>
-            <option value="stunting">Stunting</option>
-            <option value="conditioning">Conditioning</option>
-            <option value="choreo">Choreo</option>
-            <option value="competition">Competition</option>
-            <option value="open_gym">Open Gym</option>
-            <option value="meeting">Meeting</option>
-          </select>
+          <input className="hz-input" value={type} onChange={e => setType(e.target.value)} disabled={disabled} placeholder="practice, class, competition"/>
         </FieldRow>
         <FieldRow label="Min">
           <input type="number" className="hz-input" value={duration} onChange={e => setDuration(e.target.value)} disabled={disabled} min="15" max="480" step="15"/>
         </FieldRow>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
         <FieldRow label="Location">
           <input className="hz-input" value={location} onChange={e => setLocation(e.target.value)} disabled={disabled} placeholder="Main floor"/>
         </FieldRow>
@@ -347,7 +672,7 @@ function FieldRow({ label, children }) {
     </label>
   );
 }
-function SessionRow({ session: s, me, canEdit, onEdit }) {
+function SessionRow({ session: s, me, authSession, canEdit, onEdit, snap }) {
   const { day, time } = formatSessionTime(s.scheduled_at);
   const rsvp = window.HZsel.sessionRsvp(s.id);
   const volRows = window.HZsel.volunteerRolesAndAssignments(s.id);
@@ -367,8 +692,11 @@ function SessionRow({ session: s, me, canEdit, onEdit }) {
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 700, fontSize: 17 }}>
             {s.is_competition && <span style={{ marginRight: 8 }}>🏆</span>}
-            {cleanSessionType(s.type)}
+            {s.title || cleanSessionType(s.type)}
           </div>
+          {s.title && (
+            <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 3, textTransform: 'capitalize' }}>{cleanSessionType(s.type)}</div>
+          )}
           <div style={{ color: 'var(--hz-dim)', fontSize: 13, marginTop: 4 }}>
             {s.duration_min}min{s.location ? ' · ' + s.location : ''}
           </div>
@@ -386,11 +714,12 @@ function SessionRow({ session: s, me, canEdit, onEdit }) {
         </div>
 
         {/* Personal RSVP for athletes/parents; edit button for staff */}
-        {me.role !== 'coach' && me.role !== 'owner' && <PersonalRsvp session={s} me={me}/> }
+        {me.role !== 'coach' && me.role !== 'owner' && <PersonalRsvp session={s} me={me} authSession={authSession}/> }
         {canEdit && onEdit && (
           <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={onEdit} style={{ padding: '6px 12px', fontSize: 11 }}>Edit</button>
         )}
       </div>
+      {canEdit && <AttendancePanel session={s} me={me} snap={snap}/>}
     </div>
   );
 }
@@ -402,11 +731,96 @@ function RsvpChip({ label, value, color }) {
     </div>
   );
 }
-function PersonalRsvp({ session, me }) {
+
+function AttendancePanel({ session, me, snap }) {
+  const [open, setOpen] = _useState(false);
+  const [savingKey, setSavingKey] = _useState('');
+  const [error, setError] = _useState('');
+  const athletes = (window.HZsel.athletesForTeam?.(session.team_id) || (snap.athletes || []).filter(a => a.team_id === session.team_id))
+    .filter(a => !a.deleted_at)
+    .sort((a, b) => (a.display_name || '').localeCompare(b.display_name || ''));
+  const rows = (snap.attendance || []).filter(row => row.session_id === session.id);
+  const byAthlete = rows.reduce((out, row) => { out[row.athlete_id] = row; return out; }, {});
+  const present = rows.filter(row => row.status === 'present').length;
+  const late = rows.filter(row => row.status === 'late').length;
+  const absent = rows.filter(row => row.status === 'absent').length;
+  const excused = rows.filter(row => row.status === 'excused').length;
+
+  async function mark(athleteId, status) {
+    if (!athleteId || savingKey) return;
+    const key = athleteId + ':' + status;
+    setSavingKey(key);
+    setError('');
+    try {
+      const payload = {
+        session_id: session.id,
+        athlete_id: athleteId,
+        status,
+        recorded_by: me.id || null,
+        recorded_at: new Date().toISOString(),
+      };
+      const { error: saveError } = await upsertPersistedRow('attendance', payload, 'session_id,athlete_id');
+      if (saveError) throw saveError;
+      await refreshAppData('attendance', 'upsert');
+    } catch (err) {
+      setError(err?.message || 'Attendance did not save.');
+    } finally {
+      setSavingKey('');
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 16, borderTop: '1px solid var(--hz-line)', paddingTop: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="hz-eyebrow">Attendance</div>
+          <RsvpChip label="Present" value={present} color="var(--hz-teal)"/>
+          <RsvpChip label="Late" value={late} color="var(--hz-amber)"/>
+          <RsvpChip label="Absent" value={absent} color="var(--hz-red)"/>
+          <RsvpChip label="Excused" value={excused} color="var(--hz-dimmer)"/>
+        </div>
+        <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={() => setOpen(v => !v)}>
+          {open ? 'Hide roster' : 'Take attendance'}
+        </button>
+      </div>
+      {error && <div style={{ color: 'var(--hz-red)', fontSize: 12, marginTop: 10 }}>{error}</div>}
+      {open && (
+        <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+          {athletes.map(athlete => {
+            const current = byAthlete[athlete.id]?.status || 'unmarked';
+            return (
+              <div key={athlete.id} style={{ display: 'grid', gridTemplateColumns: '1fr repeat(4, auto)', gap: 8, alignItems: 'center', padding: 10, borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--hz-line)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                  <Avatar name={athlete.display_name} initials={athlete.initials} color={athlete.photo_color} src={athlete.photo_url} size={30}/>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{athlete.display_name}</div>
+                    <div style={{ color: 'var(--hz-dim)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>{current}</div>
+                  </div>
+                </div>
+                {['present','late','absent','excused'].map(status => (
+                  <button
+                    key={status}
+                    className={`hz-btn hz-btn-sm ${current === status ? 'hz-btn-primary' : 'hz-btn-ghost'}`}
+                    onClick={() => mark(athlete.id, status)}
+                    disabled={!!savingKey}
+                    style={{ fontSize: 11, padding: '6px 9px', textTransform: 'capitalize' }}
+                  >
+                    {savingKey === athlete.id + ':' + status ? 'Saving' : status}
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+          {athletes.length === 0 && <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>No athletes are assigned to this session team.</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+function PersonalRsvp({ session, me, authSession }) {
   const snap = window.HZsel.cache();
-  const myAthleteId = (snap.athletes || []).find(a => a.profile_id === me.id)?.id
-    || (snap.parent_links || []).find(l => l.parent_id === me.id)?.athlete_id
-    || (snap.athletes || [])[0]?.id;
+  const scope = window.HZviewerScope ? window.HZviewerScope(snap, authSession || { profile: me }) : null;
+  const myAthleteId = scope?.ownAthleteId || scope?.visibleAthletes?.[0]?.id || null;
   const row = (snap.session_availability || []).find(r => r.session_id === session.id && r.athlete_id === myAthleteId);
   const [optimistic, setOptimistic] = _useState(null);
   const [saving, setSaving] = _useState(null);
@@ -451,17 +865,22 @@ function PersonalRsvp({ session, me }) {
 
   return (
     <div>
+      {!myAthleteId && (
+        <div style={{ color: 'var(--hz-dim)', fontSize: 11, maxWidth: 220, lineHeight: 1.45 }}>
+          Link an athlete before RSVP opens.
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 6 }}>
         {['going','maybe','no'].map(k => (
           <button key={k} onClick={() => set(k)}
-            disabled={!!saving}
+            disabled={!!saving || !myAthleteId}
             className="hz-nosel"
             style={{
-              padding: '8px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: saving ? 'wait' : 'pointer',
+              padding: '8px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: !myAthleteId ? 'not-allowed' : saving ? 'wait' : 'pointer',
               border: '1px solid ' + (curr === k ? 'transparent' : 'var(--hz-line)'),
               background: curr === k ? (k === 'going' ? 'var(--hz-teal)' : k === 'maybe' ? 'var(--hz-amber)' : 'var(--hz-red)') : 'transparent',
               color: curr === k ? '#050507' : '#fff', textTransform: 'capitalize', letterSpacing: '0.04em',
-              opacity: saving && saving !== k ? 0.5 : 1,
+              opacity: !myAthleteId || (saving && saving !== k) ? 0.5 : 1,
             }}>
             {saving === k ? 'Saving...' : k}
           </button>
@@ -471,7 +890,7 @@ function PersonalRsvp({ session, me }) {
     </div>
   );
 }
-function CalendarSubscribeButton({ me }) {
+function CalendarSubscribeButton({ me, teamId = null }) {
   const [busy, setBusy] = _useState(false);
   const [error, setError] = _useState('');
 
@@ -489,10 +908,9 @@ function CalendarSubscribeButton({ me }) {
     if (readError) throw readError;
     if (liveExisting?.[0]?.token) return liveExisting[0].token;
     const token = `hz_${crypto.randomUUID().replaceAll('-', '')}`;
-    const team = (cache.teams || [])[0];
     const row = {
       profile_id: me.id,
-      team_id: me.role === 'coach' || me.role === 'owner' ? null : team?.id || null,
+      team_id: me.role === 'coach' || me.role === 'owner' ? null : teamId,
       token,
       label: 'Hit Zero schedule',
     };
@@ -540,10 +958,15 @@ window.Schedule = Schedule;
 // ═══════════════════════════════════════════════════════════════════════════
 // Uniforms
 // ═══════════════════════════════════════════════════════════════════════════
-function Uniforms({ snap, session }) {
+function Uniforms({ snap, session, route }) {
   const kits = window.HZsel.uniformsWithItems();
-  const orders = snap.uniform_orders || [];
-  const [tab, setTab] = _useState('catalog');
+  const scope = window.HZviewerScope ? window.HZviewerScope(snap, session) : null;
+  const isStaff = ['coach', 'owner'].includes(session?.profile?.role || '');
+  const orders = (snap.uniform_orders || []).filter(order => isStaff || scope?.visibleAthleteIds?.has(order.athlete_id));
+  // Tab lives in the hash so the OS back button undoes tab switches.
+  const tabParam = new URLSearchParams(String(route || '').split('?')[1] || '').get('tab');
+  const tab = ['catalog', 'orders', 'sizes'].includes(tabParam) ? tabParam : 'catalog';
+  const setTab = (id) => { location.hash = '#uniforms' + (id !== 'catalog' ? '?tab=' + id : ''); };
 
   return (
     <div>
@@ -665,42 +1088,92 @@ function Leads({ snap, session }) {
   const [activeId, setActiveId] = _useState(leads[0]?.id || null);
   const [touchKind, setTouchKind] = _useState('note');
   const [touchBody, setTouchBody] = _useState('');
+  const [pipelineBusy, setPipelineBusy] = _useState('');
+  const [pipelineError, setPipelineError] = _useState('');
   const active = leads.find(l => l.id === activeId) || leads[0] || null;
   const touches = active ? window.HZsel.leadTouches(active.id) : [];
 
-  function setStage(lead, next) {
-    window.HZdb.from('leads').update({
-      stage: next,
-      updated_at: new Date().toISOString(),
-      ...(next === 'converted' ? { converted_at: new Date().toISOString() } : {}),
-    }).eq('id', lead.id);
+  async function setStage(lead, next) {
+    setPipelineBusy(lead.id + ':stage');
+    setPipelineError('');
+    try {
+      const { error } = await updatePersistedRow('leads', lead.id, {
+        stage: next,
+        updated_at: new Date().toISOString(),
+        ...(next === 'converted' ? { converted_at: new Date().toISOString() } : {}),
+      });
+      if (error) throw error;
+      await refreshAppData('leads', 'update');
+    } catch (err) {
+      setPipelineError(err?.message || 'Could not update lead stage.');
+    } finally {
+      setPipelineBusy('');
+    }
   }
 
-  function advance(lead) {
+  async function advance(lead) {
     const order = stages.map(s => s.id);
     const next = order[Math.min(order.length - 1, order.indexOf(lead.stage) + 1)];
-    setStage(lead, next);
+    await setStage(lead, next);
   }
 
-  function assign(leadId, profileId) {
-    window.HZdb.from('leads').update({
-      assigned_to: profileId || null,
-      updated_at: new Date().toISOString(),
-    }).eq('id', leadId);
+  async function assign(leadId, profileId) {
+    setPipelineBusy(leadId + ':assign');
+    setPipelineError('');
+    try {
+      const { error } = await updatePersistedRow('leads', leadId, {
+        assigned_to: profileId || null,
+        updated_at: new Date().toISOString(),
+      });
+      if (error) throw error;
+      await refreshAppData('leads', 'update');
+    } catch (err) {
+      setPipelineError(err?.message || 'Could not assign lead.');
+    } finally {
+      setPipelineBusy('');
+    }
   }
 
-  function addTouch() {
+  async function addTouch() {
     if (!active || !touchBody.trim()) return;
-    window.HZdb.from('lead_touches').insert({
-      id: 'lt_' + Math.random().toString(36).slice(2, 10),
-      lead_id: active.id,
-      kind: touchKind,
-      body: touchBody.trim(),
-      author_id: me.id,
-      created_at: new Date().toISOString(),
+    setPipelineBusy(active.id + ':touch');
+    setPipelineError('');
+    try {
+      const payload = {
+        lead_id: active.id,
+        kind: touchKind,
+        body: touchBody.trim(),
+        author_id: me.id,
+        created_at: new Date().toISOString(),
+      };
+      if (!liveMode()) payload.id = 'lt_' + Math.random().toString(36).slice(2, 10);
+      const { error } = await insertPersistedRow('lead_touches', payload);
+      if (error) throw error;
+      await refreshAppData('lead_touches', 'insert');
+      setTouchBody('');
+      setTouchKind('note');
+    } catch (err) {
+      setPipelineError(err?.message || 'Could not save lead touch.');
+    } finally {
+      setPipelineBusy('');
+    }
+  }
+
+  function exportLeadsPdf() {
+    exportRowsPdf('Hit Zero Leads', [
+      { label: 'Stage', value: row => stages.find(st => st.id === row.stage)?.label || row.stage },
+      { label: 'Athlete', value: row => row.athlete_name || '' },
+      { label: 'Parent', value: row => row.parent_name || '' },
+      { label: 'Email', value: row => row.parent_email || '' },
+      { label: 'Phone', value: row => row.parent_phone || '' },
+      { label: 'Interest', value: row => row.interest || '' },
+      { label: 'Source', value: row => row.source || '' },
+      { label: 'Assigned', value: row => staff.find(p => p.id === row.assigned_to)?.display_name || 'Unassigned' },
+      { label: 'Updated', value: row => row.updated_at ? new Date(row.updated_at).toLocaleDateString() : '' },
+    ], leads, {
+      Program: (snap.programs || [])[0]?.brand_name || (snap.programs || [])[0]?.public_name || (snap.programs || [])[0]?.name || 'Hit Zero',
+      Export: 'Leads pipeline',
     });
-    setTouchBody('');
-    setTouchKind('note');
   }
 
   return (
@@ -710,11 +1183,19 @@ function Leads({ snap, session }) {
         <div className="hz-display" style={{ fontSize: 48, lineHeight: 1 }}>
           {total} families <span className="hz-zero">in motion</span>.
         </div>
-        <div style={{ fontSize: 13, color: 'var(--hz-dim)' }}>
-          <span style={{ color: 'var(--hz-green)', fontWeight: 700 }}>{converted}</span> converted · win rate{' '}
-          <span style={{ color: '#fff', fontWeight: 700 }}>{total ? Math.round(100*converted/total) : 0}%</span>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <div style={{ fontSize: 13, color: 'var(--hz-dim)' }}>
+            <span style={{ color: 'var(--hz-green)', fontWeight: 700 }}>{converted}</span> converted · win rate{' '}
+            <span style={{ color: '#fff', fontWeight: 700 }}>{total ? Math.round(100*converted/total) : 0}%</span>
+          </div>
+          <button className="hz-btn hz-btn-sm" onClick={exportLeadsPdf} disabled={!leads.length}>Export PDF</button>
         </div>
       </div>
+      {pipelineError && (
+        <div className="hz-card" style={{ marginBottom: 14, padding: 12, color: 'var(--hz-pink)', borderColor: 'rgba(249,127,172,0.35)' }}>
+          {pipelineError}
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.45fr 0.9fr', gap: 16, alignItems: 'start' }}>
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${stages.length}, minmax(200px, 1fr))`, gap: 12, overflowX: 'auto' }}>
@@ -745,13 +1226,13 @@ function Leads({ snap, session }) {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
                         <div style={{ fontSize: 10, color: 'var(--hz-dim)' }}>{assignee?.display_name || 'Unassigned'}</div>
                         {st.id !== 'converted' && st.id !== 'lost' && (
-                          <span onClick={(e) => { e.stopPropagation(); advance(l); }}
+                          <span onClick={(e) => { e.stopPropagation(); if (!pipelineBusy) advance(l); }}
                             style={{
                               background: 'transparent', color: 'var(--hz-teal)',
                               border: '1px solid rgba(39,207,215,0.3)', borderRadius: 8,
                               padding: '4px 10px', fontSize: 11, fontWeight: 700,
                               letterSpacing: '0.04em', textTransform: 'uppercase',
-                            }}>Advance</span>
+                            }}>{pipelineBusy === l.id + ':stage' ? 'Saving' : 'Advance'}</span>
                         )}
                       </div>
                     </button>
@@ -778,11 +1259,12 @@ function Leads({ snap, session }) {
                 <DetailRow label="Interest" value={active.interest || '—'}/>
                 <DetailRow label="Source" value={active.source || '—'}/>
               </div>
+              <IntakeMetadataPanel title="MCA intake details" metadata={active.metadata}/>
 
               <div style={{ display: 'grid', gap: 10, marginTop: 16 }}>
                 <label>
                   <div className="hz-eyebrow" style={{ marginBottom: 6 }}>Stage</div>
-                  <select value={active.stage} onChange={(e) => setStage(active, e.target.value)}
+                  <select value={active.stage} onChange={(e) => setStage(active, e.target.value)} disabled={!!pipelineBusy}
                     style={{ width: '100%', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--hz-line)', borderRadius: 10, padding: '12px 14px', color: '#fff', fontSize: 14, fontFamily: 'var(--hz-sans)' }}>
                     {stages.map(st => <option key={st.id} value={st.id}>{st.label}</option>)}
                   </select>
@@ -790,7 +1272,7 @@ function Leads({ snap, session }) {
 
                 <label>
                   <div className="hz-eyebrow" style={{ marginBottom: 6 }}>Owner / coach</div>
-                  <select value={active.assigned_to || ''} onChange={(e) => assign(active.id, e.target.value)}
+                  <select value={active.assigned_to || ''} onChange={(e) => assign(active.id, e.target.value)} disabled={!!pipelineBusy}
                     style={{ width: '100%', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--hz-line)', borderRadius: 10, padding: '12px 14px', color: '#fff', fontSize: 14, fontFamily: 'var(--hz-sans)' }}>
                     <option value="">Unassigned</option>
                     {staff.map(p => <option key={p.id} value={p.id}>{p.display_name}</option>)}
@@ -818,12 +1300,12 @@ function Leads({ snap, session }) {
                 </div>
 
                 <div style={{ display: 'grid', gap: 8 }}>
-                  <select value={touchKind} onChange={(e) => setTouchKind(e.target.value)}
+                  <select value={touchKind} onChange={(e) => setTouchKind(e.target.value)} disabled={!!pipelineBusy}
                     style={{ width: '100%', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--hz-line)', borderRadius: 10, padding: '10px 12px', color: '#fff', fontSize: 13, fontFamily: 'var(--hz-sans)' }}>
                     {['note','call','email','text','tour','trial','other'].map(k => <option key={k} value={k}>{k}</option>)}
                   </select>
-                  <textarea className="hz-input" rows="3" placeholder="What happened? What is the next step?" value={touchBody} onChange={(e) => setTouchBody(e.target.value)}/>
-                  <button className="hz-btn hz-btn-primary" onClick={addTouch} disabled={!touchBody.trim()}>Add touch</button>
+                  <textarea className="hz-input" rows="3" placeholder="What happened? What is the next step?" value={touchBody} onChange={(e) => setTouchBody(e.target.value)} disabled={!!pipelineBusy}/>
+                  <button className="hz-btn hz-btn-primary" onClick={addTouch} disabled={!touchBody.trim() || !!pipelineBusy}>{pipelineBusy === active.id + ':touch' ? 'Saving...' : 'Add touch'}</button>
                 </div>
               </div>
             </>
@@ -841,9 +1323,43 @@ window.Leads = Leads;
 function Forms({ snap, session }) {
   const templates = window.HZsel.formTemplatesActive();
   const [activeId, setActiveId] = _useState(templates[0]?.id || null);
+  const [athleteId, setAthleteId] = _useState('');
+  const [score, setScore] = _useState('');
+  const [notes, setNotes] = _useState('');
+  const [saving, setSaving] = _useState(false);
+  const [error, setError] = _useState('');
   const active = templates.find(t => t.id === activeId) || templates[0] || null;
   const responses = active ? window.HZsel.formResponsesForTemplate(active.id) : [];
   const fields = active ? (snap.form_fields || []).filter(f => f.template_id === active.id).sort((a,b) => a.position - b.position) : [];
+  const me = session?.actualProfile || session?.profile || {};
+  const isStaff = ['coach', 'owner'].includes(me.role || '');
+  const athletes = window.HZsel.programAthletes?.() || snap.athletes || [];
+
+  async function submitEvaluation(e) {
+    e?.preventDefault?.();
+    if (!active?.id || !athleteId || saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      const { error: saveError } = await insertPersistedRow('form_responses', {
+        template_id: active.id,
+        subject_athlete_id: athleteId,
+        submitted_by: me.id || null,
+        score_total: score === '' ? null : Number(score),
+        notes: notes.trim() || null,
+        submitted_at: new Date().toISOString(),
+      });
+      if (saveError) throw saveError;
+      await refreshAppData('form_responses', 'insert');
+      setScore('');
+      setNotes('');
+      notify('Evaluation saved', 'The response is now visible in the coach form history.');
+    } catch (err) {
+      setError(err?.message || 'Evaluation did not save.');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div>
@@ -892,6 +1408,26 @@ function Forms({ snap, session }) {
                 </div>
               </div>
 
+              {isStaff && (
+                <form onSubmit={submitEvaluation} style={{ display: 'grid', gap: 10, marginBottom: 22, padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--hz-line)' }}>
+                  <div className="hz-eyebrow">New response</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 120px auto', gap: 10, alignItems: 'end' }}>
+                    <FieldRow label="Athlete">
+                      <select className="hz-input" value={athleteId} onChange={e => setAthleteId(e.target.value)} disabled={saving} required>
+                        <option value="">Choose athlete</option>
+                        {athletes.map(a => <option key={a.id} value={a.id}>{a.display_name}</option>)}
+                      </select>
+                    </FieldRow>
+                    <FieldRow label="Score">
+                      <input className="hz-input" type="number" min="0" max="100" step="0.1" value={score} onChange={e => setScore(e.target.value)} disabled={saving} placeholder="0-100"/>
+                    </FieldRow>
+                    <button className="hz-btn hz-btn-primary" type="submit" disabled={saving || !athleteId}>{saving ? 'Saving...' : 'Save response'}</button>
+                  </div>
+                  <textarea className="hz-input" rows={2} value={notes} onChange={e => setNotes(e.target.value)} disabled={saving} placeholder="Coach notes"/>
+                  {error && <div style={{ color: 'var(--hz-red)', fontSize: 12 }}>{error}</div>}
+                </form>
+              )}
+
               <div className="hz-eyebrow" style={{ marginBottom: 10 }}>Recent responses</div>
               <div style={{ display: 'grid', gap: 8 }}>
                 {responses.length === 0 && <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>No submissions yet.</div>}
@@ -924,7 +1460,13 @@ window.Forms = Forms;
 // ═══════════════════════════════════════════════════════════════════════════
 function Volunteers({ snap, session }) {
   const me = session?.profile || { id: 'u_parent', role: 'parent' };
-  const comps = (snap.sessions || []).filter(s => s.is_competition);
+  const scope = window.HZviewerScope ? window.HZviewerScope(snap, session) : null;
+  const isStaff = ['coach', 'owner'].includes(me.role || '');
+  const canClaimVolunteer = isStaff || me.role === 'parent';
+  const unlinkedFamily = !isStaff && !scope?.visibleAthletes?.length;
+  const comps = (snap.sessions || []).filter(s =>
+    s.is_competition && (isStaff || scope?.visibleTeamIds?.has(s.team_id))
+  );
   const [activeId, setActiveId] = _useState(comps[0]?.id || null);
   const [busyId, setBusyId] = _useState(null);
   const [error, setError] = _useState('');
@@ -956,11 +1498,13 @@ function Volunteers({ snap, session }) {
     }
   }
   function claim(assignmentId) {
+    if (!canClaimVolunteer) return;
     updateAssignment(assignmentId, {
       profile_id: me.id, status: 'claimed', claimed_at: new Date().toISOString()
     }, 'claim');
   }
   function unclaim(assignmentId) {
+    if (!canClaimVolunteer) return;
     updateAssignment(assignmentId, {
       profile_id: null, status: 'open', claimed_at: null
     }, 'release');
@@ -972,8 +1516,15 @@ function Volunteers({ snap, session }) {
       <div className="hz-display" style={{ fontSize: 48, lineHeight: 1, marginBottom: 18 }}>
         It takes a <span className="hz-zero">village</span>.
       </div>
-      {!active && <div className="hz-card" style={{ padding: 40, color: 'var(--hz-dim)', textAlign: 'center' }}>No competitions on the books.</div>}
-      {active && (
+      {unlinkedFamily && (
+        <EmptyState
+          icon="users"
+          title="Link an athlete first."
+          body="Volunteer signups unlock after this account is connected to a specific athlete."
+        />
+      )}
+      {!unlinkedFamily && !active && <div className="hz-card" style={{ padding: 40, color: 'var(--hz-dim)', textAlign: 'center' }}>No competitions on the books.</div>}
+      {!unlinkedFamily && active && (
         <>
           <div style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
             {comps.map(c => (
@@ -1005,12 +1556,15 @@ function Volunteers({ snap, session }) {
                     <div style={{ fontSize: 13, color: claimed ? 'var(--hz-green)' : 'var(--hz-amber)', fontWeight: 600 }}>
                       {claimed ? `✓ ${claimer?.display_name || 'Claimed'}` : '○ Needs a volunteer'}
                     </div>
-                    {!claimed && open && (
+                    {!claimed && open && canClaimVolunteer && (
                       <button onClick={() => claim(open.id)} disabled={busyId === open.id} className="hz-btn hz-btn-primary">
                         {busyId === open.id ? 'Claiming...' : "I'll do it"}
                       </button>
                     )}
-                    {claimed && claimed.profile_id === me.id && (
+                    {!claimed && open && !canClaimVolunteer && (
+                      <Pill tone="amber">Open</Pill>
+                    )}
+                    {claimed && claimed.profile_id === me.id && canClaimVolunteer && (
                       <button onClick={() => unclaim(claimed.id)} disabled={busyId === claimed.id} className="hz-btn hz-btn-ghost">
                         {busyId === claimed.id ? 'Releasing...' : 'Release'}
                       </button>
@@ -1033,16 +1587,109 @@ window.Volunteers = Volunteers;
 function PracticePlans({ snap, session }) {
   const plans = window.HZsel.allPracticePlans();
   const [activeId, setActiveId] = _useState(plans[0]?.id || null);
+  const [creating, setCreating] = _useState(false);
+  const [busy, setBusy] = _useState(false);
+  const [error, setError] = _useState('');
+  const [draft, setDraft] = _useState({ title: 'Tonight practice plan', focus: 'Clean routine execution', drillIds: [] });
   const active = plans.find(p => p.id === activeId) || plans[0] || null;
   const blocks = active ? (snap.practice_plan_blocks || []).filter(b => b.plan_id === active.id).sort((a,b) => a.position - b.position) : [];
   const totalMin = blocks.reduce((s, b) => s + (b.duration_min || 0), 0);
+  const me = session?.actualProfile || session?.profile || {};
+  const canEdit = ['coach', 'owner'].includes(me.role || '');
+  const team = window.HZsel.programTeams?.()[0] || (snap.teams || [])[0] || null;
+  const drills = (snap.drills || []).filter(d => !team?.program_id || d.program_id === team.program_id);
+  const selectedDrillIds = draft.drillIds.length ? draft.drillIds : drills.slice(0, 3).map(d => d.id);
+
+  async function createPlan(e) {
+    e?.preventDefault?.();
+    if (!canEdit || !team?.id || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const { data: plan, error: planError } = await insertPersistedRow('practice_plans', {
+        team_id: team.id,
+        title: draft.title.trim() || 'Practice plan',
+        focus: draft.focus.trim() || 'Practice focus',
+        created_by: me.id || null,
+        created_at: new Date().toISOString(),
+      });
+      if (planError) throw planError;
+      const savedPlan = Array.isArray(plan) ? plan[0] : plan;
+      const blockDrills = drills.filter(d => selectedDrillIds.includes(d.id));
+      for (let i = 0; i < blockDrills.length; i += 1) {
+        const drill = blockDrills[i];
+        const { error: blockError } = await insertPersistedRow('practice_plan_blocks', {
+          plan_id: savedPlan.id,
+          drill_id: drill.id,
+          custom_title: null,
+          duration_min: drill.duration_min || 10,
+          position: i,
+          notes: drill.description || null,
+        });
+        if (blockError) throw blockError;
+      }
+      await refreshAppData('practice_plans', 'insert');
+      await refreshAppData('practice_plan_blocks', 'insert');
+      setActiveId(savedPlan.id);
+      setCreating(false);
+      notify('Practice plan created', 'Saved to the coach plan library.');
+    } catch (err) {
+      setError(err?.message || 'Practice plan did not save.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function toggleDrill(id) {
+    setDraft(d => {
+      const next = d.drillIds.length ? d.drillIds : drills.slice(0, 3).map(row => row.id);
+      return { ...d, drillIds: next.includes(id) ? next.filter(x => x !== id) : [...next, id] };
+    });
+  }
 
   return (
     <div>
-      <div className="hz-eyebrow">Practice Plans · Drill library</div>
-      <div className="hz-display" style={{ fontSize: 48, lineHeight: 1, marginBottom: 20 }}>
-        A plan for every <span className="hz-zero">rep</span>.
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-end', marginBottom: 20 }}>
+        <div>
+          <div className="hz-eyebrow">Practice Plans · Drill library</div>
+          <div className="hz-display" style={{ fontSize: 48, lineHeight: 1 }}>
+            A plan for every <span className="hz-zero">rep</span>.
+          </div>
+        </div>
+        {canEdit && (
+          <button className="hz-btn hz-btn-primary" onClick={() => setCreating(v => !v)}>
+            {creating ? 'Close' : 'New plan'} <HZIcon name={creating ? 'x' : 'plus'} size={13}/>
+          </button>
+        )}
       </div>
+
+      {error && <div className="hz-card" style={{ color: 'var(--hz-red)', marginBottom: 14, padding: 12 }}>{error}</div>}
+      {creating && (
+        <form onSubmit={createPlan} className="hz-card" style={{ marginBottom: 18, padding: 18, display: 'grid', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10, alignItems: 'end' }}>
+            <FieldRow label="Plan title">
+              <input className="hz-input" value={draft.title} onChange={e => setDraft(d => ({ ...d, title: e.target.value }))} disabled={busy}/>
+            </FieldRow>
+            <FieldRow label="Focus">
+              <input className="hz-input" value={draft.focus} onChange={e => setDraft(d => ({ ...d, focus: e.target.value }))} disabled={busy}/>
+            </FieldRow>
+            <button className="hz-btn hz-btn-primary" type="submit" disabled={busy || !team?.id}>{busy ? 'Saving...' : 'Save plan'}</button>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {drills.map(drill => (
+              <button
+                key={drill.id}
+                type="button"
+                className={`hz-btn hz-btn-sm ${selectedDrillIds.includes(drill.id) ? 'hz-btn-primary' : 'hz-btn-ghost'}`}
+                onClick={() => toggleDrill(drill.id)}
+                disabled={busy}
+              >
+                {drill.name}
+              </button>
+            ))}
+          </div>
+        </form>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 18 }}>
         <aside style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1102,6 +1749,13 @@ function PracticePlans({ snap, session }) {
               </div>
             </>
           )}
+          {!active && (
+            <EmptyState
+              icon="routine"
+              title="No practice plans yet."
+              body="Create a plan from the drill library or use the seeded starter plan after production backfill."
+            />
+          )}
         </section>
       </div>
     </div>
@@ -1117,6 +1771,9 @@ function Registration({ snap, session }) {
   if (role === 'owner' || role === 'coach') {
     return <RegistrationInbox snap={snap} session={session}/>;
   }
+  const program = window.HZactiveProgramFromSnap ? window.HZactiveProgramFromSnap(snap, session) : (snap.programs || [])[0] || null;
+  const programName = window.HZprogramDisplayName ? window.HZprogramDisplayName(program, 'your gym') : (program?.brand_name || program?.public_name || program?.name || 'your gym');
+  const programLocation = window.HZprogramLocationLabel ? window.HZprogramLocationLabel(program, '') : [program?.city, program?.state].filter(Boolean).join(', ');
 
   const windows = (snap.registration_windows || []).filter(w => w.is_public);
   const [form, setForm] = _useState({
@@ -1131,8 +1788,9 @@ function Registration({ snap, session }) {
     e.preventDefault();
     setStatus('submitting');
     await window.HZdb.from('registrations').insert({
-      ...form, program_id: 'p_mca', status: 'pending', created_at: new Date().toISOString(),
+      ...form, program_id: program?.id || 'p_mca', status: 'pending', created_at: new Date().toISOString(),
     });
+    await refreshAppData('registrations', 'insert');
     setStatus('done');
   }
 
@@ -1149,7 +1807,7 @@ function Registration({ snap, session }) {
 
   return (
     <div style={{ maxWidth: 640, margin: '40px auto' }}>
-      <div className="hz-eyebrow">Magic City Allstars · Minot, ND</div>
+      <div className="hz-eyebrow">{programName}{programLocation ? ` · ${programLocation}` : ''}</div>
       <div className="hz-display" style={{ fontSize: 56, lineHeight: 1 }}>
         Ready to <span className="hz-zero">hit zero</span>?
       </div>
@@ -1182,7 +1840,15 @@ function Registration({ snap, session }) {
   );
 }
 function RegistrationInbox({ snap, session }) {
-  const regs = (snap.registrations || []).slice().sort((a,b) => {
+  const isCheckoutHold = window.HZsel?.isCheckoutHold || ((row) => {
+    const meta = row?.intake_metadata || {};
+    return row?.payment_status !== 'paid'
+      && (meta.payment_gate_required === true || meta.payment_gate_state === 'checkout_started');
+  });
+  const checkoutHolds = (snap.registrations || []).filter(isCheckoutHold);
+  const allRegs = (snap.registrations || []).filter(r => !isCheckoutHold(r)).slice().sort((a,b) => {
+    if (a.payment_status === 'paid' && b.payment_status !== 'paid') return -1;
+    if (a.payment_status !== 'paid' && b.payment_status === 'paid') return 1;
     if (a.status === 'pending' && b.status !== 'pending') return -1;
     if (a.status !== 'pending' && b.status === 'pending') return 1;
     return new Date(b.created_at) - new Date(a.created_at);
@@ -1199,35 +1865,208 @@ function RegistrationInbox({ snap, session }) {
     if (r.window_id && windows.has(r.window_id)) return windows.get(r.window_id).title;
     return 'Registration';
   };
-  const [activeId, setActiveId] = _useState(regs[0]?.id || null);
-  const active = regs.find(r => r.id === activeId) || regs[0] || null;
+  const [query, setQuery] = _useState('');
+  const [statusFilter, setStatusFilter] = _useState('all');
+  const [payFilter, setPayFilter] = _useState('all');
+  const regs = allRegs.filter(r => {
+    const q = query.trim().toLowerCase();
+    const matchesQuery = !q || [r.athlete_name, r.parent_name, r.parent_email, r.parent_phone, labelFor(r), r.source]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(q);
+    const matchesStatus = statusFilter === 'all' || r.status === statusFilter;
+    const isUnpaid = ['none', 'pending', 'failed', null, undefined].includes(r.payment_status);
+    const matchesPay = payFilter === 'all' || (payFilter === 'paid' ? r.payment_status === 'paid' : isUnpaid);
+    return matchesQuery && matchesStatus && matchesPay;
+  });
+  const [activeId, setActiveId] = _useState(allRegs[0]?.id || null);
+  const active = allRegs.find(r => r.id === activeId) || regs[0] || allRegs[0] || null;
   const [notes, setNotes] = _useState(active?.notes || '');
+  const [decisionReason, setDecisionReason] = _useState(active?.decision_reason || '');
+  const [assignmentClassId, setAssignmentClassId] = _useState(active?.class_id || '');
+  const [busyDecision, setBusyDecision] = _useState('');
+  const [decisionError, setDecisionError] = _useState('');
+  const [assist, setAssist] = _useState({
+    parent_name: '',
+    parent_email: '',
+    parent_phone: '',
+    athlete_name: '',
+    athlete_age: '',
+    athlete_dob: '',
+    interest: '',
+    class_id: '',
+    notes: '',
+    send_email: true,
+  });
+  const [assistBusy, setAssistBusy] = _useState(false);
+  const [assistError, setAssistError] = _useState('');
+  const [assistResult, setAssistResult] = _useState(null);
+  const [assistCopied, setAssistCopied] = _useState(false);
+  const [reminderBusy, setReminderBusy] = _useState('');
+  const [reminderResult, setReminderResult] = _useState(null);
+  const [reminderError, setReminderError] = _useState('');
+  const [reminderCopied, setReminderCopied] = _useState(false);
 
   _useEffect(() => {
     setNotes(active?.notes || '');
+    setDecisionReason(active?.decision_reason || '');
+    setAssignmentClassId(active?.class_id || '');
   }, [active?.id]);
 
-  const counts = regs.reduce((out, r) => {
+  const counts = allRegs.reduce((out, r) => {
     out[r.status] = (out[r.status] || 0) + 1;
+    if (r.payment_status === 'paid') out.paid += 1;
     return out;
-  }, { pending: 0, accepted: 0, waitlist: 0, rejected: 0, withdrawn: 0 });
+  }, { pending: 0, accepted: 0, waitlist: 0, rejected: 0, withdrawn: 0, paid: 0 });
+  const unpaidRegs = allRegs.filter(r => ['none', 'pending', 'failed', null, undefined].includes(r.payment_status) && ['pending', 'accepted'].includes(r.status));
 
-  function decide(nextStatus) {
+  async function decide(nextStatus) {
     if (!active) return;
-    window.HZdb.from('registrations').update({
-      status: nextStatus,
-      notes,
-      decided_at: new Date().toISOString(),
-      decided_by: session.profile.id,
-    }).eq('id', active.id);
+    setBusyDecision(nextStatus);
+    setDecisionError('');
+    const { data, error } = window.HZdb.auth?.updateRegistrationDecision
+      ? await window.HZdb.auth.updateRegistrationDecision(active.id, nextStatus, notes, {
+          decision_reason: decisionReason,
+          class_id: assignmentClassId || null,
+        })
+      : { data: null, error: new Error('Registration decision service is unavailable.') };
+    if (error) {
+      setDecisionError(error.message || 'Could not update registration.');
+      setBusyDecision('');
+      return;
+    }
+    if (data?.registration) {
+      await window.HZdb.from('registrations').update(data.registration).eq('id', data.registration.id);
+    }
+    await refreshAppData('registrations', 'decision');
+    setBusyDecision('');
   }
 
-  function saveNotes() {
+  async function saveNotes() {
     if (!active) return;
-    window.HZdb.from('registrations').update({
-      notes,
-      updated_at: new Date().toISOString(),
-    }).eq('id', active.id);
+    setBusyDecision('notes');
+    setDecisionError('');
+    const { data, error } = window.HZdb.auth?.updateRegistrationNotes
+      ? await window.HZdb.auth.updateRegistrationNotes(active.id, notes)
+      : { data: null, error: new Error('Registration notes service is unavailable.') };
+    if (error) {
+      setDecisionError(error.message || 'Could not save notes.');
+      setBusyDecision('');
+      return;
+    }
+    if (data?.registration) {
+      await window.HZdb.from('registrations').update(data.registration).eq('id', data.registration.id);
+    }
+    await refreshAppData('registrations', 'notes');
+    setBusyDecision('');
+  }
+
+  async function createAssisted(e) {
+    e.preventDefault();
+    setAssistBusy(true);
+    setAssistError('');
+    setAssistCopied(false);
+    const payload = {
+      ...assist,
+      class_id: assist.class_id || null,
+      source: 'staff_assisted_meet_greet',
+    };
+    const { data, error } = window.HZdb.auth?.createAssistedRegistration
+      ? await window.HZdb.auth.createAssistedRegistration(payload)
+      : { data: null, error: new Error('Assisted registration service is unavailable.') };
+    if (error) {
+      setAssistError(error.message || 'Could not create assisted registration.');
+      setAssistBusy(false);
+      return;
+    }
+    setAssistResult(data);
+    setAssist({
+      parent_name: '',
+      parent_email: '',
+      parent_phone: '',
+      athlete_name: '',
+      athlete_age: '',
+      athlete_dob: '',
+      interest: '',
+      class_id: '',
+      notes: '',
+      send_email: true,
+    });
+    await refreshAppData('registrations', 'assisted_create');
+    setAssistBusy(false);
+  }
+
+  async function copyAssistedLink() {
+    if (!assistResult?.url) return;
+    try {
+      await navigator.clipboard?.writeText(assistResult.url);
+      setAssistCopied(true);
+    } catch {
+      setAssistCopied(false);
+    }
+  }
+
+  async function sendPaymentReminders(ids, label) {
+    setReminderBusy(label);
+    setReminderError('');
+    setReminderResult(null);
+    setReminderCopied(false);
+    const { data, error } = window.HZdb.auth?.sendPaymentReminders
+      ? await window.HZdb.auth.sendPaymentReminders(ids)
+      : { data: null, error: new Error('Payment reminder service is unavailable.') };
+    if (error) setReminderError(error.message || 'Could not send payment reminders.');
+    else setReminderResult(data);
+    setReminderBusy('');
+  }
+
+  async function copyReminderLinks() {
+    const links = (reminderResult?.results || [])
+      .filter(r => r.payment_url)
+      .map(r => {
+        const amount = r.amount_cents ? ` / $${(Number(r.amount_cents) / 100).toFixed(Number(r.amount_cents) % 100 ? 2 : 0)}` : '';
+        return `${r.parent_name || r.email || 'Parent'} / ${r.athlete_name || 'Athlete'}${amount}: ${r.payment_url}`;
+      });
+    if (!links.length) return;
+    try {
+      await navigator.clipboard?.writeText(links.join('\n'));
+      setReminderCopied(true);
+    } catch {
+      setReminderCopied(false);
+    }
+  }
+
+  const assistedClassOptions = [
+    { value: '', label: 'No specific class yet' },
+    ...(snap.program_classes || [])
+      .slice()
+      .sort((a,b) => String(a.name).localeCompare(String(b.name)))
+      .map(c => ({ value: c.id, label: c.name })),
+  ];
+  const reminderRows = reminderResult?.results || [];
+  const reminderManual = reminderResult
+    ? (Number(reminderResult.manual || 0) || reminderRows.filter(r => r.payment_url && r.reason === 'email_not_configured').length)
+    : 0;
+  const reminderFailed = reminderResult?.email_configured
+    ? (Number(reminderResult.failed || 0) || reminderRows.filter(r => !r.ok && !r.skipped && !r.manual).length)
+    : 0;
+  const reminderHasLinks = reminderRows.some(r => r.payment_url);
+
+  function exportRegistrationsPdf() {
+    exportRowsPdf('Hit Zero Registrations', [
+      { label: 'Class / Program', value: row => labelFor(row) },
+      { label: 'Athlete', value: row => row.athlete_name || '' },
+      { label: 'Parent', value: row => row.parent_name || '' },
+      { label: 'Email', value: row => row.parent_email || '' },
+      { label: 'Phone', value: row => row.parent_phone || '' },
+      { label: 'Status', value: row => row.status || '' },
+      { label: 'Payment', value: row => paymentSummary(row) },
+      { label: 'Paid At', value: row => row.paid_at ? new Date(row.paid_at).toLocaleString() : '' },
+      { label: 'Created', value: row => row.created_at ? new Date(row.created_at).toLocaleString() : '' },
+    ], regs, {
+      Program: (snap.programs || [])[0]?.brand_name || (snap.programs || [])[0]?.public_name || (snap.programs || [])[0]?.name || 'Hit Zero',
+      Filter: `${statusFilter} status / ${payFilter} payment`,
+    });
   }
 
   return (
@@ -1237,15 +2076,110 @@ function RegistrationInbox({ snap, session }) {
         New families, <span className="hz-zero">properly handled</span>.
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 20 }}>
         <MiniStat label="Pending" value={counts.pending} accent="var(--hz-amber)"/>
+        <MiniStat label="Paid" value={counts.paid} accent="var(--hz-green)"/>
         <MiniStat label="Accepted" value={counts.accepted} accent="var(--hz-green)"/>
         <MiniStat label="Waitlist" value={counts.waitlist} accent="var(--hz-pink)"/>
         <MiniStat label="Rejected" value={counts.rejected} accent="var(--hz-dim)"/>
       </div>
 
+      <div className="hz-card" style={{ padding: 16, marginBottom: 20, display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div>
+          <div className="hz-eyebrow" style={{ marginBottom: 5 }}>Unpaid registrations</div>
+          <div style={{ fontSize: 18, fontWeight: 900 }}>{unpaidRegs.length} need payment follow-up.</div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>Only submitted/manual registrations appear here. Public checkout starts are not counted until payment is complete.</div>
+          {checkoutHolds.length > 0 && (
+            <div style={{ color: 'var(--hz-amber)', fontSize: 12, marginTop: 5 }}>
+              {checkoutHolds.length} checkout {checkoutHolds.length === 1 ? 'start is' : 'starts are'} hidden because payment was not completed.
+            </div>
+          )}
+          {reminderError && <div style={{ color: 'var(--hz-pink)', fontSize: 13, marginTop: 8 }}>{reminderError}</div>}
+          {reminderResult && (
+            <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 8 }}>
+              {reminderResult.email_configured ? (
+                <>Checked {reminderResult.total ?? reminderRows.length}. Sent {reminderResult.sent || 0}. Skipped {reminderResult.skipped || 0}. Failed {reminderFailed}.</>
+              ) : (
+                <>Checked {reminderResult.total ?? reminderRows.length}. Prepared {reminderManual} payment {reminderManual === 1 ? 'link' : 'links'}. Skipped {reminderResult.skipped || 0}. Email is not configured yet, so nothing was sent automatically.</>
+              )}
+              {reminderHasLinks && (
+                <button type="button" className="hz-btn hz-btn-sm" onClick={copyReminderLinks} style={{ marginLeft: 10 }}>
+                  {reminderCopied ? 'Copied payment links' : (reminderResult.email_configured ? 'Copy payment links' : 'Copy manual links')}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+        <button
+          className="hz-btn hz-btn-primary"
+          disabled={!unpaidRegs.length || !!reminderBusy}
+          onClick={() => sendPaymentReminders([], 'all')}
+        >
+          {reminderBusy === 'all' ? 'Preparing...' : 'Send payment follow-ups'}
+        </button>
+      </div>
+
+      <form className="hz-card" onSubmit={createAssisted} style={{ padding: 18, marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'flex-start', marginBottom: 14 }}>
+          <div>
+            <div className="hz-eyebrow" style={{ marginBottom: 5 }}>Staff-assisted signup</div>
+            <div style={{ fontSize: 18, fontWeight: 900 }}>Register an athlete in person, then send the parent their setup link.</div>
+            <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 5 }}>Creates a pending registration and a one-use parent invite. Staff still controls approval and athlete linking.</div>
+          </div>
+          <button className="hz-btn hz-btn-primary" type="submit" disabled={assistBusy}>{assistBusy ? 'Creating...' : 'Create + send'}</button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+          <Input label="Parent name" required value={assist.parent_name} onChange={v => setAssist(a => ({ ...a, parent_name: v }))}/>
+          <Input label="Parent email" required type="email" value={assist.parent_email} onChange={v => setAssist(a => ({ ...a, parent_email: v }))}/>
+          <Input label="Parent phone" value={assist.parent_phone} onChange={v => setAssist(a => ({ ...a, parent_phone: v }))}/>
+          <Input label="Athlete name" required value={assist.athlete_name} onChange={v => setAssist(a => ({ ...a, athlete_name: v }))}/>
+          <Input label="Age" value={assist.athlete_age} onChange={v => setAssist(a => ({ ...a, athlete_age: v }))}/>
+          <Input label="DOB" type="date" value={assist.athlete_dob} onChange={v => setAssist(a => ({ ...a, athlete_dob: v }))}/>
+          <Select label="Class / interest" value={assist.class_id} onChange={v => setAssist(a => ({ ...a, class_id: v }))} options={assistedClassOptions}/>
+          <Input label="Interest note" value={assist.interest} onChange={v => setAssist(a => ({ ...a, interest: v }))}/>
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <textarea className="hz-input" rows="3" placeholder="Meet-and-greet notes, placement context, payment notes, or who should follow up." value={assist.notes} onChange={e => setAssist(a => ({ ...a, notes: e.target.value }))}/>
+        </div>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 12, color: 'var(--hz-dim)', fontSize: 13 }}>
+          <input type="checkbox" checked={assist.send_email} onChange={e => setAssist(a => ({ ...a, send_email: e.target.checked }))}/>
+          Email setup link to parent
+        </label>
+        {assistError && <div style={{ color: 'var(--hz-pink)', fontSize: 13, marginTop: 10 }}>{assistError}</div>}
+        {assistResult?.url && (
+          <div style={{ marginTop: 12, padding: 12, borderRadius: 12, border: '1px solid rgba(39,220,229,0.32)', background: 'rgba(39,220,229,0.08)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontWeight: 900 }}>Parent setup link ready.</div>
+                <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 3 }}>{assistResult.email_attempted ? 'Email was queued if mail is configured.' : 'Email was not sent, so copy this link for the parent.'}</div>
+              </div>
+              <button type="button" className="hz-btn hz-btn-sm" onClick={copyAssistedLink}>{assistCopied ? 'Copied' : 'Copy link'}</button>
+            </div>
+            <input className="hz-input" readOnly value={assistResult.url} style={{ marginTop: 10 }}/>
+          </div>
+        )}
+      </form>
+
+      <div className="hz-card" style={{ padding: 14, marginBottom: 18, display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: 10 }}>
+        <input className="hz-input" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search athlete, parent, email, phone, class..." />
+        <select className="hz-input" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+          <option value="all">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="accepted">Accepted</option>
+          <option value="waitlist">Waitlist</option>
+          <option value="rejected">Rejected</option>
+          <option value="withdrawn">Withdrawn</option>
+        </select>
+        <select className="hz-input" value={payFilter} onChange={e => setPayFilter(e.target.value)}>
+          <option value="all">All payments</option>
+          <option value="unpaid">Unpaid</option>
+          <option value="paid">Paid</option>
+        </select>
+        <button className="hz-btn" type="button" onClick={exportRegistrationsPdf} disabled={!regs.length}>Export PDF</button>
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: 18 }}>
-        <aside style={{ display: 'grid', gap: 8 }}>
+        <aside style={{ display: 'grid', gap: 8, maxHeight: '72vh', overflowY: 'auto', paddingRight: 4 }}>
           {regs.map(r => {
             return (
               <button key={r.id} onClick={() => setActiveId(r.id)}
@@ -1258,7 +2192,10 @@ function RegistrationInbox({ snap, session }) {
                 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                   <div className="hz-eyebrow">{labelFor(r)}</div>
-                  <StatusBadge status={r.status}/>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <PaymentStatusBadge row={r}/>
+                    <StatusBadge status={r.status}/>
+                  </div>
                 </div>
                 <div style={{ fontWeight: 700, fontSize: 14, marginTop: 4 }}>{r.athlete_name}</div>
                 <div style={{ fontSize: 11, color: 'var(--hz-dim)', marginTop: 4 }}>{r.parent_name} · {r.parent_email}</div>
@@ -1280,7 +2217,10 @@ function RegistrationInbox({ snap, session }) {
                   <div className="hz-eyebrow">{labelFor(active)}</div>
                   <div className="hz-display" style={{ fontSize: 28 }}>{active.athlete_name}</div>
                 </div>
-                <StatusBadge status={active.status}/>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <PaymentStatusBadge row={active}/>
+                  <StatusBadge status={active.status}/>
+                </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 18 }}>
@@ -1288,19 +2228,39 @@ function RegistrationInbox({ snap, session }) {
                 <DetailCard label="Email" value={active.parent_email}/>
                 <DetailCard label="Phone" value={active.parent_phone || '—'}/>
                 <DetailCard label="DOB / level" value={`${active.athlete_dob || '—'} · L${active.level_interest || '—'}`}/>
+                <DetailCard label="Payment" value={paymentSummary(active)}/>
+                <DetailCard label="Paid at" value={active.paid_at ? new Date(active.paid_at).toLocaleString() : '—'}/>
+              </div>
+              {active.payment_metadata?.receipt_url && (
+                <a className="hz-btn hz-btn-ghost hz-btn-sm" href={active.payment_metadata.receipt_url} target="_blank" rel="noreferrer" style={{ marginTop: 12 }}>
+                  Open Square receipt
+                </a>
+              )}
+              <IntakeMetadataPanel title="MCA intake details" metadata={active.intake_metadata}/>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 18 }}>
+                <Select label="Move to class / program" value={assignmentClassId} onChange={setAssignmentClassId} options={assistedClassOptions}/>
+                <Input label="Reject / move reason" value={decisionReason} onChange={setDecisionReason}/>
               </div>
 
               <div style={{ marginTop: 18, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button className="hz-btn hz-btn-primary" onClick={() => decide('accepted')}>Accept</button>
-                <button className="hz-btn" onClick={() => decide('waitlist')}>Waitlist</button>
-                <button className="hz-btn hz-btn-ghost" onClick={() => decide('rejected')}>Reject</button>
+                <button className="hz-btn hz-btn-primary" disabled={!!busyDecision} onClick={() => decide('accepted')}>{busyDecision === 'accepted' ? 'Saving...' : 'Accept'}</button>
+                <button className="hz-btn" disabled={!!busyDecision} onClick={() => decide('waitlist')}>{busyDecision === 'waitlist' ? 'Saving...' : 'Waitlist'}</button>
+                <button className="hz-btn hz-btn-ghost" disabled={!!busyDecision} onClick={() => decide('rejected')}>{busyDecision === 'rejected' ? 'Saving...' : 'Reject'}</button>
+                <button className="hz-btn" disabled={!!busyDecision} onClick={() => decide(active.status || 'pending')}>{busyDecision === (active.status || 'pending') ? 'Saving...' : 'Save class / reason'}</button>
+                {active.payment_status !== 'paid' && (
+                  <button className="hz-btn" disabled={!!reminderBusy} onClick={() => sendPaymentReminders([active.id], active.id)}>
+                    {reminderBusy === active.id ? 'Preparing...' : 'Send payment follow-up'}
+                  </button>
+                )}
               </div>
+              {decisionError && <div style={{ marginTop: 10, color: 'var(--hz-pink)', fontSize: 13 }}>{decisionError}</div>}
 
               <div style={{ marginTop: 18 }}>
                 <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Decision notes</div>
                 <textarea className="hz-input" rows="6" placeholder="What stood out? Who follows up next? Any placement notes?" value={notes} onChange={(e) => setNotes(e.target.value)}/>
                 <div style={{ marginTop: 10 }}>
-                  <button className="hz-btn" onClick={saveNotes}>Save notes</button>
+                  <button className="hz-btn" disabled={!!busyDecision} onClick={saveNotes}>{busyDecision === 'notes' ? 'Saving...' : 'Save notes'}</button>
                 </div>
               </div>
             </>
@@ -1344,6 +2304,43 @@ function DetailCard({ label, value }) {
       <div style={{ color: 'var(--hz-dim)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700 }}>{label}</div>
       <div style={{ fontWeight: 600, marginTop: 6 }}>{value}</div>
     </div>
+  );
+}
+function paymentSummary(row) {
+  if (!row) return '—';
+  if (row.payment_status === 'paid') {
+    const amount = Number(row.amount_paid_cents || 0) / 100;
+    return `${amount ? moneyFmt(amount) : 'Paid'}${row.payment_provider ? ` via ${row.payment_provider}` : ''}`;
+  }
+  if (row.payment_status === 'failed') return 'Failed';
+  if (row.payment_status === 'pending') return 'Payment pending';
+  return 'Unpaid';
+}
+function PaymentStatusBadge({ row }) {
+  if (!row || row.payment_status === 'none' || !row.payment_status) return null;
+  const paid = row.payment_status === 'paid';
+  const failed = row.payment_status === 'failed';
+  const fg = paid ? 'var(--hz-green)' : failed ? 'var(--hz-pink)' : 'var(--hz-amber)';
+  const bg = paid ? 'rgba(63,231,160,0.14)' : failed ? 'rgba(249,127,172,0.14)' : 'rgba(255,180,84,0.12)';
+  return (
+    <span style={{ color: fg, background: bg, padding: '4px 10px', borderRadius: 999, fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+      {row.payment_status}
+    </span>
+  );
+}
+function IntakeMetadataPanel({ title = 'Intake details', metadata }) {
+  if (!metadata || (typeof metadata === 'object' && Object.keys(metadata).length === 0)) return null;
+  let text = '';
+  try {
+    text = JSON.stringify(metadata, null, 2);
+  } catch (_) {
+    text = String(metadata);
+  }
+  return (
+    <details style={{ marginTop: 14, padding: 12, borderRadius: 12, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.025)' }}>
+      <summary className="hz-eyebrow" style={{ cursor: 'pointer' }}>{title}</summary>
+      <pre style={{ margin: '12px 0 0', whiteSpace: 'pre-wrap', color: 'var(--hz-dim)', fontSize: 11, lineHeight: 1.45, fontFamily: 'var(--hz-mono)' }}>{text}</pre>
+    </details>
   );
 }
 function StatusBadge({ status }) {
@@ -1438,30 +2435,56 @@ function KV({ label, v }) {
 }
 window.MedicalBlock = MedicalBlock;
 
-// Standalone medical hub (owner role): browse athletes + open their medical
-function MedicalHub({ snap }) {
-  const [aid, setAid] = _useState((snap.athletes || [])[0]?.id || null);
-  const athletes = snap.athletes || [];
+// Standalone medical hub: staff browse the roster; families see only linked athletes.
+function MedicalHub({ snap, session }) {
+  const scope = window.HZviewerScope ? window.HZviewerScope(snap, session) : null;
+  const effectiveProfile = session?.actualProfile || session?.profile || {};
+  const isStaff = ['coach', 'owner'].includes(effectiveProfile.role || '');
+  const athletes = isStaff ? (scope?.visibleAthletes?.length ? scope.visibleAthletes : (window.HZsel.programAthletes?.() || [])) : (scope?.visibleAthletes || []);
+  const [selectedId, setSelectedId] = _useState(null);
+  const soleAthlete = athletes.length === 1 ? athletes.find(Boolean) : null;
+  const aid = athletes.find(a => a.id === selectedId)?.id || soleAthlete?.id || null;
+  const medicalRows = athletes.map(a => ({ athlete: a, med: window.HZsel.athleteMedical(a.id) }));
+  const emergencyCount = medicalRows.reduce((sum, row) => sum + row.med.contacts.length, 0);
+  const recordCount = medicalRows.filter(row => row.med.record).length;
+  if (!athletes.length) {
+    return (
+      <EmptyState
+        icon="bolt"
+        title="No athlete linked yet."
+        body="Medical details unlock after this account is linked to a specific athlete."
+      />
+    );
+  }
   return (
     <div>
       <div className="hz-eyebrow">Medical · Emergency info</div>
       <div className="hz-display" style={{ fontSize: 48, lineHeight: 1, marginBottom: 20 }}>
         Safe, <span className="hz-zero">always</span>.
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 18 }}>
-        <aside style={{ maxHeight: 'calc(100vh - 240px)', overflow: 'auto' }}>
-          {athletes.map(a => (
-            <button key={a.id} onClick={() => setAid(a.id)}
-              className="hz-nosel"
-              style={{
-                display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px',
-                borderRadius: 10, background: a.id === aid ? 'rgba(255,255,255,0.06)' : 'transparent',
-                border: '1px solid transparent', color: '#fff', cursor: 'pointer', marginBottom: 2, fontSize: 13,
-              }}>
-              {a.display_name}
-            </button>
-          ))}
-        </aside>
+      {isStaff && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginBottom: 16 }}>
+          <StatTile label="Athletes" value={athletes.length} size="md" accent="var(--hz-teal)"/>
+          <StatTile label="Medical records" value={recordCount} size="md"/>
+          <StatTile label="Emergency contacts" value={emergencyCount} size="md" accent="var(--hz-amber)"/>
+        </div>
+      )}
+      <div style={athletes.length > 1 ? { display: 'grid', gridTemplateColumns: '240px 1fr', gap: 18 } : undefined}>
+        {athletes.length > 1 && (
+          <aside style={{ maxHeight: 'calc(100vh - 240px)', overflow: 'auto' }}>
+            {athletes.map(a => (
+              <button key={a.id} onClick={() => setSelectedId(a.id)}
+                className="hz-nosel"
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px',
+                  borderRadius: 10, background: a.id === aid ? 'rgba(255,255,255,0.06)' : 'transparent',
+                  border: '1px solid transparent', color: '#fff', cursor: 'pointer', marginBottom: 2, fontSize: 13,
+                }}>
+                {a.display_name}
+              </button>
+            ))}
+          </aside>
+        )}
         <section>{aid && <MedicalBlock athleteId={aid}/>}</section>
       </div>
     </div>

@@ -166,7 +166,7 @@ function findAthletes(prompt: string, ctx: Context) {
     return text.includes(name) || (first.length > 2 && text.includes(first)) || (a.initials && text.includes(a.initials.toLowerCase()));
   });
   if (matched.length) return matched;
-  if (/\b(all|everyone|everybody|kids|girls|team|athletes)\b/i.test(prompt)) return ctx.athletes;
+  if (/\b(all|everyone|everybody|team|athletes)\b/i.test(prompt)) return ctx.athletes;
   return ctx.athletes.slice(0, Math.min(8, ctx.athletes.length));
 }
 
@@ -337,7 +337,7 @@ Rules:
 - Only reference section_id and athlete_id values from the context.
 - Do not invent athlete IDs.
 - Prefer the selected section if the coach does not name one.
-- If the coach says all/kids/girls/team, place the full roster in a cheer-logical picture.
+- If the coach says all/everyone/team/athletes, place the full roster in a cheer-logical picture.
 - Keep Level 1 youth safety in mind: this is formation choreography, not illegal skill generation.
 - Never delete anything. Never change music licensing.
 

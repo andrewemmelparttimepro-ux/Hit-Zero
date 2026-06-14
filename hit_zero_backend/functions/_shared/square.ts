@@ -255,7 +255,6 @@ export async function buildAuthorizeUrl(programId: string, returnTo?: string | n
   const redirectUri = DEFAULT_REDIRECT_URI;
   const scopes = [
     'MERCHANT_PROFILE_READ',
-    'LOCATIONS_READ',
     'CUSTOMERS_READ',
     'CUSTOMERS_WRITE',
     'PAYMENTS_READ',
@@ -480,7 +479,7 @@ export async function runSquareSync(connection: SquareConnection, options: {
     const accountRows = accounts ?? [];
     const athleteMap = new Map((athleteRows ?? []).map((a: any) => [a.id, a]));
     const { data: links } = athleteIds.length
-      ? await supa.from('parent_links').select('athlete_id, parent_id, primary').in('athlete_id', athleteIds)
+      ? await supa.from('parent_links').select('athlete_id, parent_id, is_primary').in('athlete_id', athleteIds)
       : { data: [] as any[] };
     const parentIds = Array.from(new Set((links ?? []).map((l: any) => l.parent_id).filter(Boolean)));
     const { data: profiles } = parentIds.length
@@ -525,7 +524,7 @@ export async function runSquareSync(connection: SquareConnection, options: {
       const athlete = athleteMap.get(account.athlete_id);
       const parents = (parentsByAthlete.get(account.athlete_id) || [])
         .slice()
-        .sort((a, b) => Number(Boolean(b.primary)) - Number(Boolean(a.primary)));
+        .sort((a, b) => Number(Boolean(b.is_primary)) - Number(Boolean(a.is_primary)));
       const primaryParent = parents.map((p: any) => profileMap.get(p.parent_id)).find(Boolean) || null;
       const email = String(primaryParent?.email || '').trim().toLowerCase();
       const customer = email ? customersByEmail.get(email) || null : null;

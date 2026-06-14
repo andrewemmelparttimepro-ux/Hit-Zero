@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
   const lines: string[] = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Hit Zero//Magic City Allstars//EN',
+    'PRODID:-//Hit Zero//Program Schedule//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     'X-WR-CALNAME:Hit Zero — Schedule',

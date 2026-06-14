@@ -37,6 +37,43 @@ async function readBody(req: Request) {
   try { return await req.json(); } catch { return {}; }
 }
 
+function jwtRole(token: string) {
+  try {
+    const part = token.split('.')[1] || '';
+    const normalized = part.replace(/-/g, '+').replace(/_/g, '/');
+    const json = JSON.parse(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')));
+    return String(json.role || '');
+  } catch {
+    return '';
+  }
+}
+
+async function requireOwner(req: Request, programId: string) {
+  const header = req.headers.get('authorization') || '';
+  const token = header.replace(/^Bearer\s+/i, '').trim();
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
+  if (!token || (anonKey && token === anonKey) || jwtRole(token) !== 'authenticated') {
+    return { response: json({ error: 'Signed-in owner access is required for Square admin actions.' }, 401), profile: null };
+  }
+
+  const { data: userData, error: userError } = await supa.auth.getUser(token);
+  if (userError || !userData?.user?.id) {
+    return { response: json({ error: 'Invalid or expired owner session.' }, 401), profile: null };
+  }
+
+  const { data: profile, error: profileError } = await supa
+    .from('profiles')
+    .select('id, role, program_id')
+    .eq('id', userData.user.id)
+    .maybeSingle();
+  if (profileError) throw profileError;
+  if (!profile?.id || profile.role !== 'owner' || profile.program_id !== programId) {
+    return { response: json({ error: 'Only the owner for this gym can manage Square.' }, 403), profile: null };
+  }
+
+  return { response: null, profile };
+}
+
 Deno.serve(async (req) => {
   const pf = preflight(req);
   if (pf) return pf;
@@ -140,6 +177,39 @@ Deno.serve(async (req) => {
       return json(await getSquareStatus(programId));
     }
 
+    if (action === 'public_config') {
+      const cfg = squareConfig();
+      const connection = await getSquareConnection(programId);
+      const { data: settings } = await supa
+        .from('program_payment_settings')
+        .select('default_provider, public_checkout_enabled, checkout_mode, currency')
+        .eq('program_id', programId)
+        .maybeSingle();
+      const checkoutEnabled = Boolean(
+        squareConfigured()
+        && settings?.public_checkout_enabled
+        && settings?.default_provider === 'square'
+        && connection?.status === 'connected'
+        && connection?.external_location_id
+      );
+      return json({
+        configured: squareConfigured(),
+        checkout_enabled: checkoutEnabled,
+        env: cfg.env,
+        app_id: checkoutEnabled ? cfg.appId : null,
+        location_id: checkoutEnabled ? connection?.external_location_id : null,
+        currency: settings?.currency || 'USD',
+        checkout_mode: settings?.checkout_mode || 'none',
+      });
+    }
+
+    let ownerProfile: any = null;
+    if (['connect_url', 'disconnect', 'sync'].includes(action)) {
+      const guard = await requireOwner(req, programId);
+      if (guard.response) return guard.response;
+      ownerProfile = guard.profile;
+    }
+
     if (action === 'connect_url') {
       if (!squareConfigured()) {
         return json({
@@ -170,7 +240,7 @@ Deno.serve(async (req) => {
         return json({ error: 'Square is not connected for this program yet.' }, 400);
       }
       const summary = await runSquareSync(connection, {
-        requestedBy: payload.requested_by || null,
+        requestedBy: ownerProfile?.id || payload.requested_by || null,
         mode: 'manual',
       });
       return json({

@@ -1,7 +1,7 @@
 // PublicTrial
 // Pre-auth lead-capture landing for "Book a free trial" / general inquiry.
 // Reached from the marketing website's CTAs via
-//   https://hit-zero.vercel.app/#trial/<gym_slug>
+//   https://thehitzero.net/#trial/<gym_slug>
 //
 // Submits a `lead` (not a registration) to public-intake-v1 with the
 // parent + athlete + interest + notes. Owner sees it in the Leads tab.
@@ -22,18 +22,102 @@ function ptAnonKey() {
 }
 
 const TRIAL_INTERESTS = [
-  'Open Gym (drop-in $10/athlete)',
-  'All-Star Competitive',
-  'Performance Cheer',
-  'Rec Cheer',
-  'Tumbling',
-  'Stunting',
-  'Privates',
+  'All-Star evaluation / team placement',
+  'Mini All Star',
+  'Youth All Star',
+  'Senior All Star',
+  'Tiny All Star',
+  'Novice All Star',
+  'Traditional Cheer',
+  'Cheer Skill Builder',
+  'Tumbling/Stunts Clinic',
+  'Flex & Strength Class',
+  'Tiny Camp',
+  'School Team Clinics',
+  'Adult "Let\'s Get Moving"',
+  'Open Gym (drop-in $10)',
   'Tour the gym',
   'Just curious',
 ];
+const CHEER_EXPERIENCE_OPTIONS = ['Beginner', '1-2 years', '3+ years', 'Advanced'];
+const SHIRT_SIZE_OPTIONS = ['YXS','YS','YM','YL','YXL','AS','AM','AL','AXL'];
+const CONTACT_RELATIONSHIPS = ['Parent', 'Guardian', 'Grandparent', 'Other'];
+
+function trialPrefill() {
+  try {
+    const raw = (window.location.hash || '').split('?')[1] || window.location.search.slice(1);
+    const params = new URLSearchParams(raw);
+    return {
+      interest: params.get('interest') || '',
+      classId: params.get('class_id') || '',
+      className: params.get('class_name') || '',
+    };
+  } catch (_) {
+    return { interest: '', classId: '', className: '' };
+  }
+}
+
+function mcaIntakeMetadata(form, extra = {}) {
+  return {
+    captured_via: extra.captured_via || 'public_intake',
+    class_id: extra.class_id || null,
+    class_name: extra.class_name || null,
+    athlete: {
+      dob: form.athleteDob || null,
+      age: form.athleteAge || null,
+      grade: form.grade || null,
+      cheer_experience: form.cheerExperience || null,
+      nickname: form.nickname || null,
+      tshirt_size: form.tshirtSize || null,
+    },
+    guardian: {
+      relationship: form.relationship || null,
+      secondary_phone: form.secondaryPhone || null,
+      mailing_address: form.mailingAddress || null,
+    },
+    emergency_contact: {
+      name: form.emergencyName || null,
+      relationship: form.emergencyRelationship || null,
+      phone: form.emergencyPhone || null,
+    },
+    secondary_emergency_contact: {
+      name: form.secondaryEmergencyName || null,
+      relationship: form.secondaryEmergencyRelationship || null,
+      phone: form.secondaryEmergencyPhone || null,
+    },
+    health_safety: {
+      medical_conditions_or_allergies: form.medicalConditions || null,
+      current_medications: form.medications || null,
+      injury_history_or_limitations: form.injuryHistory || null,
+      physician_name: form.physicianName || null,
+      physician_phone: form.physicianPhone || null,
+      insurance_name: form.insuranceName || null,
+      policy_number: form.policyNumber || null,
+    },
+    agreements: {
+      payment_completed_square: !!form.paymentCompleted,
+      payment_not_completed: !!form.paymentNotCompleted,
+      tuition_fees_due: !!form.agreeTuition,
+      payment_policies: !!form.agreePaymentPolicies,
+      autopay_after_registration: !!form.agreeAutopay,
+      handbook: !!form.agreeHandbook,
+      attendance_policy: !!form.agreeAttendance,
+      policy_expectations: !!form.agreeExpectations,
+      media_release: form.mediaRelease || null,
+    },
+    acknowledgements: {
+      parent_guardian_printed_name: form.parentName || null,
+      athlete_printed_name: form.athleteName || null,
+      parent_signature_name: form.parentSignature || null,
+      athlete_signature_name: form.athleteSignature || null,
+      acknowledged_at: new Date().toISOString(),
+    },
+    notes: form.notes || null,
+  };
+}
 
 function PublicTrial({ gymSlug }) {
+  const prefill = trialPrefill();
   const [program, setProgram] = _useS_pt(null);
   const [loadErr, setLoadErr] = _useS_pt(null);
   const [submitting, setSubmitting] = _useS_pt(false);
@@ -42,11 +126,43 @@ function PublicTrial({ gymSlug }) {
   const [form, setForm] = _useS_pt({
     parentName: '',
     athleteName: '',
+    athleteDob: '',
     athleteAge: '',
+    grade: '',
+    cheerExperience: 'Beginner',
+    nickname: '',
     parentEmail: '',
     parentPhone: '',
+    relationship: 'Parent',
+    secondaryPhone: '',
+    mailingAddress: '',
+    emergencyName: '',
+    emergencyRelationship: '',
+    emergencyPhone: '',
+    secondaryEmergencyName: '',
+    secondaryEmergencyRelationship: '',
+    secondaryEmergencyPhone: '',
+    medicalConditions: '',
+    medications: '',
+    injuryHistory: '',
+    physicianName: '',
+    physicianPhone: '',
+    insuranceName: '',
+    policyNumber: '',
+    tshirtSize: '',
+    paymentCompleted: false,
+    paymentNotCompleted: false,
+    agreeTuition: false,
+    agreePaymentPolicies: false,
+    agreeAutopay: false,
+    agreeHandbook: false,
+    agreeAttendance: false,
+    agreeExpectations: false,
+    mediaRelease: 'yes',
+    parentSignature: '',
+    athleteSignature: '',
     preferredContact: 'email',
-    interest: 'Open Gym (drop-in $10/athlete)',
+    interest: prefill.interest || 'All-Star evaluation / team placement',
     notes: '',
     consentToText: false,
     hp: '',
@@ -136,7 +252,10 @@ function PublicTrial({ gymSlug }) {
           preferred_contact: form.preferredContact,
           consent_to_text: !!form.consentToText,
           source: 'hit_zero_public_trial',
-          metadata: { notes: form.notes.trim() || null, captured_via: 'public_trial_page' },
+          metadata: mcaIntakeMetadata(
+            { ...form, notes: form.notes.trim() },
+            { captured_via: 'public_trial_page', class_id: prefill.classId || null, class_name: prefill.className || null }
+          ),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -157,7 +276,7 @@ function PublicTrial({ gymSlug }) {
         <div className="hz-card" style={{ padding: 24, textAlign: 'center', maxWidth: 480, margin: '0 auto' }}>
           <div className="hz-eyebrow" style={{ color: 'var(--hz-pink)', marginBottom: 8 }}>Could not load this gym</div>
           <div className="hz-display" style={{ fontSize: 22 }}>{loadErr}</div>
-          <a className="hz-btn hz-btn-primary" href="https://magic-city-allstars.vercel.app/" style={{ marginTop: 18, display: 'inline-block' }}>Back to website</a>
+          <a className="hz-btn hz-btn-primary" href="https://mcaminot.com/" style={{ marginTop: 18, display: 'inline-block' }}>Back to website</a>
         </div>
       </PTPage>
     );
@@ -166,13 +285,13 @@ function PublicTrial({ gymSlug }) {
   if (!program) {
     return (
       <PTPage>
-        <div className="hz-card" style={{ padding: 24, textAlign: 'center' }}>Loading…</div>
+        <SkeletonCard rows={4} style={{ maxWidth: 540, margin: '0 auto' }} />
       </PTPage>
     );
   }
 
   if (done) {
-    const gymName = program.public_name || program.brand_name || 'the gym';
+    const gymName = program.public_name || program.brand_name || program.name || 'the gym';
     return (
       <PTPage>
         <div className="hz-card" role="status" aria-live="polite" style={{ padding: 28, textAlign: 'center', maxWidth: 540, margin: '0 auto', background: 'linear-gradient(160deg, rgba(39,207,215,0.10), rgba(249,127,172,0.10))' }}>
@@ -182,30 +301,30 @@ function PublicTrial({ gymSlug }) {
             One of {gymName}'s coaches will reach out within 24 hours to {form.preferredContact === 'email' ? 'email' : form.preferredContact === 'text' ? 'text' : 'call'} you back.
           </p>
           <p style={{ fontSize: 11, color: 'var(--hz-dimmer)', marginTop: 14 }}>
-            A copy of your inquiry was also sent to MCA so nothing gets lost.
+            A copy of your inquiry was also sent to {gymName} so nothing gets lost.
           </p>
           <div style={{ marginTop: 22, display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <a className="hz-btn" href="https://magic-city-allstars.vercel.app/#/programs">See programs</a>
-            <a className="hz-btn hz-btn-primary" href="https://magic-city-allstars.vercel.app/">Back to website</a>
+            <a className="hz-btn" href="https://mcaminot.com/#/programs">See programs</a>
+            <a className="hz-btn hz-btn-primary" href="https://mcaminot.com/">Back to website</a>
           </div>
         </div>
       </PTPage>
     );
   }
 
-  const gymName = program.public_name || program.brand_name || 'Magic City Athletics';
+  const gymName = program.public_name || program.brand_name || program.name || 'your gym';
   const acceptingLeads = program.is_accepting_leads !== false;
 
   return (
     <PTPage>
       <div style={{ maxWidth: 540, margin: '0 auto' }}>
         <div className="hz-card" style={{ padding: 22, marginBottom: 16 }}>
-          <div className="hz-eyebrow" style={{ marginBottom: 8 }}>{gymName} · Book a free trial</div>
+          <div className="hz-eyebrow" style={{ marginBottom: 8 }}>{gymName} · I'm interested</div>
           <div className="hz-display" style={{ fontSize: 28, lineHeight: 1.1 }}>
-            Come try a class — <span style={{ background: 'linear-gradient(135deg, var(--hz-teal), var(--hz-pink))', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', fontStyle: 'italic' }}>it's free</span>.
+            Tell {gymName} where your athlete fits — <span style={{ background: 'linear-gradient(135deg, var(--hz-teal), var(--hz-pink))', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', fontStyle: 'italic' }}>staff will place you</span>.
           </div>
           <p style={{ marginTop: 10, color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.55 }}>
-            Tell us a bit about your athlete and how to reach you. A coach will follow up within 24 hours to set up a time. No pressure, no commitment.
+            This is an interest/evaluation form, not a team signup. Staff can review the details, evaluate your athlete, and move them into the correct team or class from the backend.
           </p>
         </div>
 
@@ -232,11 +351,42 @@ function PublicTrial({ gymSlug }) {
             <PTField label="Athlete age (optional)">
               <input className="hz-input" type="number" placeholder="e.g. 8" value={form.athleteAge} onChange={e => set('athleteAge', e.target.value)} min="0" max="30" disabled={submitting}/>
             </PTField>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <PTField label="Athlete date of birth">
+                <input className="hz-input" type="date" value={form.athleteDob} onChange={e => set('athleteDob', e.target.value)} disabled={submitting}/>
+              </PTField>
+              <PTField label="Grade">
+                <input className="hz-input" placeholder="e.g. 4th" value={form.grade} onChange={e => set('grade', e.target.value)} disabled={submitting}/>
+              </PTField>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <PTField label="Cheer experience">
+                <select className="hz-input" value={form.cheerExperience} onChange={e => set('cheerExperience', e.target.value)} disabled={submitting}>
+                  {CHEER_EXPERIENCE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+              </PTField>
+              <PTField label="Nickname">
+                <input className="hz-input" placeholder="Optional" value={form.nickname} onChange={e => set('nickname', e.target.value)} disabled={submitting}/>
+              </PTField>
+            </div>
             <PTField label="Email">
               <input className="hz-input" type="email" placeholder="you@example.com" value={form.parentEmail} onChange={e => set('parentEmail', e.target.value)} autoComplete="email" disabled={submitting}/>
             </PTField>
             <PTField label="Phone">
               <input className="hz-input" type="tel" placeholder="(701) 555-0123" value={form.parentPhone} onChange={e => set('parentPhone', e.target.value)} autoComplete="tel" disabled={submitting}/>
+            </PTField>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <PTField label="Relationship to athlete">
+                <select className="hz-input" value={form.relationship} onChange={e => set('relationship', e.target.value)} disabled={submitting}>
+                  {CONTACT_RELATIONSHIPS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+              </PTField>
+              <PTField label="Secondary phone">
+                <input className="hz-input" type="tel" placeholder="Optional" value={form.secondaryPhone} onChange={e => set('secondaryPhone', e.target.value)} disabled={submitting}/>
+              </PTField>
+            </div>
+            <PTField label="Mailing address">
+              <input className="hz-input" placeholder="Street, city, state, zip" value={form.mailingAddress} onChange={e => set('mailingAddress', e.target.value)} disabled={submitting}/>
             </PTField>
             <PTField label="Best way to reach you">
               <select className="hz-input" value={form.preferredContact} onChange={e => set('preferredContact', e.target.value)} disabled={submitting}>
@@ -250,6 +400,99 @@ function PublicTrial({ gymSlug }) {
                 {TRIAL_INTERESTS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
               </select>
             </PTField>
+            <details className="hz-card" style={{ padding: 14, background: 'rgba(255,255,255,0.025)' }}>
+              <summary className="hz-eyebrow" style={{ cursor: 'pointer' }}>Emergency, health, shirt size, and agreements</summary>
+              <div style={{ display: 'grid', gap: 12, marginTop: 14 }}>
+                <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)' }}>Emergency contact</div>
+                <PTField label="Emergency contact name">
+                  <input className="hz-input" value={form.emergencyName} onChange={e => set('emergencyName', e.target.value)} disabled={submitting}/>
+                </PTField>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <PTField label="Emergency relationship">
+                    <input className="hz-input" value={form.emergencyRelationship} onChange={e => set('emergencyRelationship', e.target.value)} disabled={submitting}/>
+                  </PTField>
+                  <PTField label="Emergency phone">
+                    <input className="hz-input" type="tel" value={form.emergencyPhone} onChange={e => set('emergencyPhone', e.target.value)} disabled={submitting}/>
+                  </PTField>
+                </div>
+                <PTField label="Secondary emergency contact">
+                  <input className="hz-input" placeholder="Name" value={form.secondaryEmergencyName} onChange={e => set('secondaryEmergencyName', e.target.value)} disabled={submitting}/>
+                </PTField>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <PTField label="Secondary relationship">
+                    <input className="hz-input" value={form.secondaryEmergencyRelationship} onChange={e => set('secondaryEmergencyRelationship', e.target.value)} disabled={submitting}/>
+                  </PTField>
+                  <PTField label="Secondary phone">
+                    <input className="hz-input" type="tel" value={form.secondaryEmergencyPhone} onChange={e => set('secondaryEmergencyPhone', e.target.value)} disabled={submitting}/>
+                  </PTField>
+                </div>
+
+                <div className="hz-eyebrow" style={{ color: 'var(--hz-pink)' }}>Health & safety</div>
+                <PTField label="Medical conditions or allergies">
+                  <textarea className="hz-input" rows="2" value={form.medicalConditions} onChange={e => set('medicalConditions', e.target.value)} disabled={submitting}/>
+                </PTField>
+                <PTField label="Current medications">
+                  <textarea className="hz-input" rows="2" value={form.medications} onChange={e => set('medications', e.target.value)} disabled={submitting}/>
+                </PTField>
+                <PTField label="Injury history or physical limitations">
+                  <textarea className="hz-input" rows="2" value={form.injuryHistory} onChange={e => set('injuryHistory', e.target.value)} disabled={submitting}/>
+                </PTField>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <PTField label="Physician name">
+                    <input className="hz-input" value={form.physicianName} onChange={e => set('physicianName', e.target.value)} disabled={submitting}/>
+                  </PTField>
+                  <PTField label="Physician phone">
+                    <input className="hz-input" type="tel" value={form.physicianPhone} onChange={e => set('physicianPhone', e.target.value)} disabled={submitting}/>
+                  </PTField>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <PTField label="Insurance name">
+                    <input className="hz-input" value={form.insuranceName} onChange={e => set('insuranceName', e.target.value)} disabled={submitting}/>
+                  </PTField>
+                  <PTField label="Policy number">
+                    <input className="hz-input" value={form.policyNumber} onChange={e => set('policyNumber', e.target.value)} disabled={submitting}/>
+                  </PTField>
+                </div>
+
+                <PTField label="T-shirt size">
+                  <select className="hz-input" value={form.tshirtSize} onChange={e => set('tshirtSize', e.target.value)} disabled={submitting}>
+                    <option value="">Choose later</option>
+                    {SHIRT_SIZE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                </PTField>
+                <PTField label="Media release">
+                  <select className="hz-input" value={form.mediaRelease} onChange={e => set('mediaRelease', e.target.value)} disabled={submitting}>
+                    <option value="yes">Yes, photo/video permission granted</option>
+                    <option value="no">No photo/video promotional use</option>
+                  </select>
+                </PTField>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {[
+                    ['paymentCompleted', 'Payment completed via Square'],
+                    ['paymentNotCompleted', 'Payment not completed yet'],
+                    ['agreeTuition', 'I understand tuition and fees are due as scheduled'],
+                    ['agreePaymentPolicies', 'I agree to MCA payment policies'],
+                    ['agreeAutopay', 'I understand auto-pay is required once official registration is completed'],
+                    ['agreeHandbook', 'I have read and agree to the MCA handbook'],
+                    ['agreeAttendance', 'I understand and agree to the attendance policy'],
+                    ['agreeExpectations', 'I agree to follow policies and expectations'],
+                  ].map(([key, label]) => (
+                    <label key={key} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', color: 'var(--hz-dim)', fontSize: 12 }}>
+                      <input type="checkbox" checked={!!form[key]} onChange={e => set(key, e.target.checked)} disabled={submitting}/>
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <PTField label="Parent signature name">
+                    <input className="hz-input" value={form.parentSignature} onChange={e => set('parentSignature', e.target.value)} disabled={submitting}/>
+                  </PTField>
+                  <PTField label="Athlete signature name">
+                    <input className="hz-input" value={form.athleteSignature} onChange={e => set('athleteSignature', e.target.value)} disabled={submitting}/>
+                  </PTField>
+                </div>
+              </div>
+            </details>
             <PTField label="Anything else? (optional)">
               <textarea className="hz-input" rows="2" placeholder="Schedule preference, questions, etc." value={form.notes} onChange={e => set('notes', e.target.value)} style={{ resize: 'vertical', minHeight: 64 }} disabled={submitting}/>
             </PTField>
@@ -265,16 +508,16 @@ function PublicTrial({ gymSlug }) {
             )}
 
             <button type="submit" className="hz-btn hz-btn-primary" disabled={submitting} style={{ minHeight: 48, fontSize: 15 }}>
-              {submitting ? 'Sending…' : 'Request a free trial →'}
+              {submitting ? 'Sending…' : "Send I'm interested form →"}
             </button>
             <p style={{ fontSize: 11, color: 'var(--hz-dimmer)', lineHeight: 1.5, textAlign: 'center' }}>
-              Your inquiry lands in MCA's Hit Zero leads queue. We'll never sell your info.
+              Your inquiry lands in {gymName}'s Hit Zero leads queue. We'll never sell your info.
             </p>
           </form>
         )}
 
         <div style={{ textAlign: 'center', marginTop: 18 }}>
-          <a href="https://magic-city-allstars.vercel.app/" style={{ color: 'var(--hz-dim)', fontSize: 12, textDecoration: 'none' }}>← Back to website</a>
+          <a href="https://mcaminot.com/" style={{ color: 'var(--hz-dim)', fontSize: 12, textDecoration: 'none' }}>← Back to website</a>
         </div>
       </div>
     </PTPage>
@@ -283,13 +526,13 @@ function PublicTrial({ gymSlug }) {
 
 function PTPage({ children }) {
   return (
-    <div style={{ minHeight: '100vh', minHeight: '100dvh', background: 'var(--hz-ink, #050507)', color: '#fff', padding: 'calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 24px)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ minHeight: '100dvh', background: 'var(--hz-ink, #050507)', color: '#fff', padding: 'calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 24px)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 22 }}>
         {window.HZWordmark ? <window.HZWordmark size={20}/> : <div style={{ fontWeight: 800, letterSpacing: '0.16em' }}>HIT ZERO</div>}
       </div>
       <div style={{ flex: 1 }}>{children}</div>
       <div style={{ textAlign: 'center', marginTop: 24, fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--hz-dimmer)' }}>
-        Magic City Athletics · Minot, ND
+        Powered by Hit Zero
       </div>
     </div>
   );
