@@ -70,12 +70,26 @@ where lower(coalesce(s.type, '')) like '%dream on%'
    or s.id::text like 's%';
 
 -- 6) Family packets still needed before staff can link cleanly.
+-- Parents own the family packet. An athlete-role profile only needs its own
+-- packet when it is self-managed (no parent linked to its roster athlete) —
+-- otherwise the linked parent's packet covers it, so don't double-flag.
 select 'family_packet_missing_or_incomplete' as check_name, p.id::text, p.email::text, p.display_name
 from public.profiles p
 left join public.family_info_packets fp on fp.profile_id = p.id and fp.program_id = p.program_id
 where p.program_id is not null
-  and p.role in ('parent', 'athlete')
   and coalesce(fp.completion_status, 'incomplete') <> 'complete'
+  and (
+    p.role = 'parent'
+    or (
+      p.role = 'athlete'
+      and not exists (
+        select 1
+        from public.athletes a
+        join public.parent_links pl on pl.athlete_id = a.id
+        where a.profile_id = p.id
+      )
+    )
+  )
 order by p.created_at desc;
 
 -- 7) Parent-critical paid registration visibility and class schedule artifacts.

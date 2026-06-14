@@ -30,7 +30,7 @@ After: exactly one `Arlowe Emmel` profile remains; the athlete row + skills stil
 
 Only data we already hold was written (parent name/email from the profile, child name from a single `parent_links` row). **No emergency/medical/signature data was fabricated** — those stay empty and `completion_status` stays `incomplete`. The client submit path (`join-gym-v1 submitFamilyPacket`) upserts on `(program_id, profile_id)`, so the parent's eventual submission cleanly updates the placeholder rather than erroring.
 
-### Known follow-ups (not auto-fixable)
+### Known follow-ups
 - The audit line `family_packet_missing_or_incomplete` will **still flag these 6** as incomplete until the actual families submit their info — that is a real onboarding task, not a code bug.
-- **Annaleicia Nelson** is a parent with **0 linked children** — a separate data gap to resolve (link her athlete).
-- The audit check also flags **athlete-role** profiles (Arlowe, Kameryn Todd) for a missing *family* packet, which is the parent's responsibility — recommend refining the check to exclude `role = 'athlete'`.
+- ~~**Annaleicia Nelson** is a parent with **0 linked children**~~ — **RESOLVED 2026-06-14.** Her approved join request and lead both name her child as **Laykely Nelson**, who had never been materialized into the roster. Created athlete `9f322d1e-f340-4368-aee6-537c7160ae2e` (Laykely Nelson) on the Magic Minis team (the program's single roster team, where all other athletes sit), linked Annaleicia as primary parent, and filled her packet's athlete name. Idempotent insert (guarded against re-run).
+- ~~The audit check flags **athlete-role** profiles (Arlowe, Kameryn Todd) for a missing *family* packet~~ — **RESOLVED 2026-06-14.** Refined `hit_zero_backend/sql/launch-hardening-audit.sql` (check #6): parents are always flagged, but an athlete-role profile is only flagged when it has **no linked parent** (truly self-managed). The flagged set dropped from 8 (6 parents + Arlowe + Kameryn) to exactly the **6 parents** who genuinely still owe a packet.
