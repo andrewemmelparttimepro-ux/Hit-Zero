@@ -2009,11 +2009,24 @@ function ProgramIdentityCard({ program, paymentSettings, programLocation, direct
         </div>
       </div>
 
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: 16, paddingTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <div className="hz-eyebrow" style={{ fontSize: 10 }}>Your website · what families see first</div>
+          <div style={{ fontSize: 13, color: 'var(--hz-dim)', marginTop: 4 }}>Edit your colors, font, and hero photo — published live to your website.</div>
+        </div>
+        <button className="hz-btn hz-btn-primary hz-btn-sm" onClick={() => setEditing(editing === 'website' ? null : 'website')}>
+          {editing === 'website' ? 'Close' : 'Edit'}
+        </button>
+      </div>
+
       {editing === 'identity' && (
         <ProgramIdentityEditor program={program} onSave={saveProgram} disabled={busy}/>
       )}
       {editing === 'payment' && (
         <PaymentSettingsEditor settings={paymentSettings} onSave={savePayment} disabled={busy}/>
+      )}
+      {editing === 'website' && (
+        <EditWebsiteEditor program={program} onSave={saveProgram} disabled={busy} programId={program.id}/>
       )}
       {error && <div style={{ marginTop: 12, color: 'var(--hz-pink)', fontSize: 13 }}>{error}</div>}
       {message && <div style={{ marginTop: 12, color: 'var(--hz-teal)', fontSize: 13 }}>{message}</div>}
@@ -2113,6 +2126,123 @@ function ProgramIdentityEditor({ program, onSave, disabled }) {
         <div style={{ flex: 1 }}/>
         <button className="hz-btn hz-btn-primary" onClick={save} disabled={disabled}>Save changes</button>
       </div>
+    </div>
+  );
+}
+
+// ─── "Edit" — owner website knobs (colors / font / hero photo) ──────────────
+// Basic, high-value controls that publish straight to the gym's public site.
+// Writes theme (jsonb) + public_hero_image_url onto the program record; the
+// site reads them via the program_public_directory view.
+const HZ_FONT_OPTIONS = [
+  { key: 'fraunces', label: 'Fraunces — elegant serif (current)' },
+  { key: 'playfair', label: 'Playfair Display — classic serif' },
+  { key: 'poppins',  label: 'Poppins — friendly & rounded' },
+  { key: 'grotesk',  label: 'Space Grotesk — clean & modern' },
+];
+const HZ_BRAND_DEFAULT = { primary: '#27CFD7', accent: '#F97FAC', font: 'fraunces' };
+
+function ColorKnob({ label, value, onChange, disabled }) {
+  const safe = /^#[0-9a-fA-F]{6}$/.test(value) ? value : '#000000';
+  return (
+    <div style={{ display: 'grid', gap: 6 }}>
+      <div style={{ fontSize: 11, color: 'var(--hz-dim)' }}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <input type="color" value={safe} onChange={e => onChange(e.target.value)} disabled={disabled}
+          style={{ width: 42, height: 36, border: '1px solid rgba(255,255,255,0.18)', borderRadius: 8, background: 'none', cursor: disabled ? 'default' : 'pointer', padding: 2 }}/>
+        <input className="hz-input" value={value} onChange={e => onChange(e.target.value)} disabled={disabled}
+          style={{ width: 100, fontFamily: 'monospace', textTransform: 'uppercase' }} maxLength={7}/>
+      </div>
+    </div>
+  );
+}
+
+function EditWebsiteEditor({ program, onSave, disabled, programId }) {
+  const theme = program.theme || {};
+  const themeColors = theme.colors || {};
+  const [primary, setPrimary] = React.useState(themeColors.primary || HZ_BRAND_DEFAULT.primary);
+  const [accent, setAccent] = React.useState(themeColors.accent || HZ_BRAND_DEFAULT.accent);
+  const [font, setFont] = React.useState(theme.font || HZ_BRAND_DEFAULT.font);
+  const [heroUrl, setHeroUrl] = React.useState(program.public_hero_image_url || '');
+  const [uploading, setUploading] = React.useState(false);
+  const [uploadErr, setUploadErr] = React.useState('');
+  const fileRef = React.useRef(null);
+
+  async function handleFile(file) {
+    setUploadErr('');
+    if (!file) return;
+    if (!/^image\//.test(file.type)) { setUploadErr('Please choose an image file (JPG or PNG).'); return; }
+    if (file.size > 8 * 1024 * 1024) { setUploadErr('That image is over 8 MB — please use a smaller one.'); return; }
+    if (!programId) { setUploadErr('Missing program id — reload and try again.'); return; }
+    if (!window.HZsupa || !window.HZsupa.storage) { setUploadErr('Upload is only available on the live site.'); return; }
+    setUploading(true);
+    try {
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+      const path = programId + '/hero-' + Date.now() + '.' + ext;
+      const { error } = await window.HZsupa.storage.from('posters').upload(path, file, { upsert: true, contentType: file.type, cacheControl: '3600' });
+      if (error) throw error;
+      const { data } = window.HZsupa.storage.from('posters').getPublicUrl(path);
+      if (!data || !data.publicUrl) throw new Error('No public URL returned.');
+      setHeroUrl(data.publicUrl);
+    } catch (err) {
+      console.error('[edit] hero upload', err);
+      setUploadErr('Upload failed: ' + (err?.message || String(err)));
+    } finally { setUploading(false); }
+  }
+
+  const save = () => onSave({
+    theme: { colors: { primary, accent }, font },
+    public_hero_image_url: heroUrl.trim() || null,
+  });
+  const resetBrand = () => { setPrimary(HZ_BRAND_DEFAULT.primary); setAccent(HZ_BRAND_DEFAULT.accent); setFont(HZ_BRAND_DEFAULT.font); };
+
+  const labelStyle = { fontSize: 12, fontWeight: 700, marginBottom: 8, color: 'var(--hz-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' };
+
+  return (
+    <div style={{ marginTop: 16, padding: 16, background: 'rgba(255,255,255,0.04)', borderRadius: 10, display: 'grid', gap: 18 }}>
+      <div className="hz-eyebrow" style={{ fontSize: 10 }}>Edit your website · published live to your public site</div>
+
+      <div>
+        <div style={labelStyle}>Colors</div>
+        <div style={{ display: 'flex', gap: 26, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <ColorKnob label="Primary" value={primary} onChange={setPrimary} disabled={disabled}/>
+          <ColorKnob label="Accent" value={accent} onChange={setAccent} disabled={disabled}/>
+          <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={resetBrand} disabled={disabled}>Reset to MCA brand</button>
+        </div>
+      </div>
+
+      <FieldRow label="Font">
+        <select className="hz-input" value={font} onChange={e => setFont(e.target.value)} disabled={disabled}>
+          {HZ_FONT_OPTIONS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+        </select>
+      </FieldRow>
+
+      <div>
+        <div style={labelStyle}>Hero photo</div>
+        <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ width: 156, height: 94, borderRadius: 8, overflow: 'hidden', background: 'rgba(255,255,255,0.06)', flex: 'none', border: '1px solid rgba(255,255,255,0.1)' }}>
+            {heroUrl
+              ? <img src={heroUrl} alt="Hero preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+              : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: 11, color: 'var(--hz-dim)', textAlign: 'center', padding: 6 }}>Using the site&rsquo;s built-in photo</div>}
+          </div>
+          <div style={{ display: 'grid', gap: 8 }}>
+            <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleFile(e.target.files && e.target.files[0])}/>
+            <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={() => fileRef.current && fileRef.current.click()} disabled={disabled || uploading}>
+              {uploading ? 'Uploading…' : (heroUrl ? 'Replace photo' : 'Upload photo')}
+            </button>
+            {heroUrl && <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={() => setHeroUrl('')} disabled={disabled || uploading}>Use default photo</button>}
+            <div style={{ fontSize: 11, color: 'var(--hz-dim)' }}>JPG or PNG · landscape looks best.</div>
+          </div>
+        </div>
+        {uploadErr && <div style={{ marginTop: 8, color: 'var(--hz-pink)', fontSize: 12 }}>{uploadErr}</div>}
+      </div>
+
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', paddingTop: 4, flexWrap: 'wrap' }}>
+        <a className="hz-btn hz-btn-ghost hz-btn-sm" href={program.website_url || 'https://mcaminot.com'} target="_blank" rel="noopener">View your site →</a>
+        <div style={{ flex: 1 }}/>
+        <button className="hz-btn hz-btn-primary" onClick={save} disabled={disabled || uploading}>Save &amp; publish</button>
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--hz-dim)' }}>Saved changes appear on your website within a few seconds.</div>
     </div>
   );
 }
