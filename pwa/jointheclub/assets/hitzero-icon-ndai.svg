@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <radialGradient id="hzN" cx="26%" cy="20%" r="80%">
+      <stop offset="0%" stop-color="#1b1b1c"/>
+      <stop offset="100%" stop-color="#0b0b0c"/>
+    </radialGradient>
+  </defs>
+  <rect x="6" y="6" width="500" height="500" rx="104" fill="url(#hzN)" stroke="rgba(255,255,255,0.10)" stroke-width="2"/>
+  <!-- accent-line motif, top-left -->
+  <rect x="64" y="92" width="120" height="10" rx="5" fill="#9b8d72"/>
+  <!-- Stacked HIT / ZERO wordmark, Archivo Black. -->
+  <g font-family="'Archivo Black', 'Arial Black', sans-serif"
+     font-weight="900"
+     font-size="150"
+     letter-spacing="-4"
+     text-anchor="start"
+     fill="#e8e0d2">
+    <text x="62" y="262">HIT</text>
+    <text x="62" y="392">ZER<tspan fill="#6ea8dc">0</tspan></text>
+  </g>
+</svg>

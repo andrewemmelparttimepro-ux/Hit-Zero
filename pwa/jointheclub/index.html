@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Hit Zero — The cheer gym operating system, built by a cheer gym</title>
+    <meta name="description" content="Hit Zero is the cheer-native gym operating system. One app runs the whole gym — discovery, registration, payments, rosters, schedules, and owner visibility. Built by a real cheer gym, for cheer gyms." />
+    <link rel="canonical" href="https://thehitzero.net/jointheclub" />
+    <link rel="stylesheet" href="/jointheclub/assets/ndai-fonts.css" />
+    <style>
+      :root {
+        --bg: #070707;
+        --bg2: #0d0d0d;
+        --panel: #111112;
+        --panel2: #161617;
+
+        --txt: #f2f2f0;
+        --txt2: rgba(255, 255, 255, 0.64);
+        --txt3: rgba(255, 255, 255, 0.4);
+
+        --bone: #e8e0d2;
+        --gold: #9b8d72;
+        --money: #e6c87a;
+        --blue: #6ea8dc;
+        --green: #69d18c;
+        --red: #e0796f;
+
+        --line: rgba(255, 255, 255, 0.1);
+        --line2: rgba(255, 255, 255, 0.18);
+
+        --disp: "Archivo Black", "Arial Black", sans-serif;
+        --sans: "Space Grotesk", system-ui, -apple-system, sans-serif;
+        --num: "Archivo", sans-serif;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      ::selection { background: var(--blue); color: #0a0a0a; }
+      html { scroll-behavior: smooth; }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { animation: none !important; transition: none !important; } }
+      body {
+        background: var(--bg);
+        color: var(--txt);
+        font-family: var(--sans);
+        font-size: 17px;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
+      img { max-width: 100%; display: block; }
+      a { color: inherit; text-decoration: none; }
+      .wrap { max-width: 1140px; margin: 0 auto; padding: 0 26px; }
+      section { padding: 96px 0; position: relative; }
+
+      .kick {
+        font-size: 11px; font-weight: 600; letter-spacing: 0.3em;
+        text-transform: uppercase; color: var(--gold); margin-bottom: 18px;
+      }
+      h2 {
+        font-family: var(--disp); font-weight: 400; text-transform: uppercase;
+        font-size: clamp(28px, 4.6vw, 50px); line-height: 1.02; letter-spacing: 0.01em;
+        margin-bottom: 20px;
+      }
+      h2 .dim { color: var(--gold); }
+      h2 .hl { color: var(--blue); }
+      .lead { color: var(--txt2); max-width: 60ch; font-size: clamp(16px, 2.1vw, 20px); }
+
+      /* ── Nav ── */
+      nav {
+        position: fixed; inset: 0 0 auto 0; z-index: 100;
+        background: rgba(7, 7, 7, 0.82);
+        backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+        border-bottom: 1px solid var(--line);
+      }
+      .nav-in {
+        max-width: 1140px; margin: 0 auto; padding: 0 26px; height: 64px;
+        display: flex; align-items: center; justify-content: space-between;
+      }
+      .nav-logo { display: flex; align-items: center; gap: 10px; }
+      .nav-logo img { width: 32px; height: 32px; border-radius: 7px; }
+      .nav-logo b { font-family: var(--disp); font-weight: 400; font-size: 15px; letter-spacing: 0.14em; text-transform: uppercase; }
+      .nav-links { display: flex; gap: 28px; align-items: center; }
+      .nav-links a { font-size: 13px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--txt2); transition: color 0.15s; }
+      .nav-links a:hover { color: var(--txt); }
+      .btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+        font-family: var(--sans); font-weight: 600; font-size: 13px; letter-spacing: 0.08em;
+        text-transform: uppercase; padding: 13px 22px; border-radius: 5px;
+        border: 1px solid transparent; cursor: pointer; transition: transform 0.12s, background 0.15s, border-color 0.15s, color 0.15s;
+        min-height: 44px; white-space: nowrap;
+      }
+      .btn:active { transform: scale(0.98); }
+      .btn-solid { background: var(--bone); color: #0a0a0a; }
+      .btn-solid:hover { background: #fff; }
+      .btn-line { border-color: rgba(255, 255, 255, 0.24); color: var(--txt); }
+      .btn-line:hover { border-color: rgba(255, 255, 255, 0.5); }
+      .nav-cta { padding: 9px 16px; min-height: 38px; }
+      .ham { display: none; background: none; border: none; cursor: pointer; width: 44px; height: 44px; align-items: center; justify-content: center; }
+      .ham span { display: block; width: 22px; height: 2px; background: var(--txt); position: relative; }
+      .ham span::before, .ham span::after { content: ""; position: absolute; left: 0; width: 22px; height: 2px; background: var(--txt); }
+      .ham span::before { top: -7px; } .ham span::after { top: 7px; }
+      .mobmenu { display: none; position: fixed; top: 64px; left: 0; right: 0; z-index: 99; background: #070707; border-bottom: 1px solid var(--line); flex-direction: column; padding: 8px 26px 18px; }
+      .mobmenu a { padding: 14px 0; font-size: 14px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--txt2); border-bottom: 1px solid var(--line); min-height: 44px; display: flex; align-items: center; }
+      .mobmenu a:last-child { border-bottom: none; }
+      .mobmenu.open { display: flex; }
+
+      /* ── Hero ── */
+      #hero { padding: 168px 0 104px; }
+      .hero-badge {
+        display: inline-flex; align-items: center; gap: 9px; margin-bottom: 24px;
+        padding: 6px 14px; border-radius: 99px; border: 1px solid rgba(105, 209, 140, 0.4);
+        font-family: var(--num); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--green);
+      }
+      .hero-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px rgba(105, 209, 140, 0.18); animation: pulse 2.4s ease-in-out infinite; }
+      @keyframes pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+      #hero h1 {
+        font-family: var(--disp); font-weight: 400; text-transform: uppercase;
+        font-size: clamp(38px, 7vw, 82px); line-height: 0.98; letter-spacing: 0.005em; max-width: 16ch;
+      }
+      #hero h1 .hl { color: var(--blue); }
+      .hero-sub { margin: 26px 0 34px; font-size: clamp(17px, 2.3vw, 21px); color: var(--txt2); max-width: 56ch; }
+      .hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; }
+      .hero-meta { margin-top: 42px; display: flex; gap: 26px; flex-wrap: wrap; font-size: 13px; color: var(--txt3); letter-spacing: 0.04em; }
+      .hero-meta b { color: var(--txt2); font-weight: 600; }
+
+      /* ── Problem ── */
+      #problem { background: var(--bg2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+      .prob-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); margin-top: 48px; }
+      .prob { background: var(--panel); padding: 30px 26px; }
+      .prob .pn { font-family: var(--disp); font-size: 14px; color: var(--red); margin-bottom: 13px; }
+      .prob h3 { font-size: 18px; font-weight: 700; margin-bottom: 9px; }
+      .prob p { font-size: 15px; color: var(--txt2); }
+
+      /* ── Pillars (why) ── */
+      .pillars { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); margin-top: 52px; }
+      .pillar { background: var(--panel); padding: 34px 30px; position: relative; overflow: hidden; }
+      .pillar::before { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 90% at 88% -10%, rgba(110, 168, 220, 0.08), transparent 60%); pointer-events: none; }
+      .pillar .pi { font-family: var(--disp); font-size: 13px; color: var(--blue); letter-spacing: 0.06em; margin-bottom: 14px; }
+      .pillar h3 { font-family: var(--sans); font-size: clamp(20px, 2.6vw, 25px); font-weight: 700; letter-spacing: -0.01em; margin-bottom: 11px; line-height: 1.14; }
+      .pillar p { font-size: 15.5px; color: var(--txt2); max-width: 46ch; }
+      .pillar .tag { display: inline-block; margin-top: 16px; font-family: var(--num); font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--money); }
+
+      /* ── Loop ── */
+      #loop { background: var(--bg2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+      .loop-track { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 44px; align-items: stretch; }
+      .loop-step { flex: 1 1 150px; background: var(--panel); border: 1px solid var(--line); border-top: 3px solid var(--blue); padding: 18px 16px; position: relative; }
+      .loop-step .ls-n { font-family: var(--num); font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--txt3); }
+      .loop-step b { display: block; margin-top: 7px; font-size: 15px; font-weight: 700; }
+      .loop-step span { display: block; margin-top: 5px; font-size: 12.5px; color: var(--txt3); line-height: 1.35; }
+      .loop-note { margin-top: 24px; font-size: 15px; color: var(--txt2); border-left: 3px solid var(--money); padding-left: 16px; max-width: 70ch; }
+      .loop-note b { color: var(--money); }
+
+      /* ── Comparison ── */
+      .cmp-wrap { margin-top: 48px; overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); }
+      table.cmp { width: 100%; border-collapse: collapse; min-width: 680px; font-size: 15px; }
+      table.cmp th, table.cmp td { padding: 16px 18px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+      table.cmp thead th { background: rgba(255, 255, 255, 0.03); font-family: var(--num); font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+      table.cmp thead th.hz { color: var(--blue); }
+      table.cmp tbody tr:last-child td { border-bottom: 0; }
+      table.cmp td.feat { color: var(--txt2); font-weight: 600; width: 30%; }
+      table.cmp td.hz { background: rgba(110, 168, 220, 0.06); color: var(--txt); font-weight: 600; }
+      .yes { color: var(--green); font-weight: 700; }
+      .no { color: var(--red); }
+      .meh { color: var(--gold); }
+      .ck { font-family: var(--num); font-weight: 700; }
+
+      /* ── Proof ── */
+      #proof { background: var(--bg2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+      .proof-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); margin-top: 48px; }
+      .pcard { background: var(--panel); padding: 30px 26px; }
+      .pcard .st { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 14px; padding: 5px 11px; border-radius: 99px; border: 1px solid rgba(105, 209, 140, 0.4); font-family: var(--num); font-size: 10.5px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--green); }
+      .pcard .st .d { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+      .pcard h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+      .pcard p { font-size: 14.5px; color: var(--txt2); }
+      .pcard code { font-family: var(--num); font-weight: 600; color: var(--bone); }
+
+      /* ── Features ── */
+      .feat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); margin-top: 48px; }
+      .fcell { background: var(--panel); padding: 24px 22px; }
+      .fcell .fi { font-family: var(--num); font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold); margin-bottom: 10px; }
+      .fcell h4 { font-size: 16px; font-weight: 700; margin-bottom: 7px; }
+      .fcell p { font-size: 13.5px; color: var(--txt2); }
+
+      /* ── Value ── */
+      .value-box { margin-top: 44px; border: 1px solid var(--line); border-left: 3px solid var(--money); background: var(--panel); padding: 34px 32px; }
+      .value-box h3 { font-family: var(--disp); font-weight: 400; text-transform: uppercase; font-size: clamp(20px, 3vw, 30px); line-height: 1.1; margin-bottom: 14px; }
+      .value-box h3 .m { color: var(--money); }
+      .value-box p { color: var(--txt2); max-width: 64ch; font-size: 16px; }
+
+      /* ── CTA ── */
+      #demo { text-align: center; }
+      #demo h2 { max-width: 18ch; margin: 0 auto 18px; }
+      #demo .lead { margin: 0 auto 32px; }
+      .demo-ctas { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+      .demo-fine { margin-top: 22px; font-size: 13px; color: var(--txt3); }
+
+      /* ── Footer ── */
+      footer { border-top: 1px solid var(--line); padding: 40px 0 calc(40px + env(safe-area-inset-bottom, 0px)); }
+      .ft { display: flex; align-items: center; justify-content: space-between; gap: 22px; flex-wrap: wrap; }
+      .ft-logo { display: flex; align-items: center; gap: 10px; }
+      .ft-logo img { width: 34px; height: 34px; border-radius: 7px; }
+      .ft-logo b { font-family: var(--disp); font-weight: 400; font-size: 14px; letter-spacing: 0.14em; text-transform: uppercase; }
+      .ft-copy { font-size: 12px; color: var(--txt3); }
+
+      /* ── White-label website ── */
+      .site-wrap { display: grid; grid-template-columns: 0.92fr 1.08fr; gap: 44px; align-items: center; margin-top: 48px; }
+      .site-points { display: grid; gap: 16px; }
+      .spoint { display: grid; grid-template-columns: 13px 1fr; gap: 14px; align-items: start; font-size: 16px; color: rgba(255, 255, 255, 0.88); line-height: 1.42; }
+      .spoint::before { content: ""; width: 12px; height: 12px; margin-top: 6px; background: var(--blue); }
+      .site-cta { margin-top: 6px; }
+      .browser { border: 1px solid var(--line2); border-radius: 12px; overflow: hidden; background: #0a0a0b; box-shadow: 0 30px 70px rgba(0, 0, 0, 0.5); }
+      .browser-bar { display: flex; align-items: center; gap: 10px; padding: 11px 14px; background: #161617; border-bottom: 1px solid var(--line); }
+      .browser-bar .dots { display: flex; gap: 6px; flex: none; }
+      .browser-bar .dots i { width: 11px; height: 11px; border-radius: 50%; background: rgba(255, 255, 255, 0.18); display: block; }
+      .browser-bar .url { flex: 1; background: #0a0a0b; border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; font-family: var(--num); font-size: 12px; color: var(--txt2); letter-spacing: 0.02em; display: flex; align-items: center; gap: 8px; min-width: 0; }
+      .browser-bar .url .live { margin-left: auto; color: var(--green); font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; }
+      .browser img { width: 100%; display: block; }
+
+      /* ── Responsive ── */
+      @media (max-width: 920px) {
+        .pillars { grid-template-columns: 1fr; }
+        .feat-grid { grid-template-columns: 1fr 1fr; }
+        .site-wrap { grid-template-columns: 1fr; gap: 30px; }
+      }
+      @media (max-width: 760px) {
+        section { padding: 64px 0; }
+        #hero { padding: 128px 0 72px; }
+        .nav-links { display: none; }
+        .ham { display: flex; }
+        .prob-grid { grid-template-columns: 1fr; }
+        .proof-grid { grid-template-columns: 1fr; }
+        .hero-ctas .btn, .demo-ctas .btn { flex: 1 1 100%; }
+      }
+      @media (max-width: 460px) {
+        .feat-grid { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- NAV -->
+    <nav>
+      <div class="nav-in">
+        <a class="nav-logo" href="#top">
+          <img src="/jointheclub/assets/hitzero-icon-ndai.svg" alt="Hit Zero" />
+          <b>Hit Zero</b>
+        </a>
+        <div class="nav-links">
+          <a href="#why">Why Hit Zero</a>
+          <a href="#site">Your website</a>
+          <a href="#compare">vs. the rest</a>
+          <a href="#features">What you get</a>
+          <a class="btn btn-solid nav-cta" href="#demo">Book a demo</a>
+        </div>
+        <button class="ham" aria-label="Menu" onclick="document.getElementById('mm').classList.toggle('open')"><span></span></button>
+      </div>
+    </nav>
+    <div class="mobmenu" id="mm">
+      <a href="#why" onclick="document.getElementById('mm').classList.remove('open')">Why Hit Zero</a>
+      <a href="#site" onclick="document.getElementById('mm').classList.remove('open')">Your website</a>
+      <a href="#compare" onclick="document.getElementById('mm').classList.remove('open')">vs. the rest</a>
+      <a href="#features" onclick="document.getElementById('mm').classList.remove('open')">What you get</a>
+      <a href="#demo" onclick="document.getElementById('mm').classList.remove('open')">Book a demo</a>
+    </div>
+
+    <!-- HERO -->
+    <section id="hero" aria-label="top"><a id="top"></a>
+      <div class="wrap">
+        <span class="hero-badge"><span class="dot"></span>Live &amp; running a real gym today</span>
+        <h1>The cheer gym operating system, built by a <span class="hl">cheer gym.</span></h1>
+        <p class="hero-sub">One app runs the whole gym — your own branded website, registration, payments, family setup, rosters, schedules, and owner visibility. Not another generic class tool. Not a spreadsheet. Built around how a cheer gym actually runs a season.</p>
+        <div class="hero-ctas">
+          <a class="btn btn-solid" href="#demo">Book a founder demo</a>
+          <a class="btn btn-line" href="#compare">See how it compares</a>
+        </div>
+        <div class="hero-meta">
+          <span><b>Live</b> at thehitzero.net</span>
+          <span><b>Built for</b> all-star &amp; competitive cheer</span>
+          <span><b>One subscription</b>, one accountable partner</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- PROBLEM -->
+    <section id="problem">
+      <div class="wrap">
+        <p class="kick">The real problem</p>
+        <h2>You don&rsquo;t have a coaching problem.<br />You have an <span class="dim">operating one.</span></h2>
+        <p class="lead">Most gyms run great practices and lose the season to admin. Generic software was built for swim lessons and piano classes — not for athletes, teams, packets, and competition seasons. So the gaps get filled with texts, forms, and a second tool.</p>
+        <div class="prob-grid">
+          <div class="prob">
+            <div class="pn">01</div>
+            <h3>Leaks everywhere</h3>
+            <p>Abandoned signups, half-finished registrations, parents who never paid, and you chasing the same gaps every season.</p>
+          </div>
+          <div class="prob">
+            <div class="pn">02</div>
+            <h3>Two tools, duct-taped</h3>
+            <p>A class platform for billing, a separate tool for teams, a Google Form for tryouts — nothing talks to anything else.</p>
+          </div>
+          <div class="prob">
+            <div class="pn">03</div>
+            <h3>Generic, not cheer</h3>
+            <p>Software that calls your athletes &ldquo;students&rdquo; and your teams &ldquo;classes,&rdquo; with a support queue that has never set foot in a gym.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- WHY / PILLARS -->
+    <section id="why">
+      <div class="wrap">
+        <p class="kick">Why Hit Zero is different</p>
+        <h2>Built for the gym, by the <span class="hl">gym.</span></h2>
+        <p class="lead">Hit Zero started inside a real cheer gym — Magic City Athletics — because nothing on the market actually fit. It is not a generic platform with a cheer skin. Every screen is the gym&rsquo;s real workflow.</p>
+        <div class="pillars">
+          <div class="pillar">
+            <div class="pi">01</div>
+            <h3>Cheer-native, end to end</h3>
+            <p>Athletes, parents, teams, tryouts, packets, classes, camps, skill work, and seasonal chaos — modeled the way your gym actually thinks, not bent to fit a class-scheduler.</p>
+            <span class="tag">No more &ldquo;students&rdquo; and &ldquo;classes&rdquo;</span>
+          </div>
+          <div class="pillar">
+            <div class="pi">02</div>
+            <h3>One connected loop</h3>
+            <p>Public interest becomes a registration, a payment, a family account, a staff review, a roster spot, and a schedule — in one place. One tool replaces two or three.</p>
+            <span class="tag">Replaces the duct tape</span>
+          </div>
+          <div class="pillar">
+            <div class="pi">03</div>
+            <h3>Founder-led service</h3>
+            <p>You talk to the person building it. Your feedback turns into product in days, not a ticket that dies in a queue. One accountable partner, not a 1-800 number.</p>
+            <span class="tag">Feature requests that ship</span>
+          </div>
+          <div class="pillar">
+            <div class="pi">04</div>
+            <h3>Already proven, already live</h3>
+            <p>Running a real gym today, on a real production stack. You are not betting on a pitch deck — you are adopting something that already works.</p>
+            <span class="tag">Live, not vaporware</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- LOOP -->
+    <section id="loop">
+      <div class="wrap">
+        <p class="kick">One connected loop</p>
+        <h2>From the front door to the <span class="dim">roster.</span></h2>
+        <p class="lead">Everything a family and a gym do, in one continuous flow — no re-typing, no separate logins, no gaps for money or athletes to fall through.</p>
+        <div class="loop-track">
+          <div class="loop-step"><div class="ls-n">Step 01</div><b>Discover</b><span>Public class &amp; team discovery, trials, tryouts</span></div>
+          <div class="loop-step"><div class="ls-n">Step 02</div><b>Register</b><span>Clean registration that families actually finish</span></div>
+          <div class="loop-step"><div class="ls-n">Step 03</div><b>Pay</b><span>Square-connected paid registration &amp; review</span></div>
+          <div class="loop-step"><div class="ls-n">Step 04</div><b>Set up family</b><span>Parent &amp; athlete accounts, packets, links</span></div>
+          <div class="loop-step"><div class="ls-n">Step 05</div><b>Staff review</b><span>Placements &amp; approvals in one queue</span></div>
+          <div class="loop-step"><div class="ls-n">Step 06</div><b>Roster &amp; schedule</b><span>Teams, rosters, and schedules stay in sync</span></div>
+        </div>
+        <p class="loop-note">Generic platforms hand you pieces of this and make you stitch the rest. Hit Zero is the <b>whole loop</b> — which means fewer leaks, fewer abandoned signups, and a lot less admin during peak season.</p>
+      </div>
+    </section>
+
+    <!-- WHITE-LABEL WEBSITE -->
+    <section id="site">
+      <div class="wrap">
+        <p class="kick">Your front door, included</p>
+        <h2>A real website. Not a <span class="dim">portal page.</span></h2>
+        <p class="lead">Every gym gets its own branded public website — your name, your colors, your teams — wired straight into the same registration loop. No separate website vendor, no DIY builder to babysit. Here&rsquo;s Magic City Athletics, live on Hit Zero today.</p>
+        <div class="site-wrap">
+          <div class="site-points">
+            <div class="spoint">White-labeled to your gym — your brand out front, Hit Zero quietly running everything underneath.</div>
+            <div class="spoint">A real front door families can find: classes, teams, trials, and tryouts — not a login screen.</div>
+            <div class="spoint">Every &ldquo;register&rdquo; button flows into the same connected loop. No copy-paste between a website and your software.</div>
+            <div class="spoint">We build it and launch it with you. One partner for the site and the system.</div>
+            <a class="btn btn-line site-cta" href="https://mcaminot.com" target="_blank" rel="noopener">Visit mcaminot.com live →</a>
+          </div>
+          <div class="browser">
+            <div class="browser-bar">
+              <div class="dots"><i></i><i></i><i></i></div>
+              <div class="url">mcaminot.com<span class="live">● Live on Hit Zero</span></div>
+            </div>
+            <a href="https://mcaminot.com" target="_blank" rel="noopener">
+              <img src="/jointheclub/assets/mcaminot-site.jpg" alt="Magic City Athletics — the branded public website Hit Zero builds for the gym, live at mcaminot.com" />
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- COMPARE -->
+    <section id="compare">
+      <div class="wrap">
+        <p class="kick">Hit Zero vs. the rest</p>
+        <h2>Why owners switch.</h2>
+        <p class="lead">Most gyms today are on a generic class platform (iClassPro, Jackrabbit), a cheer team tool, two of them at once, or a form and a spreadsheet. Here&rsquo;s the honest comparison.</p>
+        <div class="cmp-wrap">
+          <table class="cmp">
+            <thead>
+              <tr>
+                <th>What matters to an owner</th>
+                <th class="hz">Hit Zero</th>
+                <th>Generic class software</th>
+                <th>Form / spreadsheet</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="feat">Your own branded public website</td>
+                <td class="hz"><span class="ck yes">Included — your brand</span></td>
+                <td><span class="ck meh">A portal page, not a site</span></td>
+                <td><span class="ck no">Bring your own</span></td>
+              </tr>
+              <tr>
+                <td class="feat">Built cheer-native (teams, tryouts, packets)</td>
+                <td class="hz"><span class="ck yes">Yes — by design</span></td>
+                <td><span class="ck meh">A class scheduler with a skin</span></td>
+                <td><span class="ck no">No</span></td>
+              </tr>
+              <tr>
+                <td class="feat">One connected loop, discovery → roster</td>
+                <td class="hz"><span class="ck yes">Yes</span></td>
+                <td><span class="ck meh">Billing only; teams need a 2nd tool</span></td>
+                <td><span class="ck no">Manual, every step</span></td>
+              </tr>
+              <tr>
+                <td class="feat">Tools you actually run</td>
+                <td class="hz"><span class="ck yes">One app</span></td>
+                <td><span class="ck meh">Often two subscriptions</span></td>
+                <td><span class="ck no">Form + sheet + texts</span></td>
+              </tr>
+              <tr>
+                <td class="feat">Who you call when something breaks</td>
+                <td class="hz"><span class="ck yes">The founder building it</span></td>
+                <td><span class="ck no">A support queue</span></td>
+                <td><span class="ck no">You</span></td>
+              </tr>
+              <tr>
+                <td class="feat">New feature you need</td>
+                <td class="hz"><span class="ck yes">Ships in days</span></td>
+                <td><span class="ck no">On a roadmap, maybe</span></td>
+                <td><span class="ck no">Never</span></td>
+              </tr>
+              <tr>
+                <td class="feat">Setup &amp; migration</td>
+                <td class="hz"><span class="ck yes">We do it with you</span></td>
+                <td><span class="ck meh">DIY or paid onboarding</span></td>
+                <td><span class="ck meh">Already a mess</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="loop-note" style="border-color: var(--blue);">If you&rsquo;re already paying for a class platform — or paying for two tools — you&rsquo;re proving the budget exists. The question isn&rsquo;t cost. It&rsquo;s whether your software was built for a cheer gym or bent to fit one.</p>
+      </div>
+    </section>
+
+    <!-- PROOF -->
+    <section id="proof">
+      <div class="wrap">
+        <p class="kick">Proof, not promises</p>
+        <h2>This already <span class="hl">works.</span></h2>
+        <div class="proof-grid">
+          <div class="pcard">
+            <div class="st"><span class="d"></span>Live</div>
+            <h3>Running a real gym</h3>
+            <p>Magic City Athletics runs on Hit Zero today — registration, payments, families, and rosters, in season.</p>
+          </div>
+          <div class="pcard">
+            <div class="st"><span class="d"></span>Live</div>
+            <h3>Production stack</h3>
+            <p><code>thehitzero.net</code> is deployed and wired to a real backend — auth, payments, storage, the works.</p>
+          </div>
+          <div class="pcard">
+            <div class="st"><span class="d"></span>Ready</div>
+            <h3>Onboarding built in</h3>
+            <p>Owner dashboard, family links, public launch pages, paid classes, rosters, and support paths are already in motion.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FEATURES -->
+    <section id="features">
+      <div class="wrap">
+        <p class="kick">What you get</p>
+        <h2>The whole gym, in one app.</h2>
+        <div class="feat-grid">
+          <div class="fcell"><div class="fi">Front door</div><h4>Branded website</h4><p>Your own white-labeled public site — like mcaminot.com — not a generic portal.</p></div>
+          <div class="fcell"><div class="fi">Money</div><h4>Paid registration</h4><p>Square-connected payments with a clean review and approval flow.</p></div>
+          <div class="fcell"><div class="fi">Families</div><h4>Parent &amp; athlete accounts</h4><p>Packets, links, and a clear next step at every stage.</p></div>
+          <div class="fcell"><div class="fi">Staff</div><h4>Review &amp; placements</h4><p>One queue for approvals, placements, and handoffs.</p></div>
+          <div class="fcell"><div class="fi">Teams</div><h4>Rosters</h4><p>Build and manage teams that stay in sync with registration.</p></div>
+          <div class="fcell"><div class="fi">Time</div><h4>Schedules</h4><p>Practice and team schedules tied to the right athletes.</p></div>
+          <div class="fcell"><div class="fi">Owner</div><h4>Dashboard &amp; visibility</h4><p>See approvals, payments, and what needs you — today.</p></div>
+          <div class="fcell"><div class="fi">Growing</div><h4>Always extending</h4><p>New modules added as gyms ask — you shape the roadmap.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VALUE -->
+    <section id="value" style="padding-top: 0;">
+      <div class="wrap">
+        <div class="value-box">
+          <h3>You already pay for this.<br /><span class="m">Just pay for the one that fits.</span></h3>
+          <p>Most gyms already spend on a class platform — and many pay for a second tool on top. Hit Zero replaces the stack with one cheer-native app and one accountable partner. Founding gyms get founder pricing and a direct line to the person building it. Let&rsquo;s look at your exact setup and what it would replace.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- DEMO / CTA -->
+    <section id="demo">
+      <div class="wrap">
+        <p class="kick" style="text-align:center;">See it on your own gym</p>
+        <h2>Book a 15-minute founder demo.</h2>
+        <p class="lead">No sales team, no pressure. You&rsquo;ll see Hit Zero running a real gym, and we&rsquo;ll map it to exactly how yours operates today.</p>
+        <div class="demo-ctas">
+          <a class="btn btn-solid" href="mailto:andrew@ndai.pro?subject=Hit%20Zero%20demo%20for%20my%20gym&body=Gym%20name%3A%0ACity%2FState%3A%0ARoughly%20how%20many%20athletes%3A%0AWhat%20you%20run%20today%3A">Book a founder demo</a>
+          <a class="btn btn-line" href="https://thehitzero.net" target="_blank" rel="noopener">See it live →</a>
+        </div>
+        <p class="demo-fine">Or email <b style="color:var(--txt2)">andrew@ndai.pro</b> — we&rsquo;ll set up a time that fits your season.</p>
+      </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer>
+      <div class="wrap ft">
+        <div class="ft-logo">
+          <img src="/jointheclub/assets/hitzero-icon-ndai.svg" alt="Hit Zero" />
+          <b>Hit Zero</b>
+        </div>
+        <div class="ft-copy">The cheer gym operating system &middot; built by NDAI &middot; Minot, ND</div>
+      </div>
+    </footer>
+  </body>
+</html>

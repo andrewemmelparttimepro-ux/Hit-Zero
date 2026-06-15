@@ -9,6 +9,10 @@
       "destination": "/landing.html"
     },
     {
+      "source": "/jointheclub",
+      "destination": "/jointheclub/index.html"
+    },
+    {
       "source": "/auth/callback",
       "destination": "/auth/callback.html"
     },
