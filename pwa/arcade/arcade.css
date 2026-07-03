@@ -221,6 +221,13 @@ html, body {
   100% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
 }
 
+/* Scene travel fade (lobby ↔ Cheer Town) */
+.arc-scene-fade {
+  position: fixed; inset: 0; z-index: 80; background: var(--arc-ink);
+  opacity: 0; pointer-events: none; transition: opacity 260ms ease;
+}
+.arc-scene-fade.on { opacity: 1; pointer-events: auto; }
+
 /* Photo booth flash */
 .arc-flash {
   position: fixed; inset: 0; z-index: 90; background: #fff;

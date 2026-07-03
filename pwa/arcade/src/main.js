@@ -1,4 +1,4 @@
-// Hit Zero ARCADE — boot + game loop.
+// Hit Zero ARCADE — boot + game loop + scene manager.
 //
 // Modes:
 //   player   — rostered athlete with a live avatar (the real product)
@@ -6,15 +6,17 @@
 //   preview  — View-as / ?preview=1; joins nothing, invisible, banner shown
 //   offline  — prototype mode / no session / no network → friendly bots
 //
-// Same origin as the PWA → the game reads the session itself (hz_auth_v2 for
-// the profile, the shared 'hz.auth' Supabase storage key for tokens).
+// Scenes: 'lobby' (the clubhouse) and 'town' (Cheer Town). One Realtime
+// channel per gym carries both — every pos/presence message is tagged with
+// its scene and peers are only rendered in yours.
 
 import { loadTheme } from './theme.js';
 import * as audio from './audio.js';
 import { createRenderer } from './world/renderer.js';
 import { createAvatar, facingFromVector, sanitizeAvatar } from './world/avatar.js';
-import { createInteractables } from './world/interactables.js';
-import { gridToWorld, canStand, SPAWN } from './world/tilemap.js';
+import { gridToWorld } from './world/tilemap.js';
+import { lobbyMap } from './world/maps/lobby.js';
+import { cheertownMap } from './world/maps/cheertown.js';
 import { createNet } from './net/channel.js';
 import { PHRASES } from './net/protocol.js';
 import { createJoystick } from './ui/joystick.js';
@@ -24,6 +26,9 @@ import { createHud } from './ui/hud.js';
 const SUPA_URL = 'https://ldhzkdqznccfgpdvqyfk.supabase.co';
 const SUPA_ANON = 'sb_publishable_P2e2aHrrMYP85xBfncIilA_2435TVII';
 const PLAYER_SPEED = 235; // px/s screen-space
+const CART_BOOST = 1.75;
+
+const MAPS = { lobby: lobbyMap, town: cheertownMap };
 
 const loaderSub = document.getElementById('loaderSub');
 const enterBtn = document.getElementById('enterBtn');
@@ -83,7 +88,6 @@ async function boot() {
         mode = 'offline';
       } else {
         await supa.realtime.setAuth(data.session.access_token);
-        // parent app refreshes the token; mirror it into realtime auth
         window.addEventListener('storage', async (e) => {
           if (e.key === 'hz.auth') {
             try {
@@ -171,43 +175,53 @@ async function boot() {
     }
   }
 
-  // ── 5. player ──
+  // ── 5. player + scene state ──
+  let scene = 'lobby';
+  let interactables = null;
   let player = null;
+
   if (mode === 'player' || mode === 'offline') {
-    const start = gridToWorld(SPAWN.c + 0.5, SPAWN.r + 0.5);
     const avatar = createAvatar({
       config: myAvatarCfg,
       name: profile?.display_name || 'You',
       team: teamName,
       theme, isSelf: true, fx: rend.fx,
     });
-    avatar.container.position.set(start.x, start.y);
-    rend.addObject(avatar.container, { dynamic: true });
-    player = { x: start.x, y: start.y, avatar, moving: false };
+    player = { x: 0, y: 0, avatar, moving: false, cart: false };
     rend.follow(() => ({ x: player.x, y: player.y }));
-    // landing sparkle
-    setTimeout(() => rend.fx.burst(start.x, start.y - 30, 'spark', 12), 350);
+    // tap yourself to hop off the golf cart — only interactive while riding,
+    // so the avatar never eats taps meant for things you're standing on
+    avatar.container.eventMode = 'none';
+    avatar.container.on('pointertap', () => {
+      if (player.cart) {
+        player.cart = false;
+        avatar.setCart(false);
+        avatar.container.eventMode = 'none';
+        audio.sfx.cart();
+      }
+    });
   } else {
     rend.enablePan();
   }
 
   // ── 6. peers ──
-  const peers = new Map(); // id → { avatar, meta, x, y, tx, ty, lastFacing, staff }
+  const peers = new Map(); // id → { avatar, meta, scene, x, y, tx, ty, hasPos, staff }
   function upsertPeer(id, meta) {
     let p = peers.get(id);
     if (p) {
       p.meta = meta;
-      if (!p.staff) p.avatar.setConfig(meta.avatar);
+      p.scene = meta.scene || p.scene;
+      if (!p.staff) {
+        p.avatar.setConfig(meta.avatar);
+        syncPeerVisibility(p);
+      }
       return;
     }
-    p = { meta, staff: meta.staff, x: 0, y: 0, tx: null, ty: null, avatar: null };
+    p = { meta, staff: meta.staff, scene: meta.scene || 'lobby', x: 0, y: 0, tx: null, ty: null, hasPos: false, avatar: null };
     if (!meta.staff) {
-      const start = gridToWorld(SPAWN.c + 0.5 + (Math.random() * 2 - 1), SPAWN.r + 0.5);
-      p.x = start.x; p.y = start.y;
       p.avatar = createAvatar({ config: meta.avatar, name: meta.name, team: meta.team, theme, fx: rend.fx });
-      p.avatar.container.position.set(start.x, start.y);
-      rend.addObject(p.avatar.container, { dynamic: true });
-      rend.fx.burst(start.x, start.y - 40, 'spark', 10);
+      p.avatar.container.visible = false; // until the first pos arrives
+      rend.addObject(p.avatar.container, { dynamic: true, persist: true });
       audio.sfx.join();
     }
     peers.set(id, p);
@@ -217,12 +231,22 @@ async function boot() {
     const p = peers.get(id);
     if (!p) return;
     if (p.avatar) {
-      rend.fx.burst(p.x, p.y - 40, 'spark', 8);
+      if (p.avatar.container.visible) rend.fx.burst(p.x, p.y - 40, 'spark', 8);
       p.avatar.container.destroy({ children: true });
       audio.sfx.leave();
     }
     peers.delete(id);
     refreshPresenceHud();
+  }
+  function syncPeerVisibility(p) {
+    if (!p.avatar) return;
+    const show = p.hasPos && p.scene === scene;
+    if (show && !p.avatar.container.visible) {
+      p.avatar.container.visible = true;
+      rend.fx.burst(p.x, p.y - 40, 'spark', 10);
+    } else if (!show) {
+      p.avatar.container.visible = false;
+    }
   }
   function refreshPresenceHud() {
     const athletes = [...peers.values()].filter(p => !p.staff).length;
@@ -240,6 +264,7 @@ async function boot() {
       name: profile?.display_name || 'Athlete',
       team: teamName,
       avatar: myAvatarCfg,
+      scene,
     },
     observer: mode === 'observer',
     invisible: mode === 'preview',
@@ -253,23 +278,113 @@ async function boot() {
       onPos(id, pos) {
         const p = peers.get(id);
         if (!p || !p.avatar) return;
+        const sceneChanged = pos.scene !== p.scene;
+        p.scene = pos.scene;
+        if (sceneChanged || !p.hasPos) { p.x = pos.x; p.y = pos.y; } // no cross-map slides
         p.tx = pos.x; p.ty = pos.y;
+        p.hasPos = true;
         p.netMoving = pos.moving;
         p.netFacing = pos.facing;
         if (pos._vec) p.netFacing = facingFromVector(pos._vec.x, pos._vec.y);
+        p.avatar.setCart(!!pos.cart);
+        syncPeerVisibility(p);
       },
       onEmote(id, key) {
         const p = peers.get(id);
-        if (p?.avatar) { p.avatar.playEmote(key); audio.sfx.emote(); }
+        if (p?.avatar) {
+          p.avatar.playEmote(key);
+          if (p.avatar.container.visible) audio.sfx.emote();
+        }
       },
       onPhrase(id, text) {
         const p = peers.get(id);
-        if (p?.avatar) { p.avatar.say(text); audio.sfx.phrase(); }
+        if (p?.avatar) {
+          p.avatar.say(text);
+          if (p.avatar.container.visible) audio.sfx.phrase();
+        }
       },
     },
   });
 
-  // ── 7. input + social ──
+  // ── 7. scenes ──
+  const ctx = {
+    rend, theme,
+    getPlayer: () => player,
+    emote(key) {
+      if (!player) return;
+      player.avatar.playEmote(key);
+      net.sendEmote(key);
+    },
+    say(text) {
+      if (!player) return;
+      player.avatar.say(text);
+      const i = PHRASES.indexOf(text);
+      if (i >= 0) net.sendPhrase(i);
+    },
+    toast: (m) => hud.toast(m),
+    flash: () => hud.flash(),
+    sfx: audio.sfx,
+    travel: (key) => switchScene(key),
+    teleport(c, r) {
+      if (!player) return;
+      const w = gridToWorld(c + 0.5, r + 0.5);
+      player.x = w.x; player.y = w.y;
+      rend.centerOn(w.x, w.y - 40);
+      rend.fx.burst(w.x, w.y - 30, 'spark', 12);
+    },
+    setCart(on) {
+      if (!player) return;
+      player.cart = !!on;
+      player.avatar.setCart(player.cart);
+      player.avatar.container.eventMode = player.cart ? 'static' : 'none';
+    },
+  };
+
+  function mountScene(key) {
+    scene = key;
+    const map = MAPS[key];
+    rend.loadMap(map);
+    if (player) {
+      if (player.cart) ctx.setCart(false); // carts stay in Cheer Town
+      const s = gridToWorld(map.spawn.c + 0.5, map.spawn.r + 0.5);
+      player.x = s.x; player.y = s.y;
+      rend.addObject(player.avatar.container, { dynamic: true, persist: true });
+      player.avatar.container.position.set(s.x, s.y);
+      rend.centerOn(s.x, s.y - 40);
+      setTimeout(() => rend.fx.burst(s.x, s.y - 30, 'spark', 12), 300);
+    } else {
+      const mid = gridToWorld(map.cols / 2, map.rows / 2);
+      rend.centerOn(mid.x, mid.y - 60);
+    }
+    for (const p of peers.values()) {
+      if (p.avatar) rend.addObject(p.avatar.container, { dynamic: true, persist: true });
+      syncPeerVisibility(p);
+    }
+    interactables = map.makeInteractables(ctx);
+    net.updatePresence({ s: key });
+  }
+
+  const fadeEl = document.createElement('div');
+  fadeEl.className = 'arc-scene-fade';
+  document.body.appendChild(fadeEl);
+  let traveling = false;
+  function switchScene(key) {
+    if (traveling || !MAPS[key] || key === scene) return;
+    traveling = true;
+    fadeEl.classList.add('on');
+    setTimeout(() => {
+      mountScene(key);
+      hud.toast(key === 'town' ? 'Welcome to Cheer Town! 🏘️' : 'Back to the clubhouse!');
+      setTimeout(() => {
+        fadeEl.classList.remove('on');
+        traveling = false;
+      }, 240);
+    }, 260);
+  }
+
+  mountScene('lobby');
+
+  // ── 8. input + social ──
   const joy = createJoystick();
   const wheels = createWheels({
     sfx: audio.sfx,
@@ -297,52 +412,35 @@ async function boot() {
   });
   if (!wheelsEnabled) hud.actions.style.display = 'none';
 
-  const interactables = createInteractables({
-    rend, theme,
-    getPlayer: () => player,
-    emote(key) {
-      if (!player) return;
-      player.avatar.playEmote(key);
-      net.sendEmote(key);
-    },
-    say(text) {
-      if (!player) return;
-      player.avatar.say(text);
-      const i = PHRASES.indexOf(text);
-      if (i >= 0) net.sendPhrase(i);
-    },
-    toast: hud.toast,
-    flash: hud.flash,
-    sfx: audio.sfx,
-  });
-
-  // ── 8. game loop ──
+  // ── 9. game loop ──
   rend.onTick((dt) => {
-    // local movement (screen-space vector, tile collision with wall-slide)
-    if (player) {
+    if (player && !traveling) {
       const vx = joy.vector.x, vy = joy.vector.y;
       const mag = Math.hypot(vx, vy);
       const moving = mag > 0.01 && !player.avatar.isEmoting();
       if (moving) {
-        const nx = player.x + (vx / (mag || 1)) * PLAYER_SPEED * Math.min(1, mag * 1.4) * dt;
-        const ny = player.y + (vy / (mag || 1)) * PLAYER_SPEED * Math.min(1, mag * 1.4) * dt * 0.92;
-        if (canStand(nx, ny)) { player.x = nx; player.y = ny; }
-        else if (canStand(nx, player.y)) { player.x = nx; }
-        else if (canStand(player.x, ny)) { player.y = ny; }
+        const boost = player.cart ? CART_BOOST : 1;
+        const map = MAPS[scene];
+        const nx = player.x + (vx / (mag || 1)) * PLAYER_SPEED * boost * Math.min(1, mag * 1.4) * dt;
+        const ny = player.y + (vy / (mag || 1)) * PLAYER_SPEED * boost * Math.min(1, mag * 1.4) * dt * 0.92;
+        if (map.canStand(nx, ny)) { player.x = nx; player.y = ny; }
+        else if (map.canStand(nx, player.y)) { player.x = nx; }
+        else if (map.canStand(player.x, ny)) { player.y = ny; }
         player.avatar.setFacing(facingFromVector(vx, vy));
       }
       player.moving = moving;
-      player.avatar.setMoving(moving);
+      if (!player.cart) player.avatar.setMoving(moving);
       player.avatar.container.position.set(player.x, player.y);
-      net.sendPos(player.x, player.y, player.avatar.facing, moving);
+      net.sendPos(player.x, player.y, player.avatar.facing, moving, scene, player.cart);
     }
 
-    // remote interpolation
+    // remote interpolation (only same-scene peers are visible/moved)
     for (const p of peers.values()) {
-      if (!p.avatar || p.tx === null) { p.avatar?.update(dt); continue; }
+      if (!p.avatar) continue;
+      if (!p.avatar.container.visible || p.tx === null) { p.avatar.update(dt); continue; }
       const dx = p.tx - p.x, dy = p.ty - p.y;
       const dist = Math.hypot(dx, dy);
-      if (dist > 320) { p.x = p.tx; p.y = p.ty; } // teleport on big jumps
+      if (dist > 420) { p.x = p.tx; p.y = p.ty; }
       else {
         const k = Math.min(1, dt * 10);
         p.x += dx * k; p.y += dy * k;
@@ -356,15 +454,21 @@ async function boot() {
     }
     player?.avatar.update(dt);
 
-    interactables.update(dt);
+    interactables?.update(dt);
   });
 
   window.addEventListener('beforeunload', () => net.leave());
 
   // debug handle (harmless in prod; used by tests + on-device triage)
-  window.__arc = { mode, get player() { return player; }, peers, rend, theme };
+  window.__arc = {
+    mode,
+    get player() { return player; },
+    get scene() { return scene; },
+    travel: (k) => switchScene(k),
+    peers, rend, theme,
+  };
 
-  // ── 9. open the doors ──
+  // ── 10. open the doors ──
   clearInterval(loadTicker);
   loaderSub.textContent = mode === 'player' ? `Welcome to the ${theme.name} clubhouse!`
     : mode === 'offline' ? 'Offline preview — bots are warming up'

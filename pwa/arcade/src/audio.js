@@ -81,5 +81,9 @@ export const sfx = {
   phrase()   { tone(740, 0.07, 0.045); },
   shutter()  { tone(1400, 0.04, 0.08, 'square'); setTimeout(() => tone(900, 0.05, 0.06, 'square'), 50); },
   megaphone(){ tone(494, 0.12, 0.07, 'sawtooth'); setTimeout(() => tone(740, 0.18, 0.06, 'sawtooth'), 110); },
+  travel()   { tone(392, 0.14, 0.06, 'sine', 300); setTimeout(() => tone(587.33, 0.14, 0.06, 'sine', 300), 130); setTimeout(() => tone(880, 0.22, 0.06, 'sine'), 260); },
+  doorbell() { tone(659.25, 0.22, 0.07, 'sine'); setTimeout(() => tone(523.25, 0.3, 0.07, 'sine'), 240); },
+  score()    { tone(523.25, 0.1, 0.07); setTimeout(() => tone(659.25, 0.1, 0.07), 100); setTimeout(() => tone(783.99, 0.1, 0.07), 200); setTimeout(() => tone(1046.5, 0.3, 0.08), 300); },
+  cart()     { tone(220, 0.18, 0.06, 'sawtooth', 60); },
   step()     { /* intentionally silent — footsteps get annoying fast */ },
 };

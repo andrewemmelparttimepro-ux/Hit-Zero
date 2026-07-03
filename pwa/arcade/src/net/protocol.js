@@ -12,10 +12,15 @@ export const PHRASES = [
   'Follow me!', 'Good practice today!', 'See you at practice!', 'GG',
 ];
 
+export const SCENES = ['lobby', 'town'];
+
 const WORLD_LIMIT = 4096; // sanity clamp for positions
 
-export function posMsg(x, y, facing, moving) {
-  return { v: PROTO_V, x: round1(x), y: round1(y), f: facing | 0, m: moving ? 1 : 0 };
+export function posMsg(x, y, facing, moving, scene, cart) {
+  return {
+    v: PROTO_V, x: round1(x), y: round1(y), f: facing | 0, m: moving ? 1 : 0,
+    s: SCENES.includes(scene) ? scene : 'lobby', c: cart ? 1 : 0,
+  };
 }
 
 export function emoteMsg(key) {
@@ -35,6 +40,8 @@ export function parsePos(payload) {
     y: clamp(y, -WORLD_LIMIT, WORLD_LIMIT),
     facing: clampInt(payload.f, 0, 7),
     moving: payload.m === 1,
+    scene: SCENES.includes(payload.s) ? payload.s : 'lobby',
+    cart: payload.c === 1,
   };
 }
 

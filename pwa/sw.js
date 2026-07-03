@@ -10,7 +10,7 @@
      · Other cross-origin (React/Babel CDN, Google Fonts): stale-while-revalidate.
    Bump CACHE_VERSION any time you re-deploy to force clients to refresh. */
 
-const CACHE_VERSION = 'hz-v81-2026-07-03-arcade-channel-resilience';
+const CACHE_VERSION = 'hz-v82-2026-07-03-cheer-town';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting());

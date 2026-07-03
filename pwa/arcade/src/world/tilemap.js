@@ -1,13 +1,11 @@
-// Lobby map: one interior scene — a cheer-gym clubhouse.
-// 2:1 isometric, TILE 128×64. Grid coords are (c, r); world coords are px.
+// Generic isometric grid math — map-agnostic. Each map module (maps/*.js)
+// owns its own dimensions, zones, collision and builders.
 //
 //   world.x = (c - r) * TILE_W/2
 //   world.y = (c + r) * TILE_H/2      (world y also drives depth sorting)
 
 export const TILE_W = 128;
 export const TILE_H = 64;
-export const COLS = 20;
-export const ROWS = 14;
 
 export function gridToWorld(c, r) {
   return { x: (c - r) * (TILE_W / 2), y: (c + r) * (TILE_H / 2) };
@@ -20,45 +18,14 @@ export function worldToGrid(x, y) {
   };
 }
 
-// ─── Zones ───
-export const SPRING_FLOOR = { c0: 4, r0: 4, c1: 15, r1: 10 };   // 12×7 panels
-export const TUMBLE_TRACK = { c0: 17, r0: 3, c1: 17, r1: 10 };  // vertical strip, east side
-export const PHOTO_BOOTH  = { c0: 0, r0: 0, c1: 1, r1: 1 };     // NW corner
-export const SPAWN = { c: 10, r: 12 };
-
-// Cabinets sit against the north wall (r = 0), each 2 tiles wide.
-export const CABINETS = [
-  { key: 'left',   c0: 4,  c1: 5,  r: 0, label: 'COMING SOON' },
-  { key: 'center', c0: 9,  c1: 10, r: 0, label: 'CHEER TOWN' },
-  { key: 'right',  c0: 14, c1: 15, r: 0, label: 'COMING SOON' },
-];
-
-export const MEGAPHONE = { c: 2, r: 8 };
-
-// ─── Collision ───
-const blockedSet = new Set();
-function block(c, r) { blockedSet.add(c + ',' + r); }
-
-// cabinet tiles + the tile in front stays walkable (kids walk up to screens)
-for (const cab of CABINETS) for (let c = cab.c0; c <= cab.c1; c++) block(c, cab.r);
-// megaphone pedestal
-block(MEGAPHONE.c, MEGAPHONE.r);
-// photo booth backdrop (the two wall-side tiles); (1,1) stays walkable as the booth interior
-block(0, 0); block(1, 0); block(0, 1);
-
-export function isBlocked(c, r) {
-  const ci = Math.floor(c), ri = Math.floor(r);
-  if (ci < 0 || ri < 0 || ci >= COLS || ri >= ROWS) return true;
-  return blockedSet.has(ci + ',' + ri);
-}
-
-// Circle-ish collision for an avatar at world (x, y) — checks the tile under
-// each of 4 sample points so avatars can't clip corners.
+// Avatar collision: 4 sample points so corners can't be clipped.
 const PAD = 0.22; // in tile units
-export function canStand(x, y) {
-  const g = worldToGrid(x, y);
-  return !isBlocked(g.c - PAD, g.r - PAD) && !isBlocked(g.c + PAD, g.r - PAD)
-      && !isBlocked(g.c - PAD, g.r + PAD) && !isBlocked(g.c + PAD, g.r + PAD);
+export function makeCanStand(isBlocked) {
+  return function canStand(x, y) {
+    const g = worldToGrid(x, y);
+    return !isBlocked(g.c - PAD, g.r - PAD) && !isBlocked(g.c + PAD, g.r - PAD)
+        && !isBlocked(g.c - PAD, g.r + PAD) && !isBlocked(g.c + PAD, g.r + PAD);
+  };
 }
 
 export function inZone(x, y, zone) {
@@ -72,11 +39,29 @@ export function nearGrid(x, y, c, r, radiusTiles = 1.8) {
   return (dc * dc + dr * dr) <= radiusTiles * radiusTiles;
 }
 
-// World-space bounds (for camera clamping)
-const corners = [gridToWorld(0, ROWS), gridToWorld(COLS, 0), gridToWorld(0, 0), gridToWorld(COLS, ROWS)];
-export const WORLD_BOUNDS = {
-  minX: Math.min(...corners.map(p => p.x)) - TILE_W,
-  maxX: Math.max(...corners.map(p => p.x)) + TILE_W,
-  minY: -260, // headroom for walls + banners
-  maxY: Math.max(...corners.map(p => p.y)) + TILE_H * 1.5,
-};
+// World-space camera bounds for a cols×rows map.
+export function boundsFor(cols, rows, headroom = 260) {
+  const corners = [gridToWorld(0, rows), gridToWorld(cols, 0), gridToWorld(0, 0), gridToWorld(cols, rows)];
+  return {
+    minX: Math.min(...corners.map(p => p.x)) - TILE_W,
+    maxX: Math.max(...corners.map(p => p.x)) + TILE_W,
+    minY: -headroom,
+    maxY: Math.max(...corners.map(p => p.y)) + TILE_H * 1.5,
+  };
+}
+
+// Helper for map modules: mutable blocked-tile set with bounds check.
+export function makeBlockedSet(cols, rows) {
+  const set = new Set();
+  return {
+    block(c, r) { set.add(c + ',' + r); },
+    blockRect(c0, r0, c1, r1) {
+      for (let c = c0; c <= c1; c++) for (let r = r0; r <= r1; r++) set.add(c + ',' + r);
+    },
+    isBlocked(c, r) {
+      const ci = Math.floor(c), ri = Math.floor(r);
+      if (ci < 0 || ri < 0 || ci >= cols || ri >= rows) return true;
+      return set.has(ci + ',' + ri);
+    },
+  };
+}

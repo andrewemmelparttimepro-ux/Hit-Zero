@@ -49,6 +49,18 @@ export function createAvatar({ config, name, team, theme, isSelf = false, fx = n
   shadow.ellipse(0, 0, 26, 11).fill({ color: 0x000000, alpha: 0.34 });
   root.addChild(shadow);
 
+  // golf cart (Cheer Town) — hidden until the avatar mounts one
+  const cart = new Graphics();
+  cart.roundRect(-38, -18, 76, 26, 8).fill(0xf4f4f8).stroke({ color: 0xc9c9d4, width: 2 });
+  cart.circle(-24, 12, 9).fill(0x1c1c26).stroke({ color: 0x44445a, width: 3 });
+  cart.circle(26, 12, 9).fill(0x1c1c26).stroke({ color: 0x44445a, width: 3 });
+  cart.moveTo(-34, -18).lineTo(-34, -92).moveTo(34, -18).lineTo(34, -92)
+    .stroke({ color: 0xc9c9d4, width: 4, cap: 'round' });
+  cart.roundRect(-42, -100, 84, 10, 5).fill(theme.accentNum);
+  cart.roundRect(18, -34, 14, 4, 2).fill(0x44445a);
+  cart.visible = false;
+  root.addChild(cart);
+
   const rig = new Container();       // vertical offset for jumps
   root.addChild(rig);
 
@@ -310,12 +322,17 @@ export function createAvatar({ config, name, team, theme, isSelf = false, fx = n
     if (p >= 1) { emote = null; rig.pivot.y = 0; applyNeutral(); }
   }
 
-  // ── poses (photo booth) ──
+  // ── poses (photo booth + cart) ──
   function updatePose() {
     switch (pose) {
       case 'highv': armL.rotation = -2.6; armR.rotation = 2.6; break;
       case 'sassy': armL.rotation = 0.9; armR.rotation = -2.5; head.rotation = -0.12; break;
       case 'jump': rig.y = -26; armL.rotation = -2.9; armR.rotation = 2.9; break;
+      case 'sit':
+        legL.rotation = -1.45; legR.rotation = -1.45;
+        armL.rotation = 0.5; armR.rotation = -0.9; // one hand on the wheel
+        rig.y = cart.visible ? -30 : -6;
+        break;
       default: applyNeutral();
     }
   }
@@ -356,10 +373,16 @@ export function createAvatar({ config, name, team, theme, isSelf = false, fx = n
   return {
     container: root,
     get facing() { return facing; },
-    setFacing(f) { const nf = f & 7; if (nf !== facing) { const wasBack = FACING_BACK.has(facing), wasSide = FACING_SIDE.has(facing); facing = nf; if (FACING_BACK.has(nf) !== wasBack || FACING_SIDE.has(nf) !== wasSide) redraw(); else rig.scale.x = FACING_WEST.has(nf) ? -1 : 1; } },
+    setFacing(f) { const nf = f & 7; if (nf !== facing) { const wasBack = FACING_BACK.has(facing), wasSide = FACING_SIDE.has(facing); facing = nf; if (FACING_BACK.has(nf) !== wasBack || FACING_SIDE.has(nf) !== wasSide) redraw(); else rig.scale.x = FACING_WEST.has(nf) ? -1 : 1; cart.scale.x = FACING_WEST.has(nf) ? -1 : 1; } },
     setMoving(m) { moving = !!m; },
     setConfig(next) { cfg = sanitizeAvatar(next); redraw(); },
     getConfig() { return { ...cfg }; },
+    setCart(on) {
+      cart.visible = !!on;
+      if (on) setPose('sit');
+      else if (pose === 'sit') setPose(null);
+    },
+    isCarted() { return cart.visible; },
     playEmote, say, setPose, update,
     isEmoting() { return !!emote; },
   };

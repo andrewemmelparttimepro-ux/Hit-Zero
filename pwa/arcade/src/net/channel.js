@@ -7,7 +7,7 @@
 // so demo mode still feels alive.
 
 import { posMsg, emoteMsg, phraseMsg, parsePos, parseEmote, parsePhrase, PHRASES } from './protocol.js';
-import { gridToWorld, canStand, SPAWN } from '../world/tilemap.js';
+import { gridToWorld } from '../world/tilemap.js';
 
 const POS_HZ = 9; // broadcast rate while moving
 
@@ -47,6 +47,7 @@ export function createNet({ supa, programId, me, observer = false, invisible = f
           team: String(meta.team || '').slice(0, 40),
           staff: !!meta.staff,
           avatar: meta.avatar || {},
+          scene: meta.s === 'town' ? 'town' : 'lobby',
         });
       }
       handlers.onPeerSync?.(seen);
@@ -76,7 +77,7 @@ export function createNet({ supa, programId, me, observer = false, invisible = f
         handlers.onStatus?.('live');
         if (!invisible) {
           await ch.track({
-            name: me.name, team: me.team, staff: !!observer, avatar: me.avatar,
+            name: me.name, team: me.team, staff: !!observer, avatar: me.avatar, s: me.scene || 'lobby',
           });
         }
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
@@ -115,14 +116,14 @@ export function createNet({ supa, programId, me, observer = false, invisible = f
     mode: 'live',
     // Called every frame by the game loop; throttles to POS_HZ and skips
     // when standing still (one final "stopped" frame goes out).
-    sendPos(x, y, facing, moving) {
+    sendPos(x, y, facing, moving, scene, cart) {
       if (!joined || observer || invisible) return;
       const now = performance.now();
-      const stateKey = `${Math.round(x)},${Math.round(y)},${facing},${moving ? 1 : 0}`;
+      const stateKey = `${Math.round(x)},${Math.round(y)},${facing},${moving ? 1 : 0},${scene},${cart ? 1 : 0}`;
       if (stateKey === lastSent) return;
       if (moving && now - lastSend < 1000 / POS_HZ) return;
       lastSend = now; lastSent = stateKey;
-      channel.send({ type: 'broadcast', event: 'pos', payload: { id: me.id, d: posMsg(x, y, facing, moving) } });
+      channel.send({ type: 'broadcast', event: 'pos', payload: { id: me.id, d: posMsg(x, y, facing, moving, scene, cart) } });
     },
     sendEmote(key) {
       if (!joined || observer || invisible) return;
@@ -133,8 +134,9 @@ export function createNet({ supa, programId, me, observer = false, invisible = f
       channel.send({ type: 'broadcast', event: 'phrase', payload: { id: me.id, d: phraseMsg(index) } });
     },
     updatePresence(patch) {
+      if (patch && typeof patch.s === 'string') me.scene = patch.s;
       if (!joined || invisible) return;
-      channel.track({ name: me.name, team: me.team, staff: !!observer, avatar: me.avatar, ...patch });
+      channel.track({ name: me.name, team: me.team, staff: !!observer, avatar: me.avatar, s: me.scene || 'lobby', ...patch });
     },
     leave() {
       disposed = true;
@@ -148,16 +150,25 @@ export function createNet({ supa, programId, me, observer = false, invisible = f
 // Offline preview: 3 friendly bots wander the lobby, emote and chat with
 // preset phrases so demo mode feels alive.
 // ─────────────────────────────────────────────────────────────────────────
+// Wander rects are open areas of each map (bots skip real collision — their
+// rects are prop-free by construction).
+const BOT_HOMES = {
+  lobby: { c0: 4, r0: 4, c1: 15, r1: 10 },  // spring floor
+  town:  { c0: 3, r0: 4, c1: 22, r1: 7 },   // street + sidewalks
+};
 const BOT_ROSTER = [
-  { id: 'bot-riley',  name: 'Riley',  team: 'Demo Team', avatar: { skin: 0, hair: 'ponytail', hairColor: 2, bow: 0, uniform: 0 } },
-  { id: 'bot-harper', name: 'Harper', team: 'Demo Team', avatar: { skin: 2, hair: 'bun',      hairColor: 0, bow: 2, uniform: 0 } },
-  { id: 'bot-quinn',  name: 'Quinn',  team: 'Demo Team', avatar: { skin: 3, hair: 'long',     hairColor: 1, bow: 3, uniform: 0 } },
+  { id: 'bot-riley',  name: 'Riley',  team: 'Demo Team', scene: 'lobby', avatar: { skin: 0, hair: 'ponytail', hairColor: 2, bow: 0, uniform: 0 } },
+  { id: 'bot-harper', name: 'Harper', team: 'Demo Team', scene: 'lobby', avatar: { skin: 2, hair: 'bun',      hairColor: 0, bow: 2, uniform: 0 } },
+  { id: 'bot-quinn',  name: 'Quinn',  team: 'Demo Team', scene: 'lobby', avatar: { skin: 3, hair: 'long',     hairColor: 1, bow: 3, uniform: 0 } },
+  { id: 'bot-sutton', name: 'Sutton', team: 'Demo Team', scene: 'town',  avatar: { skin: 1, hair: 'long',     hairColor: 4, bow: 4, uniform: 0 } },
+  { id: 'bot-emery',  name: 'Emery',  team: 'Demo Team', scene: 'town',  avatar: { skin: 4, hair: 'ponytail', hairColor: 1, bow: 5, uniform: 0 } },
 ];
 const BOT_EMOTES = ['wave', 'spirit', 'toetouch', 'highv', 'laugh', 'hit', 'hearthands'];
 
 function createOfflineNet({ handlers }) {
   const bots = BOT_ROSTER.map((b, i) => {
-    const start = gridToWorld(SPAWN.c - 2 + i * 2, SPAWN.r - 3 - i);
+    const home = BOT_HOMES[b.scene];
+    const start = gridToWorld(home.c0 + 1 + (i % 3) * 3, home.r0 + 1 + (i % 2) * 2);
     return { ...b, x: start.x, y: start.y, tx: start.x, ty: start.y, next: 1 + i * 1.3, facing: 0 };
   });
 
@@ -168,7 +179,9 @@ function createOfflineNet({ handlers }) {
     if (started) return;
     started = true;
     handlers.onStatus?.('offline');
-    for (const b of bots) handlers.onPeerUpsert?.(b.id, { name: b.name, team: b.team, staff: false, avatar: b.avatar });
+    for (const b of bots) {
+      handlers.onPeerUpsert?.(b.id, { name: b.name, team: b.team, staff: false, avatar: b.avatar, scene: b.scene });
+    }
 
     let last = performance.now();
     const step = () => {
@@ -181,11 +194,12 @@ function createOfflineNet({ handlers }) {
           b.next = 2.5 + Math.random() * 4;
           const roll = Math.random();
           if (roll < 0.55) {
-            // pick a new wander target on a walkable tile
-            for (let tries = 0; tries < 8; tries++) {
-              const g = gridToWorld(3 + Math.random() * 14, 3 + Math.random() * 9);
-              if (canStand(g.x, g.y)) { b.tx = g.x; b.ty = g.y; break; }
-            }
+            const home = BOT_HOMES[b.scene];
+            const g = gridToWorld(
+              home.c0 + Math.random() * (home.c1 - home.c0 + 1),
+              home.r0 + Math.random() * (home.r1 - home.r0 + 1),
+            );
+            b.tx = g.x; b.ty = g.y;
           } else if (roll < 0.8) {
             handlers.onEmote?.(b.id, BOT_EMOTES[(Math.random() * BOT_EMOTES.length) | 0]);
           } else {
@@ -200,7 +214,10 @@ function createOfflineNet({ handlers }) {
           b.x += (dx / d) * Math.min(sp, d);
           b.y += (dy / d) * Math.min(sp, d);
         }
-        handlers.onPos?.(b.id, { x: b.x, y: b.y, facing: 0, moving, _vec: moving ? { x: dx / d, y: dy / d } : null });
+        handlers.onPos?.(b.id, {
+          x: b.x, y: b.y, facing: 0, moving, scene: b.scene, cart: false,
+          _vec: moving ? { x: dx / d, y: dy / d } : null,
+        });
       }
       timers[0] = setTimeout(step, 1000 / 15);
     };
