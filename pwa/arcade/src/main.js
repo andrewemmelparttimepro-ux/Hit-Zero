@@ -227,7 +227,7 @@ async function boot() {
   function refreshPresenceHud() {
     const athletes = [...peers.values()].filter(p => !p.staff).length;
     const coachHere = [...peers.values()].some(p => p.staff);
-    hud.setPresence(netState, athletes);
+    hud.setPresence(netState, athletes, mode === 'observer');
     hud.setCoachHere(coachHere);
   }
 

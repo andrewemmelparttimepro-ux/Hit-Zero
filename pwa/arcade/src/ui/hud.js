@@ -70,12 +70,13 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
   }
 
   // ── presence pill state ──
-  function setPresence(state, count) {
+  function setPresence(state, count, observer = false) {
     const txt = pill.querySelector('.txt');
     pill.classList.toggle('offline', state !== 'live');
     if (state === 'live') {
-      txt.textContent = count === 0 ? 'Just you — invite the team!'
-        : `${count} teammate${count === 1 ? '' : 's'} here`;
+      txt.textContent = count === 0
+        ? (observer ? 'No athletes in the Arcade yet' : 'Just you — invite the team!')
+        : `${count} ${observer ? 'athlete' : 'teammate'}${count === 1 ? '' : 's'} here`;
     } else if (state === 'offline') {
       txt.textContent = 'Offline preview';
     } else if (state === 'error') {

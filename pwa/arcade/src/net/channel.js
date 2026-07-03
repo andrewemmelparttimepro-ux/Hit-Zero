@@ -17,69 +17,99 @@ export function createNet({ supa, programId, me, observer = false, invisible = f
   if (!supa || !programId) return createOfflineNet({ handlers });
 
   const topic = `arcade:${programId}`;
-  const channel = supa.channel(topic, {
-    config: {
-      private: true, // authorization enforced by RLS on realtime.messages
-      broadcast: { self: false, ack: false },
-      presence: { key: me.id },
-    },
-  });
-
+  let channel = null;
   let joined = false;
+  let disposed = false;
+  let consecutiveErrors = 0;
+  let rejoinTimer = null;
   let lastSend = 0;
   let lastSent = null;
 
-  channel.on('presence', { event: 'sync' }, () => {
-    const state = channel.presenceState();
-    const seen = new Set();
-    for (const key of Object.keys(state)) {
-      const metas = state[key];
-      const meta = metas[metas.length - 1];
-      if (!meta || key === me.id) continue;
-      seen.add(key);
-      handlers.onPeerUpsert?.(key, {
-        name: String(meta.name || 'Teammate').slice(0, 40),
-        team: String(meta.team || '').slice(0, 40),
-        staff: !!meta.staff,
-        avatar: meta.avatar || {},
-      });
-    }
-    handlers.onPeerSync?.(seen);
-  });
-  channel.on('presence', { event: 'leave' }, ({ key }) => {
-    if (key !== me.id) handlers.onPeerLeave?.(key);
-  });
+  function makeChannel() {
+    const ch = supa.channel(topic, {
+      config: {
+        private: true, // authorization enforced by RLS on realtime.messages
+        broadcast: { self: false, ack: false },
+        presence: { key: me.id },
+      },
+    });
 
-  channel.on('broadcast', { event: 'pos' }, ({ payload }) => {
-    const p = parsePos(payload?.d);
-    if (p && payload?.id && payload.id !== me.id) handlers.onPos?.(payload.id, p);
-  });
-  channel.on('broadcast', { event: 'emote' }, ({ payload }) => {
-    const e = parseEmote(payload?.d);
-    if (e && payload?.id && payload.id !== me.id) handlers.onEmote?.(payload.id, e.key);
-  });
-  channel.on('broadcast', { event: 'phrase' }, ({ payload }) => {
-    const p = parsePhrase(payload?.d);
-    if (p && payload?.id && payload.id !== me.id) handlers.onPhrase?.(payload.id, p.text);
-  });
-
-  channel.subscribe(async (status) => {
-    if (status === 'SUBSCRIBED') {
-      joined = true;
-      handlers.onStatus?.('live');
-      if (!invisible) {
-        await channel.track({
-          name: me.name, team: me.team, staff: !!observer, avatar: me.avatar,
+    ch.on('presence', { event: 'sync' }, () => {
+      const state = ch.presenceState();
+      const seen = new Set();
+      for (const key of Object.keys(state)) {
+        const metas = state[key];
+        const meta = metas[metas.length - 1];
+        if (!meta || key === me.id) continue;
+        seen.add(key);
+        handlers.onPeerUpsert?.(key, {
+          name: String(meta.name || 'Teammate').slice(0, 40),
+          team: String(meta.team || '').slice(0, 40),
+          staff: !!meta.staff,
+          avatar: meta.avatar || {},
         });
       }
-    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-      joined = false;
-      handlers.onStatus?.('error');
-    } else if (status === 'CLOSED') {
-      joined = false;
-      handlers.onStatus?.('closed');
-    }
-  });
+      handlers.onPeerSync?.(seen);
+    });
+    ch.on('presence', { event: 'leave' }, ({ key }) => {
+      if (key !== me.id) handlers.onPeerLeave?.(key);
+    });
+
+    ch.on('broadcast', { event: 'pos' }, ({ payload }) => {
+      const p = parsePos(payload?.d);
+      if (p && payload?.id && payload.id !== me.id) handlers.onPos?.(payload.id, p);
+    });
+    ch.on('broadcast', { event: 'emote' }, ({ payload }) => {
+      const e = parseEmote(payload?.d);
+      if (e && payload?.id && payload.id !== me.id) handlers.onEmote?.(payload.id, e.key);
+    });
+    ch.on('broadcast', { event: 'phrase' }, ({ payload }) => {
+      const p = parsePhrase(payload?.d);
+      if (p && payload?.id && payload.id !== me.id) handlers.onPhrase?.(payload.id, p.text);
+    });
+
+    ch.subscribe(async (status, err) => {
+      if (disposed) return;
+      if (status === 'SUBSCRIBED') {
+        joined = true;
+        consecutiveErrors = 0;
+        handlers.onStatus?.('live');
+        if (!invisible) {
+          await ch.track({
+            name: me.name, team: me.team, staff: !!observer, avatar: me.avatar,
+          });
+        }
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        joined = false;
+        consecutiveErrors += 1;
+        // Say WHY on-device — a silent dead room is not acceptable.
+        console.warn(`[arcade] channel ${status} (attempt ${consecutiveErrors})`, err?.message || err || '');
+        handlers.onStatus?.('error');
+        // realtime-js retries transient errors itself; after a few strikes
+        // (or a hard CLOSED) tear down and rebuild with a fresh auth token —
+        // covers cold Realtime tenants and stale JWTs.
+        if (status === 'CLOSED' || consecutiveErrors >= 3) scheduleRebuild();
+      }
+    });
+    return ch;
+  }
+
+  function scheduleRebuild() {
+    if (disposed || rejoinTimer) return;
+    const delay = Math.min(12000, 1500 * Math.pow(2, Math.min(consecutiveErrors, 3)));
+    rejoinTimer = setTimeout(async () => {
+      rejoinTimer = null;
+      if (disposed) return;
+      try { supa.removeChannel(channel); } catch { /* already gone */ }
+      try {
+        const { data } = await supa.auth.getSession();
+        if (data?.session) await supa.realtime.setAuth(data.session.access_token);
+      } catch { /* subscribe will surface it */ }
+      channel = makeChannel();
+    }, delay);
+  }
+
+  channel = makeChannel();
 
   return {
     mode: 'live',
@@ -106,7 +136,11 @@ export function createNet({ supa, programId, me, observer = false, invisible = f
       if (!joined || invisible) return;
       channel.track({ name: me.name, team: me.team, staff: !!observer, avatar: me.avatar, ...patch });
     },
-    leave() { try { supa.removeChannel(channel); } catch { /* already gone */ } },
+    leave() {
+      disposed = true;
+      clearTimeout(rejoinTimer);
+      try { supa.removeChannel(channel); } catch { /* already gone */ }
+    },
   };
 }
 
