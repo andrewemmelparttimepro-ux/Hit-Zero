@@ -87,8 +87,10 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
   function setCoachHere(on) { coachTag.style.display = on ? '' : 'none'; }
 
   // ── avatar style panel ──
+  // firstRun: shown automatically the first time a kid ever opens the
+  // Arcade — same panel, warmer copy. Every tap auto-saves either way.
   let panel = null;
-  function openStylePanel(current) {
+  function openStylePanel(current, { firstRun = false } = {}) {
     closeStylePanel();
     let cfg = sanitizeAvatar(current);
     panel = document.createElement('div');
@@ -117,7 +119,9 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
       return row;
     };
 
-    panel.innerHTML = `<h3>Your Look</h3><div class="sub">Changes save automatically — teammates see them live.</div>`;
+    panel.innerHTML = firstRun
+      ? `<h3>Build your cheerleader! 🎀</h3><div class="sub">Pick your look — you can change it anytime from the STYLE button. Everything saves automatically.</div>`
+      : `<h3>Your Look</h3><div class="sub">Changes save automatically — teammates see them live.</div>`;
 
     panel.appendChild(swatchRow('Skin tone', SKINS, 'skin'));
 
@@ -152,7 +156,7 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
 
     const done = document.createElement('button');
     done.className = 'arc-style-done';
-    done.textContent = 'DONE';
+    done.textContent = firstRun ? "LET'S GO!" : 'DONE';
     done.addEventListener('click', closeStylePanel);
     panel.appendChild(done);
 

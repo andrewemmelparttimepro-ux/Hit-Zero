@@ -106,18 +106,26 @@ async function boot() {
 
   let myAvatarCfg = sanitizeAvatar(null);
   let teamName = '';
+  let firstVisit = false; // first time ever in the Arcade → auto-open the builder
   if (mode === 'player' && supa) {
     try {
       const { data: row } = await supa.from('arcade_profiles').select('avatar, settings').eq('id', profile.id).maybeSingle();
-      if (row?.avatar) myAvatarCfg = sanitizeAvatar(row.avatar);
-      else await supa.from('arcade_profiles').insert({ id: profile.id, program_id: programId, avatar: myAvatarCfg });
+      if (row?.avatar && Object.keys(row.avatar).length) {
+        myAvatarCfg = sanitizeAvatar(row.avatar);
+      } else {
+        firstVisit = true;
+        if (!row) await supa.from('arcade_profiles').insert({ id: profile.id, program_id: programId, avatar: myAvatarCfg });
+      }
     } catch (err) { console.warn('[arcade] arcade_profiles unavailable', err); }
     try {
       const { data: ath } = await supa.from('athletes').select('team_id, teams(name)').eq('profile_id', profile.id).maybeSingle();
       teamName = ath?.teams?.name || '';
     } catch { /* tag shows name only */ }
   } else {
-    try { myAvatarCfg = sanitizeAvatar(JSON.parse(localStorage.getItem('hz_arcade_avatar') || 'null')); } catch { /* defaults */ }
+    const stored = localStorage.getItem('hz_arcade_avatar');
+    firstVisit = !stored;
+    try { myAvatarCfg = sanitizeAvatar(JSON.parse(stored || 'null')); } catch { /* defaults */ }
+    if (firstVisit) try { localStorage.setItem('hz_arcade_avatar', JSON.stringify(myAvatarCfg)); } catch { /* fine */ }
   }
 
   let muted = localStorage.getItem('hz_arcade_muted') === '1';
@@ -366,5 +374,10 @@ async function boot() {
     audio.unlock(); // iOS: audio must start on a user gesture
     audio.sfx.join();
     loader.classList.add('hidden');
+    // First time ever in the Arcade → drop straight into the builder.
+    // Every tap in it auto-saves, so it's sticky from then on.
+    if (firstVisit && wheelsEnabled) {
+      setTimeout(() => hud.openStylePanel(myAvatarCfg, { firstRun: true }), 650);
+    }
   }, { once: true });
 }
