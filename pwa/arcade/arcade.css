@@ -1,0 +1,233 @@
+/* Hit Zero ARCADE — chrome around the canvas (loader, HUD, wheels, joystick).
+   Dark base matches the PWA (#050507). Program accent is set at runtime as
+   --arc-accent on <body>. */
+
+:root {
+  --arc-ink: #050507;
+  --arc-panel: rgba(16, 16, 22, 0.92);
+  --arc-line: rgba(255, 255, 255, 0.09);
+  --arc-text: #f4f4f8;
+  --arc-dim: #9a9aa8;
+  --arc-accent: #f97fac;
+  --arc-accent-2: #27cfd7;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0; padding: 0;
+  width: 100%; height: 100%;
+  background: var(--arc-ink);
+  color: var(--arc-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#stage, #stage canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+
+/* ─── Loader / enter gate ─── */
+.hz-loader {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  background:
+    radial-gradient(1200px 700px at 50% 115%, rgba(249,127,172,0.16), transparent 60%),
+    radial-gradient(900px 500px at 85% -10%, rgba(39,207,215,0.12), transparent 55%),
+    var(--arc-ink);
+  transition: opacity 480ms ease, visibility 480ms;
+}
+.hz-loader.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+.hz-loader-inner { text-align: center; padding: 24px; }
+.hz-loader-mark {
+  font-size: 13px; font-weight: 800; letter-spacing: 0.42em;
+  color: var(--arc-dim); margin-bottom: 10px;
+}
+.hz-loader-title {
+  font-size: clamp(44px, 9vw, 76px); font-weight: 900; letter-spacing: 0.08em;
+  line-height: 1;
+  background: linear-gradient(120deg, var(--arc-accent), var(--arc-accent-2));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 6px 30px rgba(249,127,172,0.35));
+}
+.hz-loader-sub { margin-top: 14px; font-size: 14px; color: var(--arc-dim); min-height: 20px; }
+.hz-enter-btn {
+  margin-top: 28px; padding: 14px 54px;
+  font-size: 16px; font-weight: 800; letter-spacing: 0.18em;
+  color: #0a0a0e; background: linear-gradient(120deg, var(--arc-accent), var(--arc-accent-2));
+  border: 0; border-radius: 999px; cursor: pointer;
+  box-shadow: 0 8px 34px rgba(249,127,172,0.38);
+  transition: transform 140ms ease, opacity 300ms;
+  opacity: 0;
+}
+.hz-enter-btn:not([disabled]) { opacity: 1; animation: hz-pulse 1.8s ease-in-out infinite; }
+.hz-enter-btn:active { transform: scale(0.96); }
+@keyframes hz-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.045); } }
+
+/* ─── Top banner (observer / offline preview) ─── */
+.arc-banner {
+  position: fixed; top: calc(10px + env(safe-area-inset-top)); left: 50%;
+  transform: translateX(-50%); z-index: 40;
+  padding: 8px 18px; border-radius: 999px;
+  background: var(--arc-panel); border: 1px solid var(--arc-line);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  font-size: 12.5px; font-weight: 600; color: var(--arc-dim);
+  white-space: nowrap;
+}
+.arc-banner b { color: var(--arc-text); }
+
+/* ─── Presence pill + coach tag + mute (top-right stack) ─── */
+.arc-hud-tr {
+  position: fixed; top: calc(10px + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right));
+  z-index: 40; display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+}
+.arc-pill {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border-radius: 999px;
+  background: var(--arc-panel); border: 1px solid var(--arc-line);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  font-size: 12.5px; font-weight: 700;
+}
+.arc-pill .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #43e97b; box-shadow: 0 0 10px rgba(67,233,123,0.8);
+}
+.arc-pill.offline .dot { background: #8a8a96; box-shadow: none; }
+.arc-coach-tag {
+  padding: 7px 13px; border-radius: 999px;
+  background: rgba(39,207,215,0.14); border: 1px solid rgba(39,207,215,0.45);
+  color: var(--arc-accent-2); font-size: 12px; font-weight: 800; letter-spacing: 0.04em;
+}
+.arc-icon-btn {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: var(--arc-panel); border: 1px solid var(--arc-line);
+  color: var(--arc-text); font-size: 17px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.arc-icon-btn:active { transform: scale(0.93); }
+
+/* ─── Bottom-left: joystick zone (invisible until touched) ─── */
+.arc-joy {
+  position: fixed; z-index: 30; pointer-events: none;
+  width: 132px; height: 132px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.05);
+  opacity: 0; transition: opacity 160ms;
+}
+.arc-joy.on { opacity: 1; }
+.arc-joy-knob {
+  position: absolute; left: 50%; top: 50%;
+  width: 56px; height: 56px; border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255,255,255,0.22);
+  border: 2px solid rgba(255,255,255,0.35);
+}
+
+/* ─── Bottom-right action cluster ─── */
+.arc-actions {
+  position: fixed; right: calc(16px + env(safe-area-inset-right)); bottom: calc(18px + env(safe-area-inset-bottom));
+  z-index: 30; display: flex; gap: 12px; align-items: flex-end;
+}
+.arc-act-btn {
+  width: 62px; height: 62px; border-radius: 50%;
+  background: var(--arc-panel); border: 1.5px solid var(--arc-line);
+  color: var(--arc-text); font-size: 24px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 6px 22px rgba(0,0,0,0.45);
+}
+.arc-act-btn small { font-size: 8.5px; font-weight: 800; letter-spacing: 0.08em; color: var(--arc-dim); margin-top: 1px; }
+.arc-act-btn:active { transform: scale(0.93); }
+.arc-act-btn.style-btn { width: 50px; height: 50px; font-size: 19px; }
+
+/* ─── Radial wheels (emotes / phrases) ─── */
+.arc-wheel-backdrop {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(5,5,7,0.55);
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  animation: arc-fade-in 140ms ease;
+}
+@keyframes arc-fade-in { from { opacity: 0; } to { opacity: 1; } }
+.arc-wheel { position: fixed; z-index: 61; left: 0; top: 0; }
+.arc-wheel-item {
+  position: absolute; transform: translate(-50%, -50%);
+  min-width: 64px; height: 64px; padding: 0 10px; border-radius: 999px;
+  background: var(--arc-panel); border: 1.5px solid var(--arc-line);
+  color: var(--arc-text); cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 700;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.5);
+  animation: arc-pop-in 180ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.arc-wheel-item small { font-size: 9px; font-weight: 800; letter-spacing: 0.05em; color: var(--arc-dim); margin-top: 1px; white-space: nowrap; }
+.arc-wheel-item.phrase { font-size: 13px; font-weight: 800; height: 52px; }
+.arc-wheel-item:active, .arc-wheel-item.hot {
+  border-color: var(--arc-accent);
+  background: rgba(249,127,172,0.18);
+}
+@keyframes arc-pop-in { from { transform: translate(-50%, -50%) scale(0.4); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+
+/* ─── Style (avatar customization) panel ─── */
+.arc-style-panel {
+  position: fixed; z-index: 70; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(560px, calc(100dvh - 40px));
+  overflow-y: auto;
+  background: var(--arc-panel); border: 1px solid var(--arc-line);
+  border-radius: 22px; padding: 20px 20px 16px;
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+}
+.arc-style-panel h3 { margin: 0 0 4px; font-size: 17px; font-weight: 900; letter-spacing: 0.03em; }
+.arc-style-panel .sub { font-size: 12px; color: var(--arc-dim); margin-bottom: 14px; }
+.arc-style-row { margin-bottom: 14px; }
+.arc-style-row label { display: block; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; color: var(--arc-dim); margin-bottom: 7px; text-transform: uppercase; }
+.arc-swatches { display: flex; flex-wrap: wrap; gap: 9px; }
+.arc-swatch {
+  width: 38px; height: 38px; border-radius: 50%;
+  border: 2.5px solid transparent; cursor: pointer; padding: 0;
+  transition: transform 120ms;
+}
+.arc-swatch.sel { border-color: #fff; transform: scale(1.12); }
+.arc-chip {
+  padding: 9px 15px; border-radius: 999px; cursor: pointer;
+  background: rgba(255,255,255,0.06); border: 1.5px solid var(--arc-line);
+  color: var(--arc-text); font-size: 12.5px; font-weight: 700;
+}
+.arc-chip.sel { border-color: var(--arc-accent); background: rgba(249,127,172,0.16); }
+.arc-style-done {
+  width: 100%; margin-top: 6px; padding: 13px;
+  font-size: 14px; font-weight: 900; letter-spacing: 0.1em;
+  color: #0a0a0e; background: linear-gradient(120deg, var(--arc-accent), var(--arc-accent-2));
+  border: 0; border-radius: 14px; cursor: pointer;
+}
+
+/* ─── Toast (photo booth flash text etc.) ─── */
+.arc-toast {
+  position: fixed; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom));
+  transform: translateX(-50%); z-index: 50;
+  padding: 10px 20px; border-radius: 999px;
+  background: var(--arc-panel); border: 1px solid var(--arc-line);
+  font-size: 13px; font-weight: 700;
+  animation: arc-toast 2.4s ease both;
+  pointer-events: none; white-space: nowrap;
+}
+@keyframes arc-toast {
+  0% { opacity: 0; transform: translateX(-50%) translateY(10px); }
+  10%, 82% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+}
+
+/* Photo booth flash */
+.arc-flash {
+  position: fixed; inset: 0; z-index: 90; background: #fff;
+  pointer-events: none; animation: arc-flash 500ms ease-out both;
+}
+@keyframes arc-flash { 0% { opacity: 0.95; } 100% { opacity: 0; } }
+
+@media (max-width: 700px) {
+  .arc-act-btn { width: 56px; height: 56px; font-size: 21px; }
+}

@@ -147,7 +147,9 @@
     const liveSession = window.HZdb?.auth?._getSession?.();
     const liveProfile = liveSession?.actualProfile || liveSession?.profile || null;
     const isLiveSession = liveSession?.mode === 'live';
-    const activeProgramId = liveProfile?.program_id || null;
+    const placeholderProgramId = '11111111-1111-1111-1111-111111111111';
+    const isPlaceholderProgramId = (id) => !id || id === placeholderProgramId;
+    let activeProgramId = isPlaceholderProgramId(liveProfile?.program_id) ? null : liveProfile?.program_id || null;
     const activeRole = liveSession?.profile?.role || liveProfile?.role || null;
     const isStaff = activeRole === 'coach' || activeRole === 'owner';
     const clearPrivateRows = () => {
@@ -175,13 +177,31 @@
 
     if (isLiveSession) clearPrivateRows();
 
-    if (isLiveSession && !activeProgramId) {
+    let ownJoinRequests = [];
+    let ownPackets = [];
+    if (isLiveSession && !isStaff && liveProfile?.id) {
+      const [joinRequests, packets] = await Promise.all([
+        s.from('program_join_requests').select('*, programs(id, slug, public_name, name, city, state)').eq('profile_id', liveProfile.id).order('created_at', { ascending: false }),
+        s.from('family_info_packets').select('*').eq('profile_id', liveProfile.id).order('updated_at', { ascending: false }),
+      ]);
+      ownJoinRequests = joinRequests.data || [];
+      ownPackets = packets.data || [];
+      d.program_join_requests = ownJoinRequests;
+      d.family_info_packets = ownPackets;
+      activeProgramId = [
+        ...ownJoinRequests.map(row => row.program_id),
+        ...ownPackets.map(row => row.program_id),
+      ].find(id => !isPlaceholderProgramId(id)) || activeProgramId;
+    }
+
+    if (isLiveSession && isStaff && !activeProgramId) {
       if (window.HZsel && window.HZsel._refresh) await window.HZsel._refresh();
       return;
     }
 
     const programsQuery = s.from('programs').select('*').is('deleted_at', null).order('created_at');
     if (isLiveSession && activeProgramId) programsQuery.eq('id', activeProgramId);
+    else if (isLiveSession && !isStaff) programsQuery.in('slug', ['mca', 'magic-city-athletics', 'magic-city-allstars']);
     const { data: programs } = await programsQuery;
     if (programs?.length) {
       d.programs = programs;
@@ -238,12 +258,13 @@
         d.registrations = [];
         d.leads = [];
         d.lead_touches = [];
-        const ownPackets = await s.from('family_info_packets').select('*').eq('profile_id', liveProfile.id).order('updated_at', { ascending: false });
-        d.family_info_packets = ownPackets.data || [];
+        d.program_join_requests = ownJoinRequests;
+        d.family_info_packets = ownPackets;
       }
     }
     const teamsQuery = s.from('teams').select('*').is('deleted_at', null).order('created_at');
     if (isLiveSession && activeProgramId) teamsQuery.eq('program_id', activeProgramId);
+    else if (isLiveSession && programs?.length) teamsQuery.in('program_id', programs.map(p => p.id));
     const { data: teams } = await teamsQuery;
     if (!teams || !teams.length) {
       if (isLiveSession) clearPrivateRows();
@@ -446,6 +467,7 @@
 <script type="text/babel" src="hit_zero_web/screens/AIJudge.jsx"></script>
 <script type="text/babel" src="hit_zero_web/screens/PublicBooking.jsx"></script>
 <script type="text/babel" src="hit_zero_web/screens/PublicTrial.jsx"></script>
+<script type="text/babel" src="hit_zero_web/screens/ArcadeScreen.jsx"></script>
 
 <script type="text/babel">
   const root = ReactDOM.createRoot(document.getElementById('root'));

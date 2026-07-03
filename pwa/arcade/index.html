@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#050507" />
+<title>Hit Zero — Arcade</title>
+<link rel="icon" href="/icons/icon-192.png" />
+<link rel="stylesheet" href="arcade.css" />
+<!-- PixiJS v8 — pinned + SRI. Exposes window.PIXI (no build step, matches repo philosophy). -->
+<script
+  src="https://cdn.jsdelivr.net/npm/pixi.js@8.19.0/dist/pixi.min.js"
+  integrity="sha384-brfu63ZHzOfumoqQXzA4Wo7k9kQOaJ68C/E7+Uc8lgQB42dOOjA+urOyy/sOnKPq"
+  crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="stage"></div>
+
+  <!-- Loading / enter gate. The tap on ENTER doubles as the iOS audio unlock. -->
+  <div id="loader" class="hz-loader">
+    <div class="hz-loader-inner">
+      <div class="hz-loader-mark">HIT&nbsp;ZERO</div>
+      <div class="hz-loader-title" id="loaderTitle">ARCADE</div>
+      <div class="hz-loader-sub" id="loaderSub">Lacing up&hellip;</div>
+      <button id="enterBtn" class="hz-enter-btn" disabled>ENTER</button>
+    </div>
+  </div>
+
+  <!-- DOM HUD overlays (banner, presence pill, wheels, joystick zone) are
+       created by src/ui/*.js so the canvas stays pure game rendering. -->
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

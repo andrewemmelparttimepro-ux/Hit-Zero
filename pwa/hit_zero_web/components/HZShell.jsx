@@ -15,6 +15,7 @@ const NAV_CONFIG = {
     { group: 'Scoring' },
     { id: 'score',        label: 'Mock Score',      icon: 'score' },
     { id: 'ai_judge',     label: 'AI Judge',        icon: 'bolt' },
+    { id: 'arcade',       label: 'Arcade',          icon: 'bolt' },
     { id: 'forms',        label: 'Evaluations',     icon: 'skills' },
     { group: 'Program' },
     { id: 'schedule',     label: 'Schedule',        icon: 'calendar' },
@@ -36,6 +37,7 @@ const NAV_CONFIG = {
     { id: 'skills',       label: 'Skill Matrix',    icon: 'skills' },
     { id: 'score',        label: 'Mock Score',      icon: 'score' },
     { id: 'ai_judge',     label: 'AI Judge',        icon: 'bolt' },
+    { id: 'arcade',       label: 'Arcade',          icon: 'bolt' },
     { id: 'forms',        label: 'Evaluations',     icon: 'skills' },
     { group: 'Communications' },
     { id: 'messages',     label: 'Messages',        icon: 'megaphone' },
@@ -52,6 +54,7 @@ const NAV_CONFIG = {
     { id: 'skilltree',    label: 'Skill Tree',      icon: 'skills' },
     { id: 'routine',      label: 'My Routine',      icon: 'routine' },
     { id: 'ai_judge',     label: 'AI Judge',        icon: 'bolt' },
+    { id: 'arcade',       label: 'Arcade',          icon: 'bolt' },
     { group: 'Team' },
     { id: 'schedule',     label: 'Schedule',        icon: 'calendar' },
     { id: 'messages',     label: 'Messages',        icon: 'megaphone' },
@@ -105,6 +108,7 @@ const SCREEN_MAP = {
   birthdays: 'BirthdayCalendar',
   registration: 'Registration',
   ai_judge: 'AIJudge',
+  arcade: 'ArcadeScreen',
 };
 
 const ROLE_LABELS = {
@@ -115,6 +119,12 @@ const ROLE_LABELS = {
 };
 window.ROLE_LABELS = ROLE_LABELS;
 const WALKTHROUGH_VERSION = 'v4';
+const PLACEHOLDER_PROGRAM_ID = '11111111-1111-1111-1111-111111111111';
+
+function isPlaceholderProgramId(id) {
+  return !id || id === PLACEHOLDER_PROGRAM_ID;
+}
+window.HZisPlaceholderProgramId = isPlaceholderProgramId;
 
 function programDisplayName(program, fallback = 'your gym') {
   return program?.brand_name || program?.public_name || program?.name || fallback;
@@ -127,13 +137,26 @@ function programLocationLabel(program, fallback = '') {
 window.HZprogramLocationLabel = programLocationLabel;
 
 function activeProgramFromSnap(snap, session) {
-  const programId = session?.actualProfile?.program_id || session?.profile?.program_id || null;
-  return (programId ? (snap?.programs || []).find(p => p.id === programId) : null) || (snap?.programs || [])[0] || null;
+  const rawProgramId = session?.actualProfile?.program_id || session?.profile?.program_id || null;
+  const programId = isPlaceholderProgramId(rawProgramId) ? null : rawProgramId;
+  const programs = snap?.programs || [];
+  return (programId ? programs.find(p => p.id === programId) : null)
+    || programs.find(p => !isPlaceholderProgramId(p.id))
+    || programs.find(Boolean)
+    || null;
 }
 window.HZactiveProgramFromSnap = activeProgramFromSnap;
 
-function roleNav(role) {
-  return NAV_CONFIG[role] || NAV_CONFIG.coach;
+// ARCADE beta gate: visible only with the local beta flag or for MCA.
+// Remove at general launch (Phase 3 accept).
+function arcadeEnabled(program) {
+  try { if (localStorage.getItem('hz_arcade_beta') === '1') return true; } catch { /* no storage */ }
+  return (program?.slug || '') === 'mca';
+}
+
+function roleNav(role, program) {
+  const nav = NAV_CONFIG[role] || NAV_CONFIG.coach;
+  return arcadeEnabled(program) ? nav : nav.filter((it) => it.id !== 'arcade');
 }
 
 function walkthroughStorageKey(profileId, role, mode) {
@@ -188,7 +211,9 @@ function useIsMobile(breakpoint = 768) {
 window.useIsMobile = useIsMobile;
 
 function navIdsForRole(role) {
-  return new Set(roleNav(role).filter(item => item.id).map(item => item.id));
+  // Route ids come from the unfiltered config: the arcade beta gate hides the
+  // tab, but a gated user landing on #arcade must still resolve the screen.
+  return new Set((NAV_CONFIG[role] || NAV_CONFIG.coach).filter(item => item.id).map(item => item.id));
 }
 
 function firstRouteForRole(role) {
@@ -212,8 +237,10 @@ function publicAuthModeFromRoute(route) {
 
 const DEFAULT_PUBLIC_GYM_SLUG = 'mca';
 const DEFAULT_PUBLIC_GYM_NAME = 'your gym';
-const DEFAULT_PUBLIC_GYM_ID = '11111111-1111-1111-1111-111111111111';
+const DEFAULT_PUBLIC_GYM_ID = PLACEHOLDER_PROGRAM_ID;
 const PASSWORD_RESET_TIMEOUT_MS = 18000;
+const FAMILY_PACKET_LOAD_TIMEOUT_MS = 10000;
+const FAMILY_PACKET_SUBMIT_TIMEOUT_MS = 35000;
 
 function timeoutAfter(ms, message) {
   return new Promise((_, reject) => {
@@ -260,7 +287,7 @@ function preferredGymSlugFromRoute(route) {
 
 function routeFromLocation() {
   const h = location.hash.slice(1);
-  if (h) return h;
+  if (h) return h.replace(/^\/+/, '');
   const path = location.pathname.replace(/^\/+/, '');
   if (path.startsWith('pay/')) return path;
   return 'today';
@@ -406,7 +433,7 @@ function App() {
     if (!session) return;
     // Public booking route is allowed for anyone (signed-in too — they can
     // still help a friend book). Don't bounce them out.
-    if (route && (route.startsWith('book/') || route.startsWith('trial/') || route.startsWith('pay/'))) return;
+    if (route && (route.startsWith('book/') || route.startsWith('drop-in/') || route.startsWith('dropin/') || route.startsWith('trial/') || route.startsWith('pay/'))) return;
     // Routes may carry query params (e.g. uniforms?tab=orders) — match on the base.
     const baseRoute = String(route || '').split('?')[0];
     // Athlete profile is a parameterized in-app route; access is enforced by
@@ -509,6 +536,13 @@ function App() {
     }
   }
 
+  if (route && (route.startsWith('drop-in/') || route.startsWith('dropin/'))) {
+    const dropInClassId = route.replace(/^drop-?in\//, '').split('?')[0];
+    if (dropInClassId && window.PublicDropIn) {
+      return <window.PublicDropIn classId={dropInClassId} />;
+    }
+  }
+
   if (route && route.startsWith('pay/')) {
     const registrationId = route.slice(4).split('?')[0];
     if (registrationId && window.PublicPaymentLink) {
@@ -547,18 +581,26 @@ function App() {
     return <PasswordResetGate session={session} />;
   }
 
+  const realProfile = session.actualProfile || session.profile;
+  if (session.identityConflict || realProfile?.identity_conflict) {
+    return <IdentityConflictGate session={session} />;
+  }
+
   if (inviteCodeFromRoute) {
     return <PendingGymOnboarding session={session} initialInviteCode={inviteCodeFromRoute} connected={!!session.actualProfile?.program_id || !!session.profile?.program_id} preferredGymSlug={preferredGymSlug} />;
   }
 
-  const realProfile = session.actualProfile || session.profile;
   const needsGymConnection = !realProfile?.program_id && session.mode !== 'prototype';
+  if (needsGymConnection && ['coach', 'owner'].includes(realProfile?.role || '')) {
+    return <StaffScopeGate session={session} />;
+  }
   if (needsGymConnection) {
     return <PendingGymOnboarding session={session} preferredGymSlug={preferredGymSlug} />;
   }
 
   const role = effectiveRole;
-  const nav = roleNav(role);
+  const shellProgram = activeProgramFromSnap(snap, session);
+  const nav = roleNav(role, shellProgram);
   const baseRoute = String(route || '').split('?')[0];
   const isAthleteProfileRoute = baseRoute.startsWith('athlete/');
   const screenId = isAthleteProfileRoute ? 'athlete'
@@ -567,7 +609,6 @@ function App() {
   const Screen = window[ScreenName];
 
   const navigate = (id) => { location.hash = '#' + id; };
-  const shellProgram = activeProgramFromSnap(snap, session);
 
   // Find the human-readable label for the current screen (used in mobile top bar).
   const currentNavItem = nav.find(it => it.id === screenId);
@@ -1109,6 +1150,46 @@ function DefaultGymCard({ program, onSelect, compact = false }) {
   );
 }
 
+function IdentityConflictGate({ session }) {
+  const profile = session?.actualProfile || session?.profile || {};
+  const matched = profile.identity_conflict_profile || {};
+  return (
+    <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24 }}>
+      <section className="hz-card" style={{ maxWidth: 620, padding: 28 }}>
+        <div className="hz-eyebrow" style={{ color: 'var(--hz-pink)' }}>Account needs staff repair</div>
+        <div className="hz-display" style={{ fontSize: 34, lineHeight: 1.05, marginTop: 8 }}>Your login is matched to another Hit Zero profile.</div>
+        <p style={{ color: 'var(--hz-dim)', lineHeight: 1.55, marginTop: 14 }}>
+          This account is blocked from loading gym data until staff connects the signed-in user id to the correct profile.
+        </p>
+        <div style={{ marginTop: 16, display: 'grid', gap: 8, color: 'var(--hz-dim)', fontSize: 13 }}>
+          <div><strong style={{ color: '#fff' }}>Signed in:</strong> {profile.email || session?.user?.email || 'unknown email'}</div>
+          {matched.email && <div><strong style={{ color: '#fff' }}>Matched profile:</strong> {matched.email} · {matched.role || 'role unknown'}</div>}
+        </div>
+        <button className="hz-btn hz-btn-primary" style={{ marginTop: 18 }} onClick={() => window.HZdb?.auth?.signOut?.()}>Sign out</button>
+      </section>
+    </main>
+  );
+}
+
+function StaffScopeGate({ session }) {
+  const profile = session?.actualProfile || session?.profile || {};
+  return (
+    <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24 }}>
+      <section className="hz-card" style={{ maxWidth: 620, padding: 28 }}>
+        <div className="hz-eyebrow" style={{ color: 'var(--hz-amber)' }}>Gym access missing</div>
+        <div className="hz-display" style={{ fontSize: 34, lineHeight: 1.05, marginTop: 8 }}>This staff account is not connected to a gym.</div>
+        <p style={{ color: 'var(--hz-dim)', lineHeight: 1.55, marginTop: 14 }}>
+          Registration, roster, billing, and schedule data are hidden until this profile has a gym program id.
+        </p>
+        <div style={{ marginTop: 16, color: 'var(--hz-dim)', fontSize: 13 }}>
+          {profile.display_name || 'Staff account'} · {profile.email || session?.user?.email || 'unknown email'}
+        </div>
+        <button className="hz-btn hz-btn-primary" style={{ marginTop: 18 }} onClick={() => window.HZdb?.auth?.signOut?.()}>Sign out</button>
+      </section>
+    </main>
+  );
+}
+
 function usePreferredPublicGym(slug = DEFAULT_PUBLIC_GYM_SLUG) {
   const [program, setProgram] = useState(() => fallbackPublicGym(slug));
   const [loaded, setLoaded] = useState(false);
@@ -1211,6 +1292,99 @@ const FAMILY_PACKET_INTERESTS = [
   'Open Gym',
 ];
 const FAMILY_PACKET_SIZES = ['YXS','YS','YM','YL','YXL','AS','AM','AL','AXL'];
+const FAMILY_PACKET_POLICY_ITEMS = [
+  {
+    key: 'agree_tuition',
+    anchor: 'family-policy-tuition',
+    shortLabel: 'Tuition + fees',
+    checkboxLabel: 'I understand tuition and fees are due as scheduled',
+    body: 'MCA tuition, registration charges, camp fees, uniform costs, and other approved balances stay due on the schedule the gym gives your family. Missing a payment can pause participation until the account is current.',
+  },
+  {
+    key: 'agree_payment_policies',
+    anchor: 'family-policy-payment',
+    shortLabel: 'Payment policies',
+    checkboxLabel: 'I agree to MCA payment policies',
+    body: 'Online checkout covers the current registration or inquiry step only. Other balances still follow MCA billing instructions, and families are responsible for keeping payment information accurate and responding quickly if a charge or invoice needs attention.',
+  },
+  {
+    key: 'agree_autopay',
+    anchor: 'family-policy-autopay',
+    shortLabel: 'Autopay',
+    checkboxLabel: 'I understand auto-pay is required once official registration is completed',
+    body: 'This acknowledgement means MCA may require a card or billing method on file once an athlete is officially placed. Submitting this packet does not start recurring drafts by itself; the gym handles the live billing setup separately.',
+  },
+  {
+    key: 'agree_handbook',
+    anchor: 'family-policy-handbook',
+    shortLabel: 'Handbook',
+    checkboxLabel: 'I have read and agree to the MCA handbook',
+    body: 'Families are expected to follow MCA rules for communication, arrival, attire, travel, safety, and team participation. Coaches and owners can enforce those standards when they protect athletes, staff, or the program.',
+  },
+  {
+    key: 'agree_attendance',
+    anchor: 'family-policy-attendance',
+    shortLabel: 'Attendance',
+    checkboxLabel: 'I understand and agree to the attendance policy',
+    body: 'Athletes are expected to attend practices, classes, camps, performances, and competitions assigned to them. Families should report absences early, because repeated misses can affect routines, placements, and eligibility.',
+  },
+  {
+    key: 'agree_expectations',
+    anchor: 'family-policy-expectations',
+    shortLabel: 'Expectations',
+    checkboxLabel: 'I agree to follow policies and expectations',
+    body: 'Families agree to respectful behavior, timely communication, and following coach or staff direction in the gym, at events, and in parent communication channels. MCA may act on conduct that harms athletes, staff, or the team environment.',
+  },
+];
+
+function formatPacketSubmittedAt(value) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return 'date unavailable';
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function FamilyPacketPolicyLinks() {
+  return (
+    <div style={{ display: 'grid', gap: 6, padding: '10px 12px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, background: 'rgba(255,255,255,0.03)' }}>
+      <div className="hz-eyebrow" style={{ color: 'var(--hz-dim)' }}>Review the MCA policy terms</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {FAMILY_PACKET_POLICY_ITEMS.map(item => (
+          <a
+            key={item.key}
+            href={`#${item.anchor}`}
+            style={{ color: 'var(--hz-teal)', fontSize: 12, fontWeight: 700, textDecoration: 'none' }}
+          >
+            {item.shortLabel}
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FamilyPacketPolicySections() {
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      {FAMILY_PACKET_POLICY_ITEMS.map(item => (
+        <section
+          key={item.key}
+          id={item.anchor}
+          style={{ padding: '12px 14px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(7,10,18,0.55)' }}
+        >
+          <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)', marginBottom: 6 }}>{item.shortLabel}</div>
+          <div style={{ color: '#fff', fontWeight: 800, fontSize: 13, lineHeight: 1.45 }}>{item.checkboxLabel}</div>
+          <p style={{ margin: '8px 0 0', color: 'var(--hz-dim)', fontSize: 12, lineHeight: 1.55 }}>{item.body}</p>
+        </section>
+      ))}
+    </div>
+  );
+}
 
 function FamilyInfoPacketCard({ session, program, request, onSaved }) {
   const profile = session?.actualProfile || session?.profile || {};
@@ -1309,11 +1483,26 @@ function FamilyInfoPacketCard({ session, program, request, onSaved }) {
   useEffect(() => {
     let alive = true;
     async function load() {
+      setLoaded(false);
       if (!programId || !window.HZdb?.auth?.myFamilyPacket) { setLoaded(true); return; }
-      const { data } = await window.HZdb.auth.myFamilyPacket(programId);
-      if (!alive) return;
-      hydrate(data?.packet || null);
-      setLoaded(true);
+      try {
+        const { data, error } = await Promise.race([
+          window.HZdb.auth.myFamilyPacket(programId),
+          timeoutAfter(FAMILY_PACKET_LOAD_TIMEOUT_MS, 'Saved family packet lookup took too long.'),
+        ]);
+        if (!alive) return;
+        if (error) {
+          setErr(error.message || 'Could not load your saved family packet.');
+          setLoaded(true);
+          return;
+        }
+        hydrate(data?.packet || null);
+        setLoaded(true);
+      } catch (loadError) {
+        if (!alive) return;
+        setErr(`${loadError?.message || 'Could not load your saved family packet.'} You can submit the packet again to stamp the latest date and time.`);
+        setLoaded(true);
+      }
     }
     load();
     return () => { alive = false; };
@@ -1321,9 +1510,18 @@ function FamilyInfoPacketCard({ session, program, request, onSaved }) {
 
   const set = (key, value) => setForm(f => ({ ...f, [key]: value }));
   const complete = saved?.completion_status === 'complete';
+  const hasSubmission = !!saved?.submitted_at;
+  const submittedAt = saved?.submitted_at || null;
+  const submittedDate = submittedAt ? formatPacketSubmittedAt(submittedAt) : '';
+  const savedDraft = !!saved && !hasSubmission;
+  const previewOnly = !!session?.profile?.is_view_as;
 
   async function submit(e) {
     e.preventDefault();
+    if (previewOnly) {
+      setErr('Preview only in View as Parent. Sign in with the real parent account to submit or update this packet.');
+      return;
+    }
     if (!programId) { setErr('Choose a gym first.'); return; }
     setBusy(true);
     setErr('');
@@ -1369,17 +1567,43 @@ function FamilyInfoPacketCard({ session, program, request, onSaved }) {
       signatures: { parent_signature: form.parent_signature, athlete_signature: form.athlete_signature },
       notes: form.notes,
     };
-    const { data, error } = await window.HZdb.auth.submitFamilyPacket(payload);
-    setBusy(false);
-    if (error) setErr(error.message || 'Could not save family packet.');
-    else {
-      setSaved(data?.packet || null);
-      onSaved?.(data?.packet);
+    try {
+      const { data, error } = await Promise.race([
+        window.HZdb.auth.submitFamilyPacket(payload),
+        timeoutAfter(FAMILY_PACKET_SUBMIT_TIMEOUT_MS, 'Submitting took too long. Check your connection and try again.'),
+      ]);
+      if (error) {
+        setBusy(false);
+        setErr(error.message || 'Could not submit family packet.');
+        return;
+      }
+      const packet = data?.packet || null;
+      if (!packet) {
+        setBusy(false);
+        setErr('The packet saved, but Hit Zero did not return a confirmation. Please refresh before submitting again.');
+        return;
+      }
+      hydrate(packet);
+      setBusy(false);
+      onSaved?.(packet);
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table: 'family_info_packets', action: 'submit' } }));
+        window.HZToast?.({
+          kind: 'success',
+          eyebrow: 'Forms',
+          title: 'Family packet submitted',
+          body: `Submitted ${formatPacketSubmittedAt(packet.submitted_at)}.`,
+        });
+      }, 0);
+      return;
+    } catch (submitError) {
+      setBusy(false);
+      setErr(submitError?.message || 'Could not submit family packet.');
     }
   }
 
   return (
-    <form className="hz-card" onSubmit={submit} style={{ padding: 18, display: 'grid', gap: 12 }}>
+    <form className="hz-card" data-testid="family-info-packet-form" onSubmit={submit} style={{ padding: 18, display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
         <div>
           <div className="hz-eyebrow" style={{ marginBottom: 6 }}>Family info packet</div>
@@ -1388,10 +1612,81 @@ function FamilyInfoPacketCard({ session, program, request, onSaved }) {
             {program?.public_name || program?.name || 'The gym'} can review this before linking your account to the correct athlete.
           </div>
         </div>
-        <Pill tone={complete ? 'teal' : 'amber'}>{complete ? 'complete' : 'needs info'}</Pill>
+        <Pill tone={hasSubmission ? (complete ? 'teal' : 'amber') : 'amber'}>
+          {hasSubmission ? (complete ? 'submitted' : 'submitted · needs info') : savedDraft ? 'draft saved' : 'needs info'}
+        </Pill>
       </div>
-      {!loaded && <SkeletonCard rows={3} title={false} style={{ padding: 14, minHeight: 82 }} />}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+      {previewOnly && (
+        <div
+          className="family-packet-submitted"
+          data-testid="family-packet-preview-only"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="hz-eyebrow" style={{ marginBottom: 5, color: 'var(--hz-amber)' }}>
+            Preview only
+          </div>
+          <div style={{ fontWeight: 900, color: '#fff' }}>
+            View as Parent shows the family packet layout, but it does not become a real parent account.
+          </div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 12, lineHeight: 1.45, marginTop: 5 }}>
+            Sign in with the actual parent login to submit or update this packet for a real family.
+          </div>
+        </div>
+      )}
+      {hasSubmission && (
+        <div
+          className="family-packet-submitted"
+          data-testid="family-packet-submission-status"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="hz-eyebrow" style={{ marginBottom: 5, color: complete ? 'var(--hz-teal)' : 'var(--hz-amber)' }}>
+            {complete ? 'Submitted' : 'Submitted · needs info'}
+          </div>
+          <div style={{ fontWeight: 900, color: '#fff' }}>
+            {submittedDate ? `Submitted ${submittedDate}` : 'Submitted'}
+          </div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 12, lineHeight: 1.45, marginTop: 5 }}>
+            {complete
+              ? 'MCA can review this packet. You can update it here any time and the submitted timestamp will refresh.'
+              : 'The packet was saved, but a few required fields still need attention before staff can mark it complete.'}
+          </div>
+        </div>
+      )}
+      {savedDraft && (
+        <div
+          className="family-packet-submitted"
+          data-testid="family-packet-draft-status"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="hz-eyebrow" style={{ marginBottom: 5, color: 'var(--hz-amber)' }}>
+            Draft loaded
+          </div>
+          <div style={{ fontWeight: 900, color: '#fff' }}>
+            Finish the required fields, then submit to stamp the exact date and time.
+          </div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 12, lineHeight: 1.45, marginTop: 5 }}>
+            This packet is saved for the family, but it is not counted as submitted until Hit Zero records a real submission timestamp.
+          </div>
+        </div>
+      )}
+      <fieldset
+        disabled={previewOnly || busy || !loaded}
+        style={{ border: 0, margin: 0, padding: 0, minWidth: 0, display: 'grid', gap: 12 }}
+      >
+      {!loaded && (
+        <div
+          data-testid="family-packet-loading-note"
+          role="status"
+          aria-live="polite"
+          style={{ color: 'var(--hz-dim)', fontSize: 12, lineHeight: 1.45 }}
+        >
+          Checking for your saved submission...
+        </div>
+      )}
+      <div className="family-packet-grid family-packet-grid-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
         <PacketField label="Parent / guardian name"><input className="hz-input" value={form.parent_name} onChange={e => set('parent_name', e.target.value)} required/></PacketField>
         <PacketField label="Email"><input className="hz-input" type="email" value={form.parent_email} onChange={e => set('parent_email', e.target.value)} required/></PacketField>
         <PacketField label="Phone"><input className="hz-input" type="tel" value={form.parent_phone} onChange={e => set('parent_phone', e.target.value)} required/></PacketField>
@@ -1404,12 +1699,12 @@ function FamilyInfoPacketCard({ session, program, request, onSaved }) {
         <PacketField label="Policy number"><input className="hz-input" value={form.policy_number} onChange={e => set('policy_number', e.target.value)} required/></PacketField>
       </div>
       <PacketField label="Mailing address"><input className="hz-input" value={form.mailing_address} onChange={e => set('mailing_address', e.target.value)}/></PacketField>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
+      <div className="family-packet-grid family-packet-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
         <PacketField label="Emergency contact"><input className="hz-input" value={form.emergency_name} onChange={e => set('emergency_name', e.target.value)} required/></PacketField>
         <PacketField label="Relationship"><input className="hz-input" value={form.emergency_relationship} onChange={e => set('emergency_relationship', e.target.value)}/></PacketField>
         <PacketField label="Emergency phone"><input className="hz-input" type="tel" value={form.emergency_phone} onChange={e => set('emergency_phone', e.target.value)} required/></PacketField>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
+      <div className="family-packet-grid family-packet-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
         <PacketField label="Second contact"><input className="hz-input" value={form.secondary_emergency_name} onChange={e => set('secondary_emergency_name', e.target.value)}/></PacketField>
         <PacketField label="Relationship"><input className="hz-input" value={form.secondary_emergency_relationship} onChange={e => set('secondary_emergency_relationship', e.target.value)}/></PacketField>
         <PacketField label="Phone"><input className="hz-input" type="tel" value={form.secondary_emergency_phone} onChange={e => set('secondary_emergency_phone', e.target.value)}/></PacketField>
@@ -1417,36 +1712,33 @@ function FamilyInfoPacketCard({ session, program, request, onSaved }) {
       <PacketField label="Medical conditions or allergies"><textarea className="hz-input" rows={2} value={form.medical_conditions} onChange={e => set('medical_conditions', e.target.value)}/></PacketField>
       <PacketField label="Medications"><textarea className="hz-input" rows={2} value={form.medications} onChange={e => set('medications', e.target.value)}/></PacketField>
       <PacketField label="Injury history or physical limitations"><textarea className="hz-input" rows={2} value={form.injury_history} onChange={e => set('injury_history', e.target.value)}/></PacketField>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+      <div className="family-packet-grid family-packet-grid-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
         <PacketField label="Physician"><input className="hz-input" value={form.physician_name} onChange={e => set('physician_name', e.target.value)}/></PacketField>
         <PacketField label="Physician phone"><input className="hz-input" type="tel" value={form.physician_phone} onChange={e => set('physician_phone', e.target.value)}/></PacketField>
         <PacketField label="Interest"><select className="hz-input" value={form.interest} onChange={e => set('interest', e.target.value)}>{FAMILY_PACKET_INTERESTS.map(x => <option key={x} value={x}>{x}</option>)}</select></PacketField>
         <PacketField label="T-shirt size"><select className="hz-input" value={form.tshirt_size} onChange={e => set('tshirt_size', e.target.value)}><option value="">Choose later</option>{FAMILY_PACKET_SIZES.map(x => <option key={x} value={x}>{x}</option>)}</select></PacketField>
       </div>
       <div style={{ display: 'grid', gap: 8 }}>
-        {[
-          ['agree_tuition', 'I understand tuition and fees are due as scheduled'],
-          ['agree_payment_policies', 'I agree to MCA payment policies'],
-          ['agree_autopay', 'I understand auto-pay is required once official registration is completed'],
-          ['agree_handbook', 'I have read and agree to the MCA handbook'],
-          ['agree_attendance', 'I understand and agree to the attendance policy'],
-          ['agree_expectations', 'I agree to follow policies and expectations'],
-        ].map(([key, label]) => (
-          <label key={key} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', color: 'var(--hz-dim)', fontSize: 12 }}>
-            <input type="checkbox" checked={!!form[key]} onChange={e => set(key, e.target.checked)}/>
-            <span>{label}</span>
+        {FAMILY_PACKET_POLICY_ITEMS.map(item => (
+          <label key={item.key} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', color: 'var(--hz-dim)', fontSize: 12 }}>
+            <input type="checkbox" checked={!!form[item.key]} onChange={e => set(item.key, e.target.checked)}/>
+            <span>{item.checkboxLabel}</span>
           </label>
         ))}
       </div>
+      <FamilyPacketPolicyLinks />
       <PacketField label="Media release"><select className="hz-input" value={form.media_release} onChange={e => set('media_release', e.target.value)}><option value="yes">Yes, photo/video permission granted</option><option value="no">No photo/video promotional use</option></select></PacketField>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+      <div className="family-packet-grid family-packet-grid-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
         <PacketField label="Parent waiver signature"><input className="hz-input" value={form.parent_signature} onChange={e => set('parent_signature', e.target.value)} required/></PacketField>
         <PacketField label="Athlete signature"><input className="hz-input" value={form.athlete_signature} onChange={e => set('athlete_signature', e.target.value)}/></PacketField>
       </div>
       <PacketField label="Notes"><textarea className="hz-input" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)}/></PacketField>
+      <FamilyPacketPolicySections />
       {err && <div style={{ color: 'var(--hz-pink)', fontSize: 13 }}>{err}</div>}
-      {saved && <div style={{ color: saved.completion_status === 'complete' ? 'var(--hz-teal)' : 'var(--hz-amber)', fontSize: 12 }}>Saved {new Date(saved.updated_at || saved.submitted_at || Date.now()).toLocaleString()}.</div>}
-      <button className="hz-btn hz-btn-primary" disabled={busy}>{busy ? 'Saving...' : 'Save family packet'}</button>
+      <button className="hz-btn hz-btn-primary" data-testid="family-packet-submit" disabled={busy || !loaded}>
+        {previewOnly ? 'Preview only in View as Parent' : !loaded ? 'Checking saved form...' : busy ? 'Submitting...' : hasSubmission ? 'Update submitted form' : 'Submit family packet'}
+      </button>
+      </fieldset>
     </form>
   );
 }
