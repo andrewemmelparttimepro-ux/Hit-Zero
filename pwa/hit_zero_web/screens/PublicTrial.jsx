@@ -1,5 +1,5 @@
 // PublicTrial
-// Pre-auth lead-capture landing for "Book a free trial" / general inquiry.
+// Pre-auth lead-capture landing for placement visits / general inquiry.
 // Reached from the marketing website's CTAs via
 //   https://thehitzero.net/#trial/<gym_slug>
 //
@@ -42,6 +42,50 @@ const TRIAL_INTERESTS = [
 const CHEER_EXPERIENCE_OPTIONS = ['Beginner', '1-2 years', '3+ years', 'Advanced'];
 const SHIRT_SIZE_OPTIONS = ['YXS','YS','YM','YL','YXL','AS','AM','AL','AXL'];
 const CONTACT_RELATIONSHIPS = ['Parent', 'Guardian', 'Grandparent', 'Other'];
+const MCA_POLICY_ITEMS = [
+  {
+    key: 'agreeTuition',
+    anchor: 'trial-policy-tuition',
+    shortLabel: 'Tuition + fees',
+    checkboxLabel: 'I understand tuition and fees are due as scheduled',
+    body: 'MCA tuition, registration charges, camp fees, uniform costs, and other approved balances stay due on the schedule the gym gives your family. Missing a payment can pause participation until the account is current.',
+  },
+  {
+    key: 'agreePaymentPolicies',
+    anchor: 'trial-policy-payment',
+    shortLabel: 'Payment policies',
+    checkboxLabel: 'I agree to MCA payment policies',
+    body: 'Online checkout covers the current registration or inquiry step only. Other balances still follow MCA billing instructions, and families are responsible for keeping payment information accurate and responding quickly if a charge or invoice needs attention.',
+  },
+  {
+    key: 'agreeAutopay',
+    anchor: 'trial-policy-autopay',
+    shortLabel: 'Autopay',
+    checkboxLabel: 'I understand auto-pay is required once official registration is completed',
+    body: 'This acknowledgement means MCA may require a card or billing method on file once an athlete is officially placed. Submitting this form does not start recurring drafts by itself; the gym handles the live billing setup separately.',
+  },
+  {
+    key: 'agreeHandbook',
+    anchor: 'trial-policy-handbook',
+    shortLabel: 'Handbook',
+    checkboxLabel: 'I have read and agree to the MCA handbook',
+    body: 'Families are expected to follow MCA rules for communication, arrival, attire, travel, safety, and team participation. Coaches and owners can enforce those standards when they protect athletes, staff, or the program.',
+  },
+  {
+    key: 'agreeAttendance',
+    anchor: 'trial-policy-attendance',
+    shortLabel: 'Attendance',
+    checkboxLabel: 'I understand and agree to the attendance policy',
+    body: 'Athletes are expected to attend practices, classes, camps, performances, and competitions assigned to them. Families should report absences early, because repeated misses can affect routines, placements, and eligibility.',
+  },
+  {
+    key: 'agreeExpectations',
+    anchor: 'trial-policy-expectations',
+    shortLabel: 'Expectations',
+    checkboxLabel: 'I agree to follow policies and expectations',
+    body: 'Families agree to respectful behavior, timely communication, and following coach or staff direction in the gym, at events, and in parent communication channels. MCA may act on conduct that harms athletes, staff, or the team environment.',
+  },
+];
 
 function trialPrefill() {
   try {
@@ -114,6 +158,43 @@ function mcaIntakeMetadata(form, extra = {}) {
     },
     notes: form.notes || null,
   };
+}
+
+function TrialPolicyLinks() {
+  return (
+    <div style={{ display: 'grid', gap: 6, padding: '10px 12px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, background: 'rgba(255,255,255,0.03)' }}>
+      <div className="hz-eyebrow" style={{ color: 'var(--hz-dim)' }}>Review the MCA policy terms</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {MCA_POLICY_ITEMS.map(item => (
+          <a
+            key={item.key}
+            href={`#${item.anchor}`}
+            style={{ color: 'var(--hz-teal)', fontSize: 12, fontWeight: 700, textDecoration: 'none' }}
+          >
+            {item.shortLabel}
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TrialPolicySections() {
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      {MCA_POLICY_ITEMS.map(item => (
+        <section
+          key={item.key}
+          id={item.anchor}
+          style={{ padding: '12px 14px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(7,10,18,0.55)' }}
+        >
+          <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)', marginBottom: 6 }}>{item.shortLabel}</div>
+          <div style={{ color: '#fff', fontWeight: 800, fontSize: 13, lineHeight: 1.45 }}>{item.checkboxLabel}</div>
+          <p style={{ margin: '8px 0 0', color: 'var(--hz-dim)', fontSize: 12, lineHeight: 1.55 }}>{item.body}</p>
+        </section>
+      ))}
+    </div>
+  );
 }
 
 function PublicTrial({ gymSlug }) {
@@ -319,7 +400,7 @@ function PublicTrial({ gymSlug }) {
     <PTPage>
       <div style={{ maxWidth: 540, margin: '0 auto' }}>
         <div className="hz-card" style={{ padding: 22, marginBottom: 16 }}>
-          <div className="hz-eyebrow" style={{ marginBottom: 8 }}>{gymName} · I'm interested</div>
+          <div className="hz-eyebrow" style={{ marginBottom: 8 }}>{gymName} · Start here</div>
           <div className="hz-display" style={{ fontSize: 28, lineHeight: 1.1 }}>
             Tell {gymName} where your athlete fits — <span style={{ background: 'linear-gradient(135deg, var(--hz-teal), var(--hz-pink))', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', fontStyle: 'italic' }}>staff will place you</span>.
           </div>
@@ -470,12 +551,7 @@ function PublicTrial({ gymSlug }) {
                   {[
                     ['paymentCompleted', 'Payment completed via Square'],
                     ['paymentNotCompleted', 'Payment not completed yet'],
-                    ['agreeTuition', 'I understand tuition and fees are due as scheduled'],
-                    ['agreePaymentPolicies', 'I agree to MCA payment policies'],
-                    ['agreeAutopay', 'I understand auto-pay is required once official registration is completed'],
-                    ['agreeHandbook', 'I have read and agree to the MCA handbook'],
-                    ['agreeAttendance', 'I understand and agree to the attendance policy'],
-                    ['agreeExpectations', 'I agree to follow policies and expectations'],
+                    ...MCA_POLICY_ITEMS.map(item => [item.key, item.checkboxLabel]),
                   ].map(([key, label]) => (
                     <label key={key} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', color: 'var(--hz-dim)', fontSize: 12 }}>
                       <input type="checkbox" checked={!!form[key]} onChange={e => set(key, e.target.checked)} disabled={submitting}/>
@@ -483,6 +559,7 @@ function PublicTrial({ gymSlug }) {
                     </label>
                   ))}
                 </div>
+                <TrialPolicyLinks />
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <PTField label="Parent signature name">
                     <input className="hz-input" value={form.parentSignature} onChange={e => set('parentSignature', e.target.value)} disabled={submitting}/>
@@ -508,11 +585,12 @@ function PublicTrial({ gymSlug }) {
             )}
 
             <button type="submit" className="hz-btn hz-btn-primary" disabled={submitting} style={{ minHeight: 48, fontSize: 15 }}>
-              {submitting ? 'Sending…' : "Send I'm interested form →"}
+              {submitting ? 'Sending…' : 'Send form →'}
             </button>
             <p style={{ fontSize: 11, color: 'var(--hz-dimmer)', lineHeight: 1.5, textAlign: 'center' }}>
               Your inquiry lands in {gymName}'s Hit Zero leads queue. We'll never sell your info.
             </p>
+            <TrialPolicySections />
           </form>
         )}
 

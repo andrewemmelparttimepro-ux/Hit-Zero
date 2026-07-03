@@ -1215,8 +1215,12 @@ window.ParentDashboard = ParentDashboard;
 
 function FamilyForms({ snap, session, navigate }) {
   const profile = session?.actualProfile || session?.profile || {};
-  const programId = profile.program_id || session?.profile?.program_id || null;
-  const program = (programId ? (snap.programs || []).find(p => p.id === programId) : null) || (snap.programs || [])[0] || null;
+  const rawProgramId = profile.program_id || session?.profile?.program_id || null;
+  const profileProgramId = window.HZisPlaceholderProgramId?.(rawProgramId) ? null : rawProgramId;
+  const program = window.HZactiveProgramFromSnap
+    ? window.HZactiveProgramFromSnap(snap, session)
+    : ((profileProgramId ? (snap.programs || []).find(p => p.id === profileProgramId) : null) || (snap.programs || [])[0] || null);
+  const programId = program?.id || profileProgramId || null;
   const programName = window.HZprogramDisplayName ? window.HZprogramDisplayName(program, 'your gym') : (program?.brand_name || program?.public_name || program?.name || 'your gym');
   const scope = window.HZviewerScope ? window.HZviewerScope(snap, session) : null;
   const kids = scope?.linkedAthletes || [];
@@ -1229,11 +1233,19 @@ function FamilyForms({ snap, session, navigate }) {
     .slice(0, 8);
   const enrollments = window.HZsel?.classEnrollmentsForParent ? window.HZsel.classEnrollmentsForParent(session) : [];
 
+  function isDropInClass(klass) {
+    const text = [klass?.name, klass?.price_unit, klass?.price_unit_label, klass?.schedule_summary, klass?.description]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return /\bdrop[\s-]?in\b/.test(text) || text.includes('per class');
+  }
+
   return (
     <div>
       <SectionHeading eyebrow={`Family forms · ${programName}`} title="Forms."/>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.25fr) minmax(280px, 0.75fr)', gap: 20, alignItems: 'start' }}>
-        <div style={{ display: 'grid', gap: 18 }}>
+      <div className="family-forms-layout" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.25fr) minmax(280px, 0.75fr)', gap: 20, alignItems: 'start' }}>
+        <div className="family-forms-main" style={{ display: 'grid', gap: 18 }}>
           {window.FamilyInfoPacketCard ? (
             <window.FamilyInfoPacketCard session={session} program={program}/>
           ) : (
@@ -1248,7 +1260,7 @@ function FamilyForms({ snap, session, navigate }) {
                 return (
                   <div key={kid.id} style={{ padding: 14, borderRadius: 10, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.03)' }}>
                     <div style={{ fontWeight: 900 }}>{kid.display_name}</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginTop: 10 }}>
+                    <div className="family-forms-record-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginTop: 10 }}>
                       <MiniBox label="Medical" value={medical.record ? 'Saved' : 'Needed'} sub={medical.record?.insurance_carrier || ''} accent={medical.record ? 'var(--hz-green)' : 'var(--hz-amber)'}/>
                       <MiniBox label="Contacts" value={contacts.length || 0} sub={contacts[0]?.name || 'emergency'} accent={contacts.length ? 'var(--hz-teal)' : 'var(--hz-amber)'}/>
                       <MiniBox label="Waiver" value={(snap.waiver_signatures || []).some(row => row.athlete_id === kid.id) ? 'Signed' : 'Needed'} sub="liability" accent={(snap.waiver_signatures || []).some(row => row.athlete_id === kid.id) ? 'var(--hz-green)' : 'var(--hz-amber)'}/>
@@ -1264,23 +1276,26 @@ function FamilyForms({ snap, session, navigate }) {
             </div>
           </div>
         </div>
-        <aside style={{ display: 'grid', gap: 16 }}>
+        <aside className="family-forms-aside" style={{ display: 'grid', gap: 16 }}>
           <div className="hz-card">
             <div className="hz-eyebrow" style={{ marginBottom: 10 }}>Age-eligible classes</div>
             <div style={{ color: 'var(--hz-dim)', fontSize: 12.5, lineHeight: 1.5, marginBottom: 12 }}>
               {age == null ? 'Add athlete age or date of birth in the packet to narrow class options.' : `Showing classes that fit age ${age}.`}
             </div>
             <div style={{ display: 'grid', gap: 10 }}>
-              {eligibleClasses.map(klass => (
-                <div key={klass.id} style={{ padding: 12, borderRadius: 10, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.03)' }}>
-                  <div style={{ fontWeight: 900 }}>{klass.name}</div>
-                  <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 3 }}>{klass.schedule_summary || 'Schedule pending'}</div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', marginTop: 10 }}>
-                    <span style={{ color: 'var(--hz-teal)', fontSize: 12, fontWeight: 800 }}>{klass.age_range_min || klass.age_range_max ? `${klass.age_range_min || 0}-${klass.age_range_max || 'up'} yrs` : 'All ages'}</span>
-                    <a className="hz-btn hz-btn-primary hz-btn-sm" href={`#/book/${klass.id}`}>Register</a>
+              {eligibleClasses.map(klass => {
+                const dropIn = isDropInClass(klass);
+                return (
+                  <div key={klass.id} style={{ padding: 12, borderRadius: 10, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.03)' }}>
+                    <div style={{ fontWeight: 900 }}>{klass.name}</div>
+                    <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 3 }}>{klass.schedule_summary || 'Schedule pending'}</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', marginTop: 10 }}>
+                      <span style={{ color: 'var(--hz-teal)', fontSize: 12, fontWeight: 800 }}>{klass.age_range_min || klass.age_range_max ? `${klass.age_range_min || 0}-${klass.age_range_max || 'up'} yrs` : 'All ages'}</span>
+                      <a className="hz-btn hz-btn-primary hz-btn-sm" href={`#/${dropIn ? 'drop-in' : 'book'}/${klass.id}`}>{dropIn ? 'Drop in' : 'Register'}</a>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {eligibleClasses.length === 0 && (
                 <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>No open classes match this age yet.</div>
               )}

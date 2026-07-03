@@ -88,7 +88,7 @@ async function sendIntakeEmail(opts: {
     const kindLabel =
       opts.kind === 'class_booking' ? 'class booking' :
       opts.kind === 'open_gym' ? 'open gym participant' :
-      opts.kind === 'lead' ? 'free trial / lead' :
+      opts.kind === 'lead' ? 'interest / lead' :
       'registration';
     const subjectKind = opts.kind === 'lead' ? 'New lead' : 'New booking';
     const subjectFor = opts.athleteName || opts.parentName;
@@ -457,8 +457,49 @@ async function handleOpenGym(body: any): Promise<Response> {
   const signature = String(body.parent_signature || body.guardian_signature || '').trim();
   if (!signature) return bad(400, 'missing_signature', 'guardian signature is required for liability coverage');
 
+  let classId: string | null = null;
+  let classRow: any = null;
+  if (body.class_id) {
+    if (typeof body.class_id !== 'string' || !UUID_RE.test(body.class_id)) {
+      return bad(400, 'bad_class_id', 'class_id must be a valid uuid');
+    }
+    const { data: c } = await supa
+      .from('program_classes')
+      .select('id, program_id, is_public, registration_open, name, capacity, age_range_min, age_range_max, schedule_summary, price_cents, price_unit, price_unit_label')
+      .eq('id', body.class_id)
+      .maybeSingle();
+    if (!c) return bad(404, 'class_not_found', 'class not found');
+    if (c.program_id !== program.id) {
+      return bad(400, 'class_program_mismatch', 'class belongs to a different program');
+    }
+    if (!c.is_public) return bad(403, 'class_not_public', 'class is not public');
+    if (!c.registration_open) return bad(403, 'class_closed', 'this drop-in is not open for sign-ups right now');
+    const ageCheck = assertAgeEligible(c, body.athlete_dob);
+    if (!ageCheck.ok) {
+      return bad(
+        409,
+        'age_not_eligible',
+        `This drop-in is for ${ageCheck.min != null && ageCheck.max != null ? `ages ${ageCheck.min}-${ageCheck.max}` : ageCheck.min != null ? `ages ${ageCheck.min}+` : `ages up to ${ageCheck.max}`}.`,
+        { athlete_age: ageCheck.athleteAge, age_range_min: ageCheck.min, age_range_max: ageCheck.max }
+      );
+    }
+    if (c.capacity != null) {
+      const { count } = await supa
+        .from('registrations')
+        .select('id', { count: 'exact', head: true })
+        .eq('class_id', c.id)
+        .in('status', ['pending', 'accepted']);
+      if ((count || 0) >= c.capacity) {
+        return bad(409, 'class_full', 'this drop-in is full');
+      }
+    }
+    classId = c.id;
+    classRow = c;
+  }
+
   const insertRow: Record<string, unknown> = {
     program_id: program.id,
+    class_id: classId,
     athlete_name: athleteName,
     athlete_dob: body.athlete_dob || null,
     parent_name: parentName,
@@ -472,6 +513,11 @@ async function handleOpenGym(body: any): Promise<Response> {
       participant_kind: 'open_gym',
       account_required: false,
       liability_covered: true,
+      class_name: classRow?.name ?? null,
+      schedule_summary: classRow?.schedule_summary ?? null,
+      price_cents: classRow?.price_cents ?? null,
+      price_unit: classRow?.price_unit ?? null,
+      price_unit_label: classRow?.price_unit_label ?? null,
       guardian_signature: signature,
       emergency_contact: {
         name: emergencyName,
@@ -495,11 +541,19 @@ async function handleOpenGym(body: any): Promise<Response> {
     parentName,
     parentEmail,
     parentPhone,
-    interest: 'Open Gym',
+    className: classRow?.name ?? null,
+    interest: classRow?.name ? null : 'Open Gym',
     notes: insertRow.notes as string | null,
     source: insertRow.source as string | null,
   }).catch(() => {});
-  return json({ ok: true, registration_id: data.id, open_gym: true, account_required: false });
+  return json({
+    ok: true,
+    registration_id: data.id,
+    open_gym: true,
+    account_required: false,
+    class: classRow ? { id: classRow.id, name: classRow.name } : null,
+    amount_cents: classRow?.price_cents ?? 0,
+  });
 }
 
 Deno.serve(async (req: Request) => {

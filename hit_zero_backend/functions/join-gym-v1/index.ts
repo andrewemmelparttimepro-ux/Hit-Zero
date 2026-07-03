@@ -18,6 +18,16 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+class IdentityConflictError extends Error {
+  details: Record<string, unknown>;
+
+  constructor(details: Record<string, unknown>) {
+    super('This signed-in user matches a different Hit Zero profile. Staff must repair the account link before gym data can load.');
+    this.name = 'IdentityConflictError';
+    this.details = details;
+  }
+}
+
 function json(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -153,7 +163,20 @@ async function getAuthedProfile(req: Request, required = true) {
       .order('updated_at', { ascending: false })
       .limit(1);
     if (emailError) throw emailError;
-    profile = profilesByEmail?.[0] || null;
+    const emailProfile = profilesByEmail?.[0] || null;
+    if (emailProfile) {
+      if (emailProfile.id !== user.id && required) {
+        throw new IdentityConflictError({
+          signed_in_user_id: user.id,
+          signed_in_email: user.email,
+          matched_profile_id: emailProfile.id,
+          matched_profile_email: emailProfile.email,
+          matched_profile_role: emailProfile.role,
+          matched_profile_program_id: emailProfile.program_id,
+        });
+      }
+      if (emailProfile.id === user.id) profile = emailProfile;
+    }
   }
 
   if (!profile && required) {
@@ -166,8 +189,8 @@ async function getAuthedProfile(req: Request, required = true) {
         id: user.id,
         email,
         display_name: displayName,
-        role: ['athlete', 'parent', 'coach', 'owner'].includes(meta.role) ? meta.role : 'parent',
-        program_id: cleanUuid(meta.program_id),
+        role: 'parent',
+        program_id: null,
       })
       .select('*')
       .single();
@@ -979,8 +1002,14 @@ async function updateRegistrationDecision(profile: any, body: any) {
   const status = ['pending', 'accepted', 'waitlist', 'rejected', 'withdrawn'].includes(body.status)
     ? body.status
     : null;
+  const paymentStatus = body.payment_status === 'comped'
+    ? 'comped'
+    : body.payment_status === 'none'
+      ? 'none'
+      : null;
   if (!registrationId) return json({ error: 'Registration id is required.' }, 400);
   if (!status) return json({ error: 'Choose a valid registration status.' }, 400);
+  if (paymentStatus === 'comped' && status !== 'accepted') return json({ error: 'Comped registrations must stay accepted.' }, 400);
 
   const { data: existing, error: existingError } = await supa
     .from('registrations')
@@ -998,6 +1027,7 @@ async function updateRegistrationDecision(profile: any, body: any) {
     decided_by: profile.id,
     decided_at: new Date().toISOString(),
   };
+  if (paymentStatus) patch.payment_status = paymentStatus;
   if (body.class_id !== undefined) {
     const classId = cleanText(body.class_id, 80) || null;
     if (classId) {
@@ -1558,6 +1588,9 @@ Deno.serve(async (req) => {
     if (action === 'create_invite') return await createInvite(profile, body);
     return json({ error: 'Unknown action.' }, 400);
   } catch (err) {
+    if (err instanceof IdentityConflictError) {
+      return json({ error: err.message, code: 'identity_conflict', identity_conflict: err.details }, 409);
+    }
     return json({ error: err instanceof Error ? err.message : String(err) }, 500);
   }
 });

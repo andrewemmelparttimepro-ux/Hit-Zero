@@ -10,6 +10,7 @@
 //   2. requiring the program has a 'connected' Square OAuth connection
 //   3. requiring the registration (if any) belongs to that same program
 //   4. enforcing public_checkout_enabled in program_payment_settings
+//   5. recomputing registration/window/class fees server-side before charging
 //
 // All Square calls happen server-side using the program's own access token
 // (decrypted from billing_provider_connections.access_token_enc). The
@@ -25,6 +26,7 @@
 //     "buyer_email_address": "...",     // for receipt
 //     "buyer_full_name": "...",         // optional
 //     "registration_id": "...",         // optional but recommended
+//     "registration_ids": ["..."],       // optional group checkout
 //     "idempotency_key": "...",         // optional; defaults to crypto.randomUUID()
 //     "note": "..."                     // optional human-readable note
 //   }
@@ -49,12 +51,70 @@ type Body = {
   buyer_email_address?: string;
   buyer_full_name?: string;
   registration_id?: string;
+  registration_ids?: string[];
   idempotency_key?: string;
   note?: string;
 };
 
 function bad(status: number, code: string, message: string, extra: Record<string, unknown> = {}) {
   return json({ ok: false, code, message, ...extra }, status);
+}
+
+function cleanRegistrationIds(body: Body) {
+  const raw = [
+    ...(Array.isArray(body.registration_ids) ? body.registration_ids : []),
+    body.registration_id,
+  ];
+  return [...new Set(raw
+    .map((id) => String(id || '').trim())
+    .filter(Boolean)
+    .slice(0, 20))];
+}
+
+async function paymentItemsForRegistrations(registrations: any[]) {
+  const classIds = [...new Set(registrations.map((row) => row.class_id).filter(Boolean))];
+  const windowIds = [...new Set(registrations.map((row) => row.window_id).filter(Boolean))];
+  const [classes, windows] = await Promise.all([
+    classIds.length
+      ? supa
+        .from('program_classes')
+        .select('id, name, price_cents, price_unit, price_unit_label')
+        .in('id', classIds)
+      : Promise.resolve({ data: [], error: null }),
+    windowIds.length
+      ? supa
+        .from('registration_windows')
+        .select('id, title, fee_amount')
+        .in('id', windowIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (classes.error) throw classes.error;
+  if (windows.error) throw windows.error;
+
+  const classById = new Map((classes.data || []).map((row: any) => [row.id, row]));
+  const windowById = new Map((windows.data || []).map((row: any) => [row.id, row]));
+
+  return registrations.map((row) => {
+    const klass: any = row.class_id ? classById.get(row.class_id) : null;
+    const windowRow: any = row.window_id ? windowById.get(row.window_id) : null;
+    const metadata = row.intake_metadata && typeof row.intake_metadata === 'object'
+      ? row.intake_metadata
+      : {};
+    const metadataCents = Number(metadata.price_cents || metadata.payment?.amount_cents || 0);
+    const priceCents = klass
+      ? Number(klass.price_cents || 0)
+      : windowRow
+        ? Math.round(Number(windowRow.fee_amount || 0) * 100)
+        : metadataCents;
+
+    return {
+      registration_id: row.id,
+      athlete_name: row.athlete_name || null,
+      name: klass?.name || windowRow?.title || metadata.class_name || 'registration',
+      price_cents: Number.isFinite(priceCents) ? priceCents : 0,
+      source: klass ? 'class' : windowRow ? 'registration_window' : metadataCents ? 'intake_metadata' : 'none',
+    };
+  });
 }
 
 Deno.serve(async (req: Request) => {
@@ -113,40 +173,44 @@ Deno.serve(async (req: Request) => {
     return bad(400, 'wrong_provider', `default_provider is ${settings.default_provider}, not square`);
   }
 
-  // Resolve + validate registration if provided
+  // Resolve + validate registrations if provided. Payment amounts for
+  // registrations are recomputed from program_classes/registration_windows so
+  // the browser cannot alter a fee.
+  const registrationIds = cleanRegistrationIds(body);
+  let registrations: any[] = [];
   let registration: any = null;
-  if (body.registration_id) {
-    const { data: regRow, error: regErr } = await supa
+  let paymentItems: any[] = [];
+  if (registrationIds.length) {
+    const { data: regRows, error: regErr } = await supa
       .from('registrations')
-      .select('id, program_id, window_id, payment_status, parent_email, parent_name')
-      .eq('id', body.registration_id)
-      .maybeSingle();
+      .select('id, program_id, window_id, class_id, payment_status, parent_email, parent_name, athlete_name, intake_metadata')
+      .in('id', registrationIds);
     if (regErr) return bad(500, 'registration_lookup_failed', regErr.message);
-    if (!regRow) return bad(404, 'registration_not_found', 'registration not found');
-    if (regRow.program_id !== programId) {
+    const byId = new Map((regRows || []).map((row: any) => [row.id, row]));
+    registrations = registrationIds.map((id) => byId.get(id)).filter(Boolean);
+    if (registrations.length !== registrationIds.length) {
+      return bad(404, 'registration_not_found', 'registration not found');
+    }
+    if (registrations.some((row) => row.program_id !== programId)) {
       return bad(400, 'registration_program_mismatch', 'registration belongs to a different program');
     }
-    if (regRow.payment_status === 'paid') {
-      return bad(409, 'already_paid', 'this registration has already been paid');
+    if (registrations.some((row) => row.payment_status === 'paid')) {
+      return bad(409, 'already_paid', 'one or more registrations have already been paid');
     }
-    registration = regRow;
-  }
-
-  // Cross-check amount against the window fee (if any) so the client can't
-  // alter the price. We allow ±1 cent tolerance for currency rounding.
-  if (registration?.window_id) {
-    const { data: window } = await supa
-      .from('registration_windows')
-      .select('id, fee_amount')
-      .eq('id', registration.window_id)
-      .maybeSingle();
-    if (window?.fee_amount != null) {
-      const expectedCents = Math.round(Number(window.fee_amount) * 100);
-      if (Math.abs(expectedCents - body.amount_cents) > 1) {
-        return bad(400, 'amount_mismatch',
-          `amount_cents (${body.amount_cents}) does not match the registration window fee (${expectedCents})`);
-      }
+    try {
+      paymentItems = await paymentItemsForRegistrations(registrations);
+    } catch (err) {
+      return bad(500, 'fee_lookup_failed', err instanceof Error ? err.message : 'could not verify registration fee');
     }
+    const expectedCents = paymentItems.reduce((sum, row) => sum + Number(row.price_cents || 0), 0);
+    if (!expectedCents) {
+      return bad(409, 'no_payable_item', 'this registration does not have a payable class, window, or drop-in fee attached');
+    }
+    if (Math.abs(expectedCents - body.amount_cents) > 1) {
+      return bad(400, 'amount_mismatch',
+        `amount_cents (${body.amount_cents}) does not match the registration fee (${expectedCents})`);
+    }
+    registration = registrations[0] || null;
   }
 
   // Get the Square connection + access token
@@ -172,8 +236,8 @@ Deno.serve(async (req: Request) => {
   const idempotencyKey = body.idempotency_key || crypto.randomUUID();
   const currency = (body.currency || settings.currency || 'USD').toUpperCase();
 
-  const note = body.note || (registration
-    ? `Hit Zero registration · ${registration.parent_name || ''}`.trim()
+  const note = body.note || (registrations.length
+    ? `Hit Zero registration · ${registration?.parent_name || ''}`.trim()
     : `Hit Zero public checkout`);
 
   // Call Square CreatePayment
@@ -193,7 +257,7 @@ Deno.serve(async (req: Request) => {
         location_id: connection.external_location_id,
         autocomplete: true,
         buyer_email_address: body.buyer_email_address || registration?.parent_email || undefined,
-        reference_id: registration?.id || undefined,
+        reference_id: registrations.length === 1 ? registration?.id : undefined,
         note: note.slice(0, 500),
       },
     });
@@ -202,8 +266,8 @@ Deno.serve(async (req: Request) => {
     const msg = err instanceof Error ? err.message : 'Square error';
     // Surface a sanitized error code for the website to display, but log full
     // detail in payment_metadata if we have a registration to attach it to.
-    if (registration) {
-      await supa.from('registrations').update({
+    if (registrations.length) {
+      await Promise.all(registrations.map((row) => supa.from('registrations').update({
         payment_status: 'failed',
         payment_provider: 'square',
         payment_metadata: {
@@ -211,7 +275,7 @@ Deno.serve(async (req: Request) => {
           last_error: msg,
           idempotency_key: idempotencyKey,
         },
-      }).eq('id', registration.id);
+      }).eq('id', row.id)));
     }
     return bad(502, 'square_payment_failed', msg);
   }
@@ -221,30 +285,36 @@ Deno.serve(async (req: Request) => {
   }
 
   // Mirror payment back into the registration
-  if (registration) {
+  if (registrations.length) {
     const paidStatus = (payment.status || '').toUpperCase();
     const isPaid = paidStatus === 'COMPLETED' || paidStatus === 'APPROVED';
     const updatedAt = payment.updated_at || payment.created_at || new Date().toISOString();
+    const itemByRegistrationId = new Map(paymentItems.map((item) => [item.registration_id, item]));
 
-    await supa.from('registrations').update({
-      payment_status: isPaid ? 'paid' : 'pending',
-      payment_provider: 'square',
-      external_payment_id: payment.id,
-      amount_paid_cents: Number(payment.amount_money?.amount ?? body.amount_cents),
-      currency: String(payment.amount_money?.currency ?? currency),
-      paid_at: isPaid ? updatedAt : null,
-      payment_metadata: {
-        idempotency_key: idempotencyKey,
-        receipt_url: payment.receipt_url ?? null,
-        receipt_number: payment.receipt_number ?? null,
-        order_id: payment.order_id ?? null,
-        location_id: payment.location_id ?? connection.external_location_id,
-        square_status: payment.status ?? null,
-        card_brand: payment.card_details?.card?.card_brand ?? null,
-        card_last4: payment.card_details?.card?.last_4 ?? null,
-        captured_at: new Date().toISOString(),
-      },
-    }).eq('id', registration.id);
+    await Promise.all(registrations.map((row) => {
+      const item = itemByRegistrationId.get(row.id);
+      return supa.from('registrations').update({
+        payment_status: isPaid ? 'paid' : 'pending',
+        payment_provider: 'square',
+        external_payment_id: payment.id,
+        amount_paid_cents: Number(item?.price_cents || body.amount_cents),
+        currency: String(payment.amount_money?.currency ?? currency),
+        paid_at: isPaid ? updatedAt : null,
+        payment_metadata: {
+          idempotency_key: idempotencyKey,
+          receipt_url: payment.receipt_url ?? null,
+          receipt_number: payment.receipt_number ?? null,
+          order_id: payment.order_id ?? null,
+          location_id: payment.location_id ?? connection.external_location_id,
+          square_status: payment.status ?? null,
+          card_brand: payment.card_details?.card?.card_brand ?? null,
+          card_last4: payment.card_details?.card?.last_4 ?? null,
+          captured_at: new Date().toISOString(),
+          group_payment: registrations.length > 1,
+          registration_ids: registrations.map((reg) => reg.id),
+        },
+      }).eq('id', row.id);
+    }));
   }
 
   return json({
@@ -257,6 +327,7 @@ Deno.serve(async (req: Request) => {
       receipt_number: payment.receipt_number ?? null,
     },
     registration_id: registration?.id ?? null,
+    registration_ids: registrations.map((row) => row.id),
     idempotency_key: idempotencyKey,
   });
 });

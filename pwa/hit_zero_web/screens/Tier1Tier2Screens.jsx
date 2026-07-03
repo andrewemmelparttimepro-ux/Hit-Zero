@@ -77,6 +77,13 @@ async function upsertPersistedRow(table, payload, onConflict = 'id') {
 function notify(title, body, variant = 'got_it') {
   if (window.HZToast) window.HZToast({ variant, eyebrow: 'Saved', title, body });
 }
+function isSettledRegistrationPayment(status) {
+  return status === 'paid' || status === 'comped';
+}
+function medicalEditorCanEdit(session) {
+  const role = session?.actualProfile?.role || session?.profile?.role || '';
+  return role === 'owner' || role === 'coach';
+}
 function escapePdfHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, ch => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -441,7 +448,7 @@ function staffScheduleSessionsFromSnap(snap, limit = 16) {
 }
 
 function Schedule({ snap, session, pushToast }) {
-  const me = session?.actualProfile || session?.profile || { id: 'u_coach', role: 'coach' };
+  const me = session?.profile || session?.actualProfile || { id: 'u_coach', role: 'coach' };
   const scope = window.HZviewerScope ? window.HZviewerScope(snap, session) : null;
   const canEdit = me.role === 'coach' || me.role === 'owner';
   const selectorUpcoming = canEdit
@@ -1840,15 +1847,20 @@ function Registration({ snap, session }) {
   );
 }
 function RegistrationInbox({ snap, session }) {
+  const effectiveProfile = session?.profile || {};
+  const actualProfile = session?.actualProfile || effectiveProfile;
+  const staffRole = actualProfile.role || effectiveProfile.role || '';
+  const isStaff = ['owner', 'coach'].includes(staffRole);
+  const hasStaffProgram = !!(actualProfile.program_id || effectiveProfile.program_id);
   const isCheckoutHold = window.HZsel?.isCheckoutHold || ((row) => {
     const meta = row?.intake_metadata || {};
-    return row?.payment_status !== 'paid'
+    return !isSettledRegistrationPayment(row?.payment_status)
       && (meta.payment_gate_required === true || meta.payment_gate_state === 'checkout_started');
   });
   const checkoutHolds = (snap.registrations || []).filter(isCheckoutHold);
   const allRegs = (snap.registrations || []).filter(r => !isCheckoutHold(r)).slice().sort((a,b) => {
-    if (a.payment_status === 'paid' && b.payment_status !== 'paid') return -1;
-    if (a.payment_status !== 'paid' && b.payment_status === 'paid') return 1;
+    if (isSettledRegistrationPayment(a.payment_status) && !isSettledRegistrationPayment(b.payment_status)) return -1;
+    if (!isSettledRegistrationPayment(a.payment_status) && isSettledRegistrationPayment(b.payment_status)) return 1;
     if (a.status === 'pending' && b.status !== 'pending') return -1;
     if (a.status !== 'pending' && b.status === 'pending') return 1;
     return new Date(b.created_at) - new Date(a.created_at);
@@ -1877,7 +1889,7 @@ function RegistrationInbox({ snap, session }) {
       .includes(q);
     const matchesStatus = statusFilter === 'all' || r.status === statusFilter;
     const isUnpaid = ['none', 'pending', 'failed', null, undefined].includes(r.payment_status);
-    const matchesPay = payFilter === 'all' || (payFilter === 'paid' ? r.payment_status === 'paid' : isUnpaid);
+    const matchesPay = payFilter === 'all' || (payFilter === 'settled' ? isSettledRegistrationPayment(r.payment_status) : isUnpaid);
     return matchesQuery && matchesStatus && matchesPay;
   });
   const [activeId, setActiveId] = _useState(allRegs[0]?.id || null);
@@ -1920,15 +1932,19 @@ function RegistrationInbox({ snap, session }) {
     return out;
   }, { pending: 0, accepted: 0, waitlist: 0, rejected: 0, withdrawn: 0, paid: 0 });
   const unpaidRegs = allRegs.filter(r => ['none', 'pending', 'failed', null, undefined].includes(r.payment_status) && ['pending', 'accepted'].includes(r.status));
+  const staffMissingScope = isStaff && !hasStaffProgram && !allRegs.length;
+  const staffScopedEmpty = isStaff && hasStaffProgram && !allRegs.length;
 
-  async function decide(nextStatus) {
+  async function decide(nextStatus, extra = {}) {
     if (!active) return;
-    setBusyDecision(nextStatus);
+    const busyKey = extra.payment_status === 'comped' ? 'comped' : nextStatus;
+    setBusyDecision(busyKey);
     setDecisionError('');
     const { data, error } = window.HZdb.auth?.updateRegistrationDecision
       ? await window.HZdb.auth.updateRegistrationDecision(active.id, nextStatus, notes, {
           decision_reason: decisionReason,
           class_id: assignmentClassId || null,
+          ...extra,
         })
       : { data: null, error: new Error('Registration decision service is unavailable.') };
     if (error) {
@@ -2173,7 +2189,7 @@ function RegistrationInbox({ snap, session }) {
         <select className="hz-input" value={payFilter} onChange={e => setPayFilter(e.target.value)}>
           <option value="all">All payments</option>
           <option value="unpaid">Unpaid</option>
-          <option value="paid">Paid</option>
+          <option value="settled">Paid / comped</option>
         </select>
         <button className="hz-btn" type="button" onClick={exportRegistrationsPdf} disabled={!regs.length}>Export PDF</button>
       </div>
@@ -2205,7 +2221,17 @@ function RegistrationInbox({ snap, session }) {
               </button>
             );
           })}
-          {!regs.length && <div className="hz-card" style={{ color: 'var(--hz-dim)', fontSize: 13 }}>No registrations on file yet.</div>}
+          {!regs.length && staffMissingScope && (
+            <div className="hz-card" style={{ color: 'var(--hz-amber)', fontSize: 13 }}>
+              This staff account is missing gym access, so registrations are hidden until the profile is connected to a program.
+            </div>
+          )}
+          {!regs.length && staffScopedEmpty && (
+            <div className="hz-card" style={{ color: 'var(--hz-amber)', fontSize: 13 }}>
+              No registrations are visible for this gym scope. If existing families should appear, sign out/in and contact support before assuming the roster is empty.
+            </div>
+          )}
+          {!regs.length && !staffMissingScope && !staffScopedEmpty && <div className="hz-card" style={{ color: 'var(--hz-dim)', fontSize: 13 }}>No registrations on file yet.</div>}
         </aside>
 
         <section className="hz-card" style={{ padding: 22 }}>
@@ -2240,15 +2266,16 @@ function RegistrationInbox({ snap, session }) {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 18 }}>
                 <Select label="Move to class / program" value={assignmentClassId} onChange={setAssignmentClassId} options={assistedClassOptions}/>
-                <Input label="Reject / move reason" value={decisionReason} onChange={setDecisionReason}/>
+                <Input label="Decision / move reason" value={decisionReason} onChange={setDecisionReason}/>
               </div>
 
               <div style={{ marginTop: 18, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button className="hz-btn hz-btn-primary" disabled={!!busyDecision} onClick={() => decide('accepted')}>{busyDecision === 'accepted' ? 'Saving...' : 'Accept'}</button>
+                <button className="hz-btn" disabled={!!busyDecision} onClick={() => decide('accepted', { payment_status: 'comped' })}>{busyDecision === 'comped' ? 'Saving...' : 'Comp'}</button>
                 <button className="hz-btn" disabled={!!busyDecision} onClick={() => decide('waitlist')}>{busyDecision === 'waitlist' ? 'Saving...' : 'Waitlist'}</button>
                 <button className="hz-btn hz-btn-ghost" disabled={!!busyDecision} onClick={() => decide('rejected')}>{busyDecision === 'rejected' ? 'Saving...' : 'Reject'}</button>
                 <button className="hz-btn" disabled={!!busyDecision} onClick={() => decide(active.status || 'pending')}>{busyDecision === (active.status || 'pending') ? 'Saving...' : 'Save class / reason'}</button>
-                {active.payment_status !== 'paid' && (
+                {!isSettledRegistrationPayment(active.payment_status) && (
                   <button className="hz-btn" disabled={!!reminderBusy} onClick={() => sendPaymentReminders([active.id], active.id)}>
                     {reminderBusy === active.id ? 'Preparing...' : 'Send payment follow-up'}
                   </button>
@@ -2312,13 +2339,14 @@ function paymentSummary(row) {
     const amount = Number(row.amount_paid_cents || 0) / 100;
     return `${amount ? moneyFmt(amount) : 'Paid'}${row.payment_provider ? ` via ${row.payment_provider}` : ''}`;
   }
+  if (row.payment_status === 'comped') return 'Comped';
   if (row.payment_status === 'failed') return 'Failed';
   if (row.payment_status === 'pending') return 'Payment pending';
   return 'Unpaid';
 }
 function PaymentStatusBadge({ row }) {
   if (!row || row.payment_status === 'none' || !row.payment_status) return null;
-  const paid = row.payment_status === 'paid';
+  const paid = isSettledRegistrationPayment(row.payment_status);
   const failed = row.payment_status === 'failed';
   const fg = paid ? 'var(--hz-green)' : failed ? 'var(--hz-pink)' : 'var(--hz-amber)';
   const bg = paid ? 'rgba(63,231,160,0.14)' : failed ? 'rgba(249,127,172,0.14)' : 'rgba(255,180,84,0.12)';
@@ -2360,14 +2388,137 @@ window.Registration = Registration;
 // Medical — designed as a drop-in content block inside the athlete drawer,
 // but also works as a standalone "Medical hub" for the owner role.
 // ═══════════════════════════════════════════════════════════════════════════
-function MedicalBlock({ athleteId }) {
+function MedicalBlock({ athleteId, session }) {
   const snap = window.HZsel.cache();
   const athlete = (snap.athletes || []).find(a => a.id === athleteId);
   if (!athlete) return null;
   const { record, contacts, injuries } = window.HZsel.athleteMedical(athleteId);
+  const canEdit = medicalEditorCanEdit(session);
+  const actorId = session?.actualProfile?.id || session?.profile?.id || session?.user?.id || null;
+  const linkedParents = (snap.parent_links || [])
+    .filter((link) => link.athlete_id === athleteId)
+    .map((link) => ({
+      ...link,
+      profile: (snap.profiles || []).find((profile) => profile.id === link.parent_id) || null,
+    }))
+    .filter((link) => link.profile);
+  const [medicalForm, setMedicalForm] = _useState({
+    blood_type: record?.blood_type || '',
+    allergies: record?.allergies || '',
+    medications: record?.medications || '',
+    conditions: record?.conditions || '',
+    insurance_carrier: record?.insurance_carrier || '',
+    insurance_member_id: record?.insurance_member_id || '',
+    physician_name: record?.physician_name || '',
+    physician_phone: record?.physician_phone || '',
+    last_physical: record?.last_physical || '',
+    notes: record?.notes || '',
+  });
+  const [contactForm, setContactForm] = _useState({ name: '', relation: 'Parent', phone: '', email: '', is_primary: contacts.length === 0 });
+  const [savingMedical, setSavingMedical] = _useState(false);
+  const [savingContact, setSavingContact] = _useState(false);
+  const [saveError, setSaveError] = _useState('');
+
+  _useEffect(() => {
+    setMedicalForm({
+      blood_type: record?.blood_type || '',
+      allergies: record?.allergies || '',
+      medications: record?.medications || '',
+      conditions: record?.conditions || '',
+      insurance_carrier: record?.insurance_carrier || '',
+      insurance_member_id: record?.insurance_member_id || '',
+      physician_name: record?.physician_name || '',
+      physician_phone: record?.physician_phone || '',
+      last_physical: record?.last_physical || '',
+      notes: record?.notes || '',
+    });
+  }, [record?.athlete_id, record?.updated_at]);
+
+  async function saveMedical() {
+    if (!canEdit || savingMedical) return;
+    setSaveError('');
+    setSavingMedical(true);
+    try {
+      const payload = {
+        athlete_id: athleteId,
+        blood_type: medicalForm.blood_type.trim() || null,
+        allergies: medicalForm.allergies.trim() || null,
+        medications: medicalForm.medications.trim() || null,
+        conditions: medicalForm.conditions.trim() || null,
+        insurance_carrier: medicalForm.insurance_carrier.trim() || null,
+        insurance_member_id: medicalForm.insurance_member_id.trim() || null,
+        physician_name: medicalForm.physician_name.trim() || null,
+        physician_phone: medicalForm.physician_phone.trim() || null,
+        last_physical: medicalForm.last_physical || null,
+        notes: medicalForm.notes.trim() || null,
+        updated_by: actorId,
+        updated_at: new Date().toISOString(),
+      };
+      const { error } = await upsertPersistedRow('medical_records', payload, 'athlete_id');
+      if (error) throw error;
+      await refreshAppData('medical_records', 'update');
+      window.HZToast?.({ kind: 'success', eyebrow: 'Medical', title: 'Medical info saved', body: `${athlete.display_name} now has updated medical details.` });
+    } catch (error) {
+      const message = error?.message || 'Could not save medical info.';
+      setSaveError(message);
+      window.HZToast?.({ kind: 'error', eyebrow: 'Medical', title: 'Save failed', body: message });
+    } finally {
+      setSavingMedical(false);
+    }
+  }
+
+  async function addContact() {
+    if (!canEdit || savingContact) return;
+    if (!contactForm.name.trim() || !contactForm.phone.trim()) {
+      const message = 'Contact name and phone are required.';
+      setSaveError(message);
+      window.HZToast?.({ kind: 'error', eyebrow: 'Medical', title: 'Contact not saved', body: message });
+      return;
+    }
+    setSaveError('');
+    setSavingContact(true);
+    try {
+      const payload = {
+        id: window.crypto?.randomUUID?.() || `contact-${Date.now()}`,
+        athlete_id: athleteId,
+        name: contactForm.name.trim(),
+        relation: contactForm.relation.trim() || 'Parent',
+        phone: contactForm.phone.trim(),
+        email: contactForm.email.trim() || null,
+        is_primary: !!contactForm.is_primary,
+      };
+      const { error } = await insertPersistedRow('emergency_contacts', payload);
+      if (error) throw error;
+      await refreshAppData('emergency_contacts', 'insert');
+      setContactForm({ name: '', relation: 'Parent', phone: '', email: '', is_primary: false });
+      window.HZToast?.({ kind: 'success', eyebrow: 'Medical', title: 'Contact added', body: `${payload.name} is now attached to ${athlete.display_name}.` });
+    } catch (error) {
+      const message = error?.message || 'Could not save emergency contact.';
+      setSaveError(message);
+      window.HZToast?.({ kind: 'error', eyebrow: 'Medical', title: 'Contact not saved', body: message });
+    } finally {
+      setSavingContact(false);
+    }
+  }
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
+      {(linkedParents.length > 0 || canEdit) && (
+        <div className="hz-card" style={{ padding: 18 }}>
+          <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Linked parents</div>
+          {linkedParents.length === 0 && <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>No linked parent account is attached yet.</div>}
+          {linkedParents.map(link => (
+            <div key={link.parent_id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px dashed var(--hz-line)' }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{link.profile.display_name || link.profile.email || 'Parent account'}</div>
+                <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 2 }}>{link.relation || (link.is_primary ? 'Primary parent' : 'Linked parent')}</div>
+              </div>
+              <div style={{ textAlign: 'right', fontSize: 13, color: 'var(--hz-teal)' }}>{link.profile.email || 'No email on file'}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="hz-card" style={{ padding: 18 }}>
         <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Emergency contacts</div>
         {contacts.length === 0 && <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>None on file.</div>}
@@ -2383,6 +2534,25 @@ function MedicalBlock({ athleteId }) {
             </div>
           </div>
         ))}
+        {canEdit && (
+          <div style={{ marginTop: 14, display: 'grid', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <input className="hz-input" placeholder="Parent/contact name" value={contactForm.name} onChange={e => setContactForm(prev => ({ ...prev, name: e.target.value }))}/>
+              <input className="hz-input" placeholder="Relation" value={contactForm.relation} onChange={e => setContactForm(prev => ({ ...prev, relation: e.target.value }))}/>
+              <input className="hz-input" placeholder="Phone" value={contactForm.phone} onChange={e => setContactForm(prev => ({ ...prev, phone: e.target.value }))}/>
+              <input className="hz-input" placeholder="Email" value={contactForm.email} onChange={e => setContactForm(prev => ({ ...prev, email: e.target.value }))}/>
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--hz-dim)' }}>
+              <input type="checkbox" checked={!!contactForm.is_primary} onChange={e => setContactForm(prev => ({ ...prev, is_primary: e.target.checked }))}/>
+              Mark as primary contact
+            </label>
+            <div>
+              <button className="hz-btn hz-btn-primary hz-btn-sm" onClick={addContact} disabled={savingContact}>
+                {savingContact ? 'Saving...' : 'Add emergency contact'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="hz-card" style={{ padding: 18 }}>
@@ -2390,14 +2560,37 @@ function MedicalBlock({ athleteId }) {
         {!record && <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>No medical record on file.</div>}
         {record && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 13 }}>
-            <KV label="Blood type" v={record.blood_type}/>
+            <KV label="Blood type" v={record.blood_type || '—'}/>
             <KV label="Allergies"  v={record.allergies || '—'}/>
             <KV label="Meds"       v={record.medications || '—'}/>
             <KV label="Conditions" v={record.conditions || '—'}/>
             <KV label="Insurance"  v={record.insurance_carrier || '—'}/>
+            <KV label="Policy #"   v={record.insurance_member_id || '—'}/>
             <KV label="Physician"  v={record.physician_name || '—'}/>
             <KV label="Dr. phone"  v={record.physician_phone || '—'}/>
             <KV label="Last physical" v={record.last_physical || '—'}/>
+            <KV label="Notes"      v={record.notes || '—'}/>
+          </div>
+        )}
+        {canEdit && (
+          <div style={{ marginTop: 14, display: 'grid', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <input className="hz-input" placeholder="Blood type" value={medicalForm.blood_type} onChange={e => setMedicalForm(prev => ({ ...prev, blood_type: e.target.value }))}/>
+              <input className="hz-input" placeholder="Last physical (YYYY-MM-DD)" value={medicalForm.last_physical} onChange={e => setMedicalForm(prev => ({ ...prev, last_physical: e.target.value }))}/>
+              <textarea className="hz-input" rows={2} placeholder="Allergies" value={medicalForm.allergies} onChange={e => setMedicalForm(prev => ({ ...prev, allergies: e.target.value }))}/>
+              <textarea className="hz-input" rows={2} placeholder="Medications" value={medicalForm.medications} onChange={e => setMedicalForm(prev => ({ ...prev, medications: e.target.value }))}/>
+              <textarea className="hz-input" rows={2} placeholder="Conditions / restrictions" value={medicalForm.conditions} onChange={e => setMedicalForm(prev => ({ ...prev, conditions: e.target.value }))}/>
+              <textarea className="hz-input" rows={2} placeholder="Notes" value={medicalForm.notes} onChange={e => setMedicalForm(prev => ({ ...prev, notes: e.target.value }))}/>
+              <input className="hz-input" placeholder="Insurance carrier" value={medicalForm.insurance_carrier} onChange={e => setMedicalForm(prev => ({ ...prev, insurance_carrier: e.target.value }))}/>
+              <input className="hz-input" placeholder="Policy / member #" value={medicalForm.insurance_member_id} onChange={e => setMedicalForm(prev => ({ ...prev, insurance_member_id: e.target.value }))}/>
+              <input className="hz-input" placeholder="Physician" value={medicalForm.physician_name} onChange={e => setMedicalForm(prev => ({ ...prev, physician_name: e.target.value }))}/>
+              <input className="hz-input" placeholder="Physician phone" value={medicalForm.physician_phone} onChange={e => setMedicalForm(prev => ({ ...prev, physician_phone: e.target.value }))}/>
+            </div>
+            <div>
+              <button className="hz-btn hz-btn-primary hz-btn-sm" onClick={saveMedical} disabled={savingMedical}>
+                {savingMedical ? 'Saving...' : record ? 'Update medical info' : 'Save medical info'}
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -2422,6 +2615,7 @@ function MedicalBlock({ athleteId }) {
           </div>
         ))}
       </div>
+      {saveError && <div style={{ color: 'var(--hz-pink)', fontSize: 12.5 }}>{saveError}</div>}
     </div>
   );
 }
@@ -2485,7 +2679,7 @@ function MedicalHub({ snap, session }) {
             ))}
           </aside>
         )}
-        <section>{aid && <MedicalBlock athleteId={aid}/>}</section>
+        <section>{aid && <MedicalBlock athleteId={aid} session={session}/>}</section>
       </div>
     </div>
   );

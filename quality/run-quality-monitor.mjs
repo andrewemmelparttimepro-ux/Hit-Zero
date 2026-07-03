@@ -16,6 +16,8 @@ const jsonOut = args.has('--json');
 const today = new Date().toISOString().slice(0, 10);
 const CANONICAL_PARENT_EMAIL = 'amanda.emmel88@gmail.com';
 const CANONICAL_PARENT_PROFILE_ID = '55a5b798-716c-4c5b-8979-9a1d4e3317c8';
+const MAGIC_CITY_PROGRAM_ID = '11111111-1111-1111-1111-111111111111';
+const CARISSA_OWNER_EMAILS = ['toddcr21@gmail.com', 'carissatodd92@gmail.com'];
 const LEGACY_PARENT_NAME_TOKEN = ['kir', 'cher'].join('');
 const LEGACY_PARENT_EMAIL = ['amanda', `${LEGACY_PARENT_NAME_TOKEN}88@gmail.com`].join('.');
 const LEGACY_PARENT_PROFILE_ID = ['32f7', 'e959', '-69d5-48f1-842c-fc533dc4cc71'].join('');
@@ -160,7 +162,7 @@ async function staticAudit() {
         const windowText = lines.slice(Math.max(0, idx - 3), Math.min(lines.length, idx + 10)).join('\n');
         const item = `${loc} ${m[1]}.${m[2]}`;
         riskyWrites.push(item);
-        if (!/refreshAppData|HZsel\?\._refresh|hz:refresh|emit\(/.test(windowText)) missingRefreshWrites.push(item);
+        if (!/refreshAppData|HZsel\?\._refresh|hz:refresh|emit\(|refreshAthleteDrawer(?:Skills|Medical)/.test(windowText)) missingRefreshWrites.push(item);
       }
     });
   }
@@ -331,6 +333,11 @@ async function parentCriticalSourceAudit() {
       file: 'pwa/hit_zero_web/screens/OtherScreens.jsx',
     },
     {
+      ok: sources.shell.includes('family-packet-submission-status') && sources.shell.includes('submittedDate ?') && sources.shell.includes('Submitted ${submittedDate}') && sources.shell.includes('Update submitted form') && sources.shell.includes("hz:refresh', { detail: { table: 'family_info_packets'"),
+      label: 'family packet submit flow shows durable submitted date and refreshes cache',
+      file: 'pwa/hit_zero_web/components/HZShell.jsx',
+    },
+    {
       ok: sources.schedule.includes('ClassEnrollmentRow') && sources.schedule.includes('Registered classes') && sources.schedule.includes('cleanClassScheduleSummary'),
       label: 'schedule merges class enrollments with team sessions',
       file: 'pwa/hit_zero_web/screens/Tier1Tier2Screens.jsx',
@@ -373,7 +380,7 @@ async function liveSourceSmoke() {
     { name: 'service_worker', url: 'https://thehitzero.net/sw.js?v=hzq', want: 'hz-v' },
     { name: 'client_actions', url: 'https://thehitzero.net/hit_zero_web/db/client.js?v=hzq', wantAll: ['createScheduleSession', 'sendPaymentReminders', 'registrationPaymentInfo', 'PROD_PURGE_VERSION', 'class_enrollments', 'Password update timed out'] },
     { name: 'staff_family_view', url: 'https://thehitzero.net/hit_zero_web/db/client.js?v=hzq-viewas', wantAll: ['allowedViewRoles', "actualRole === 'owner' || actualRole === 'coach'", 'parent'] },
-    { name: 'shell_routes', url: 'https://thehitzero.net/hit_zero_web/components/HZShell.jsx?v=hzq', wantAll: ["startsWith('pay/')", 'FamilyInfoPacketCard', 'PASSWORD_RESET_TIMEOUT_MS', 'drawerHistoryRef'] },
+    { name: 'shell_routes', url: 'https://thehitzero.net/hit_zero_web/components/HZShell.jsx?v=hzq', wantAll: ["startsWith('pay/')", 'FamilyInfoPacketCard', 'PASSWORD_RESET_TIMEOUT_MS', 'drawerHistoryRef', 'family-packet-submission-status', 'Update submitted form'] },
     { name: 'family_signup_entry', url: 'https://thehitzero.net/hit_zero_web/components/HZShell.jsx?v=hzq-signup', wantAll: ['publicAuthModeFromRoute', 'Create your family account.', 'parent@example.com or athlete username'] },
     { name: 'mca_account_entry', url: 'https://mcaminot.com/app/Primitives.jsx?v=hzq-signup', wantAll: ['HIT_ZERO_CREATE_ACCOUNT_URL', 'Create account', '#signup'] },
     { name: 'booking_pay_link', url: 'https://thehitzero.net/hit_zero_web/screens/PublicBooking.jsx?v=hzq', wantAll: ['PublicPaymentLink', 'Finish payment'] },
@@ -558,6 +565,79 @@ where au.id = ${sqlString(CANONICAL_PARENT_PROFILE_ID)}::uuid
     return;
   }
   addCheck('production_amanda_identity', 'pass', `${CANONICAL_PARENT_EMAIL} / ${CANONICAL_PARENT_PROFILE_ID}; duplicate rows: 0`);
+}
+
+async function productionCarissaOwnerIdentityAudit() {
+  if (mode === 'dry' && !args.has('--prod-read') && !prodCanary) {
+    addCheck('production_carissa_owner_identity', 'skipped', 'Use --prod-read or --prod-canary to verify Carissa owner scope.');
+    return;
+  }
+  const backendCwd = path.join(root, 'hit_zero_backend');
+  const sql = `
+with target_profiles as (
+  select id::text, lower(email::text) as email, display_name, role, program_id::text
+  from public.profiles
+  where lower(email::text) in (${CARISSA_OWNER_EMAILS.map(sqlString).join(', ')})
+),
+magic_city as (
+  select count(*)::int as registrations,
+         count(*) filter (where payment_status = 'paid')::int as paid
+  from public.registrations
+  where program_id = ${sqlString(MAGIC_CITY_PROGRAM_ID)}::uuid
+)
+select t.*,
+       m.registrations as magic_city_registrations,
+       m.paid as magic_city_paid_registrations,
+       (
+         select count(*)::int
+         from public.registrations r
+         where r.program_id::text = t.program_id
+           and t.role in ('owner', 'coach')
+       ) as owner_scope_registrations
+from target_profiles t
+cross join magic_city m
+order by t.email;
+`;
+  const result = await command('supabase', ['db', 'query', '--linked', '--output', 'json', sql], {
+    cwd: backendCwd,
+    timeout: 60000,
+    maxBuffer: 1024 * 1024 * 5,
+  });
+  if (!result.ok) {
+    addCheck('production_carissa_owner_identity', 'fail', result.error.slice(0, 400));
+    addFinding({
+      severity: 'P1',
+      area: 'identity',
+      role: 'owner',
+      finding: 'Could not verify Carissa owner identity bridge in production.',
+      expected: 'Both Carissa emails resolve to Magic City owner profiles with visible registrations.',
+      fix: 'Repair Supabase CLI auth/linking and rerun with --prod-read.',
+    });
+    return;
+  }
+  const rows = parseJsonPayload(result.stdout)?.rows || [];
+  const rowByEmail = new Map(rows.map(row => [String(row.email || '').toLowerCase(), row]));
+  const missingEmails = CARISSA_OWNER_EMAILS.filter(email => !rowByEmail.has(email));
+  const badRows = rows.filter(row =>
+    row.role !== 'owner' ||
+    row.program_id !== MAGIC_CITY_PROGRAM_ID ||
+    Number(row.magic_city_registrations || 0) <= 0 ||
+    Number(row.owner_scope_registrations || 0) <= 0
+  );
+  if (rows.length !== CARISSA_OWNER_EMAILS.length || missingEmails.length || badRows.length) {
+    addCheck('production_carissa_owner_identity', 'fail', `${rows.length} profile row(s), ${badRows.length} bad scope row(s), missing: ${missingEmails.join(', ') || 'none'}`);
+    addFinding({
+      severity: 'P1',
+      area: 'identity',
+      role: 'owner',
+      finding: 'Carissa owner identity bridge is not healthy.',
+      expected: `Both ${CARISSA_OWNER_EMAILS.join(' and ')} are owner profiles on Magic City and can see existing registrations.`,
+      fix: `Restore both profiles to role owner and program_id ${MAGIC_CITY_PROGRAM_ID}, then verify owner-scope registrations are nonzero.`,
+    });
+    return;
+  }
+  const visibleCounts = rows.map(row => `${row.email}: ${row.owner_scope_registrations}/${row.magic_city_registrations}`).join('; ');
+  addCheck('production_carissa_owner_identity', 'pass', visibleCounts);
 }
 
 async function signInUser(email, password, label) {
@@ -959,6 +1039,7 @@ async function main() {
   await liveSourceSmoke();
   await productionDataAudit();
   await productionAmandaIdentityAudit();
+  await productionCarissaOwnerIdentityAudit();
   await productionCanary();
   await productionParentCanary();
   await parentViewportSmoke();

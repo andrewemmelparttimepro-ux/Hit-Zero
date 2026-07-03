@@ -432,6 +432,305 @@ function PublicBooking({ classId, onClose }) {
   );
 }
 
+function PublicDropIn({ classId }) {
+  const [klass, setKlass] = _useS_pb(null);
+  const [program, setProgram] = _useS_pb(null);
+  const [loadErr, setLoadErr] = _useS_pb(null);
+  const [submitting, setSubmitting] = _useS_pb(false);
+  const [submitErr, setSubmitErr] = _useS_pb(null);
+  const [done, setDone] = _useS_pb(null);
+  const [form, setForm] = _useS_pb({
+    athleteName: '',
+    athleteDob: '',
+    guardianName: '',
+    guardianEmail: '',
+    guardianPhone: '',
+    emergencyName: '',
+    emergencyRelationship: '',
+    emergencyPhone: '',
+    medicalNotes: '',
+    notes: '',
+    signature: '',
+    hp: '',
+  });
+  const mountedAt = _useR_pb(Date.now());
+
+  _useE_pb(() => {
+    let cancelled = false;
+    async function restFetch(path) {
+      const url = (window.HZ?.SUPABASE_URL || pbFunctionsBase()).replace(/\/$/, '') + '/rest/v1' + path;
+      const anon = pbAnonKey();
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8000);
+      try {
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: {
+            apikey: anon,
+            Authorization: `Bearer ${anon}`,
+            'Cache-Control': 'no-cache',
+            'Accept': 'application/json',
+          },
+          cache: 'no-store',
+          signal: ctrl.signal,
+        });
+        if (!res.ok) {
+          let msg = `Supabase ${res.status}`;
+          try { const body = await res.text(); if (body) msg += ': ' + body.slice(0, 200); } catch {}
+          throw new Error(msg);
+        }
+        return await res.json();
+      } finally { clearTimeout(t); }
+    }
+    (async () => {
+      try {
+        const classRows = await restFetch(`/public_program_classes?id=eq.${encodeURIComponent(classId)}&select=*&limit=1`);
+        const c = Array.isArray(classRows) ? classRows[0] : classRows;
+        if (!c) throw new Error('This drop-in is no longer available.');
+        if (cancelled) return;
+        setKlass(c);
+
+        const progRows = await restFetch(`/program_public_directory?id=eq.${encodeURIComponent(c.program_id)}&select=id,slug,public_name,brand_name,public_email,public_phone,address_line1,city,state,payment_provider,public_checkout_enabled,checkout_mode,public_payment_note&limit=1`);
+        const p = Array.isArray(progRows) ? progRows[0] : progRows;
+        if (cancelled) return;
+        setProgram(p || null);
+      } catch (err) {
+        if (!cancelled) setLoadErr(err.name === 'AbortError'
+          ? 'Connection timed out. Please refresh and try again.'
+          : (err.message || 'Could not load this drop-in.'));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [classId]);
+
+  function set(k, v) { setForm(prev => ({ ...prev, [k]: v })); }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setSubmitErr(null);
+    if (form.hp) { setDone({ registrationId: 'silent' }); return; }
+    if (Date.now() - mountedAt.current < 1500) {
+      setSubmitErr('Take a second to review and submit again.');
+      return;
+    }
+    if (!form.athleteName.trim()) { setSubmitErr('Athlete name is required.'); return; }
+    if (!form.guardianName.trim()) { setSubmitErr('Parent/guardian name is required.'); return; }
+    const email = form.guardianEmail.trim();
+    const phone = form.guardianPhone.trim();
+    if (!email && !phone) { setSubmitErr('Add either a guardian email or phone.'); return; }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setSubmitErr('Guardian email format looks off.'); return; }
+    if (!form.emergencyName.trim()) { setSubmitErr('Emergency contact name is required.'); return; }
+    if (!form.emergencyPhone.trim()) { setSubmitErr('Emergency contact phone is required.'); return; }
+    if (!form.signature.trim()) { setSubmitErr('Guardian signature is required.'); return; }
+    const ageCheck = ageEligibilityFor(klass, form.athleteDob);
+    if (!ageCheck.ok) { setSubmitErr(ageCheck.message); return; }
+
+    setSubmitting(true);
+    try {
+      const fnBase = pbFunctionsBase();
+      const anon = pbAnonKey();
+      const res = await fetch(`${fnBase}/functions/v1/public-intake-v1`, {
+        method: 'POST',
+        headers: {
+          apikey: anon,
+          Authorization: `Bearer ${anon}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          kind: 'open_gym',
+          program_slug: program?.slug || klass?.program_slug || 'mca',
+          class_id: classId,
+          athlete_name: form.athleteName.trim(),
+          athlete_dob: form.athleteDob || null,
+          parent_name: form.guardianName.trim(),
+          parent_email: email || null,
+          parent_phone: phone || null,
+          emergency_contact_name: form.emergencyName.trim(),
+          emergency_contact_relationship: form.emergencyRelationship.trim() || null,
+          emergency_contact_phone: form.emergencyPhone.trim(),
+          medical_notes: form.medicalNotes.trim() || null,
+          parent_signature: form.signature.trim(),
+          visit_context: klass?.name || 'Drop-in',
+          notes: form.notes.trim() || null,
+          source: 'hit_zero_public_drop_in',
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.message || 'Could not save this drop-in form. Please try again.');
+      }
+      setDone({
+        registrationId: data.registration_id,
+        willInvoice: Boolean(Number(klass?.price_cents || 0)) && !program?.public_checkout_enabled,
+      });
+    } catch (err) {
+      setSubmitErr(err.message || 'Could not save this drop-in form.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (loadErr) {
+    return (
+      <PBPage>
+        <div className="hz-card" style={{ padding: 24, textAlign: 'center', maxWidth: 480, margin: '0 auto' }}>
+          <div className="hz-eyebrow" style={{ color: 'var(--hz-pink)', marginBottom: 8 }}>Drop-in unavailable</div>
+          <div className="hz-display" style={{ fontSize: 26 }}>We couldn't load that drop-in.</div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 13, marginTop: 12 }}>{loadErr}</div>
+          <div style={{ marginTop: 18 }}>
+            <a className="hz-btn hz-btn-primary" href="https://mcaminot.com/#/programs">Back to programs</a>
+          </div>
+        </div>
+      </PBPage>
+    );
+  }
+
+  if (!klass) {
+    return (
+      <PBPage>
+        <SkeletonCard rows={4} style={{ maxWidth: 540, margin: '0 auto' }} />
+      </PBPage>
+    );
+  }
+
+  const { price, unit } = pricePartsFor(klass);
+  const ageRange = ageRangeFor(klass);
+  const closed = !klass.registration_open;
+  const requiresPayment = Number(klass.price_cents || 0) > 0;
+  const willInvoice = requiresPayment && !program?.public_checkout_enabled;
+  const ageCheck = ageEligibilityFor(klass, form.athleteDob);
+
+  if (done) {
+    return (
+      <PBPage>
+        <div className="hz-card" role="status" aria-live="polite" style={{ padding: 28, textAlign: 'center', maxWidth: 560, margin: '0 auto', background: 'linear-gradient(160deg, rgba(39,207,215,0.10), rgba(249,127,172,0.10))' }}>
+          <div style={{ fontSize: 56, lineHeight: 1, fontWeight: 900, background: 'linear-gradient(135deg, var(--hz-teal), var(--hz-pink))', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>✓</div>
+          <div className="hz-display" style={{ fontSize: 30, marginTop: 12 }}>
+            {willInvoice ? `Drop-in form received for ${klass.name}.` : requiresPayment ? `Payment required for ${klass.name}.` : `Drop-in form received for ${klass.name}.`}
+          </div>
+          <p style={{ fontSize: 14, lineHeight: 1.55, color: 'var(--hz-dim)', marginTop: 14 }}>
+            {willInvoice
+              ? <>Your form is saved. MCA will collect or send payment instructions for <strong style={{ color: '#fff' }}>{price}{unit ? ` ${unit}` : ''}</strong>.</>
+              : requiresPayment
+                ? <>Your form is saved. Finish Square payment below so the drop-in is fully confirmed.</>
+                : <>Your form is saved. Staff can see the emergency contact and signature in Hit Zero.</>}
+          </p>
+          {requiresPayment && !willInvoice && (
+            <PublicPaymentStep
+              klass={klass}
+              program={program}
+              form={{ parentEmail: form.guardianEmail, parentName: form.guardianName }}
+              registrationId={done.registrationId}
+            />
+          )}
+          <div style={{ marginTop: 22, display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <a className="hz-btn" href="https://mcaminot.com/#/programs">More programs</a>
+            <a className="hz-btn hz-btn-primary" href="https://mcaminot.com/">Back to website</a>
+          </div>
+        </div>
+      </PBPage>
+    );
+  }
+
+  return (
+    <PBPage>
+      <div style={{ maxWidth: 560, margin: '0 auto' }}>
+        <div className="hz-card" style={{ padding: 22, marginBottom: 16 }}>
+          <div className="hz-eyebrow" style={{ marginBottom: 8 }}>
+            Drop-in · {program?.public_name || program?.brand_name || program?.name || 'your gym'}
+          </div>
+          <div className="hz-display" style={{ fontSize: 30, lineHeight: 1.1 }}>{klass.name}</div>
+          {ageRange && <div className="hz-eyebrow" style={{ marginTop: 10, color: 'var(--hz-teal)' }}>{ageRange}</div>}
+          {klass.schedule_summary && <div style={{ marginTop: 10, color: 'var(--hz-dim)', fontSize: 13 }}>{klass.schedule_summary}</div>}
+          {klass.description && <div style={{ marginTop: 8, color: 'var(--hz-dim)', fontSize: 13 }}>{klass.description}</div>}
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 14 }}>
+            <span style={{ fontSize: 36, fontWeight: 800, background: 'linear-gradient(135deg, var(--hz-teal), var(--hz-pink))', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>{price || '$0'}</span>
+            {unit && <span style={{ color: 'var(--hz-dim)', fontSize: 13 }}>{unit}</span>}
+          </div>
+          {willInvoice && (
+            <div style={{ marginTop: 14, padding: '10px 12px', background: 'rgba(255,180,84,0.08)', borderRadius: 10, border: '1px solid rgba(255,180,84,0.25)', fontSize: 12, lineHeight: 1.5, color: 'var(--hz-amber)' }}>
+              Online checkout is not enabled yet, so payment is handled by MCA after the form is submitted.
+            </div>
+          )}
+        </div>
+
+        {closed ? (
+          <div className="hz-card" style={{ padding: 22, textAlign: 'center' }}>
+            <div className="hz-display" style={{ fontSize: 22 }}>This drop-in is closed.</div>
+            <p style={{ color: 'var(--hz-dim)', fontSize: 13, marginTop: 10 }}>Check back soon, or reach out for the next option.</p>
+            <a className="hz-btn hz-btn-primary" href={program?.public_email ? `mailto:${program.public_email}` : 'mailto:teammca@mcaminot.com'} style={{ marginTop: 14, display: 'inline-block' }}>Email the gym</a>
+          </div>
+        ) : (
+          <form className="hz-card" onSubmit={handleSubmit} style={{ padding: 22, display: 'grid', gap: 14 }} noValidate>
+            <div className="hz-display" style={{ fontSize: 18 }}>Drop-in form</div>
+            <div aria-hidden="true" style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, overflow: 'hidden' }}>
+              <label>Leave empty <input tabIndex="-1" autoComplete="off" type="text" value={form.hp} onChange={e => set('hp', e.target.value)}/></label>
+            </div>
+            <PBField label="Athlete / participant name">
+              <input className="hz-input" value={form.athleteName} onChange={e => set('athleteName', e.target.value)} required disabled={submitting}/>
+            </PBField>
+            <PBField label="Date of birth (optional)">
+              <input className="hz-input" type="date" value={form.athleteDob} onChange={e => set('athleteDob', e.target.value)} disabled={submitting}/>
+            </PBField>
+            {form.athleteDob && (
+              <div style={{
+                padding: '9px 11px',
+                borderRadius: 10,
+                border: `1px solid ${ageCheck.ok ? 'rgba(39,207,215,0.24)' : 'rgba(249,127,172,0.28)'}`,
+                background: ageCheck.ok ? 'rgba(39,207,215,0.08)' : 'rgba(249,127,172,0.08)',
+                color: ageCheck.ok ? 'var(--hz-teal)' : 'var(--hz-pink)',
+                fontSize: 12.5,
+                lineHeight: 1.45,
+              }}>
+                {ageCheck.message}
+              </div>
+            )}
+            <PBField label="Parent / guardian name">
+              <input className="hz-input" value={form.guardianName} onChange={e => set('guardianName', e.target.value)} autoComplete="name" required disabled={submitting}/>
+            </PBField>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <PBField label="Guardian email">
+                <input className="hz-input" type="email" value={form.guardianEmail} onChange={e => set('guardianEmail', e.target.value)} autoComplete="email" disabled={submitting}/>
+              </PBField>
+              <PBField label="Guardian phone">
+                <input className="hz-input" type="tel" value={form.guardianPhone} onChange={e => set('guardianPhone', e.target.value)} autoComplete="tel" disabled={submitting}/>
+              </PBField>
+            </div>
+            <PBField label="Emergency contact name">
+              <input className="hz-input" value={form.emergencyName} onChange={e => set('emergencyName', e.target.value)} required disabled={submitting}/>
+            </PBField>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <PBField label="Relationship">
+                <input className="hz-input" value={form.emergencyRelationship} onChange={e => set('emergencyRelationship', e.target.value)} disabled={submitting}/>
+              </PBField>
+              <PBField label="Emergency phone">
+                <input className="hz-input" type="tel" value={form.emergencyPhone} onChange={e => set('emergencyPhone', e.target.value)} required disabled={submitting}/>
+              </PBField>
+            </div>
+            <PBField label="Medical notes / allergies">
+              <textarea className="hz-input" rows="2" value={form.medicalNotes} onChange={e => set('medicalNotes', e.target.value)} style={{ resize: 'vertical', minHeight: 64 }} disabled={submitting}/>
+            </PBField>
+            <PBField label="Additional notes">
+              <textarea className="hz-input" rows="2" value={form.notes} onChange={e => set('notes', e.target.value)} style={{ resize: 'vertical', minHeight: 64 }} disabled={submitting}/>
+            </PBField>
+            <PBField label="Guardian signature">
+              <input className="hz-input" value={form.signature} onChange={e => set('signature', e.target.value)} placeholder="Type your full name" required disabled={submitting}/>
+            </PBField>
+            {submitErr && (
+              <div role="alert" style={{ padding: '10px 12px', background: 'rgba(255,94,108,0.08)', borderRadius: 10, border: '1px solid rgba(255,94,108,0.25)', color: 'var(--hz-pink)', fontSize: 13 }}>
+                {submitErr}
+              </div>
+            )}
+            <button type="submit" className="hz-btn hz-btn-primary" disabled={submitting || (form.athleteDob && !ageCheck.ok)} style={{ minHeight: 48, fontSize: 15 }}>
+              {submitting ? 'Saving...' : willInvoice ? `Submit drop-in form ->` : requiresPayment ? `Continue to payment ->` : `Submit drop-in form ->`}
+            </button>
+          </form>
+        )}
+      </div>
+    </PBPage>
+  );
+}
+
 function paymentRegistrationIds(raw) {
   return String(raw || '')
     .split(',')
@@ -731,4 +1030,5 @@ function PBField({ label, children }) {
 }
 
 window.PublicBooking = PublicBooking;
+window.PublicDropIn = PublicDropIn;
 window.PublicPaymentLink = PublicPaymentLink;

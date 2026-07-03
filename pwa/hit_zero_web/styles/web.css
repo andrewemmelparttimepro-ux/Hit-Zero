@@ -813,6 +813,14 @@ select:disabled,
   border-color: rgba(63,231,160,0.34);
   background: rgba(63,231,160,0.06);
 }
+.family-packet-submitted {
+  padding: 14px;
+  border: 1px solid rgba(39,207,215,0.32);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(39,207,215,0.12), rgba(63,231,160,0.06)),
+    rgba(255,255,255,0.03);
+}
 .routine-upload-notice-error {
   border-color: rgba(255,91,117,0.42);
   background: rgba(255,91,117,0.07);
@@ -1103,6 +1111,14 @@ select:disabled,
   user-select: none;
 }
 .skill-cell:hover { transform: scale(1.12); }
+.skill-cell__note {
+  position: absolute;
+  right: 3px;
+  bottom: 2px;
+  font-size: 7px;
+  line-height: 1;
+  color: rgba(255,255,255,0.85);
+}
 .skill-cell.status-none { background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.25); }
 .skill-cell.status-working { background: rgba(255,180,84,0.18); color: var(--hz-amber); }
 .skill-cell.status-got_it { background: rgba(39,207,215,0.22); color: var(--hz-teal); }
@@ -1524,6 +1540,29 @@ select:disabled,
   }
   .hz-default-gym-card .hz-eyebrow {
     white-space: normal !important;
+  }
+
+  .family-forms-layout {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 16px !important;
+  }
+  .family-forms-layout,
+  .family-forms-main,
+  .family-forms-aside,
+  .family-forms-layout .hz-card {
+    min-width: 0;
+    width: 100%;
+  }
+  .family-forms-aside {
+    order: 2;
+  }
+  .family-packet-grid,
+  .family-forms-record-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 10px !important;
+  }
+  .family-forms-aside .hz-card {
+    overflow: hidden;
   }
 
   /* Section headings: shrink */

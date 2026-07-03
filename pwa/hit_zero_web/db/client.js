@@ -931,6 +931,7 @@
     const state = {
       op: 'select',
       filters: [],
+      conditions: [],
       _cols: '*',
       _order: null,
       _limit: null,
@@ -957,21 +958,43 @@
       update(patch) { state.op = 'update'; state._update = patch; return api; },
       upsert(payload, opts) { state.op = 'upsert'; state._payload = Array.isArray(payload) ? payload : [payload]; state._onConflict = (opts && opts.onConflict) || 'id'; return api; },
       delete() { state.op = 'delete'; return api; },
-      eq(col, val) { state.filters.push(r => r[col] === val); return api; },
-      neq(col, val) { state.filters.push(r => r[col] !== val); return api; },
-      in(col, vals) { state.filters.push(r => vals.includes(r[col])); return api; },
-      gte(col, val) { state.filters.push(r => r[col] >= val); return api; },
-      lte(col, val) { state.filters.push(r => r[col] <= val); return api; },
-      match(m) { Object.keys(m).forEach(k => state.filters.push(r => r[k] === m[k])); return api; },
+      eq(col, val) { state.filters.push(r => r[col] === val); state.conditions.push({ op: 'eq', col, val }); return api; },
+      neq(col, val) { state.filters.push(r => r[col] !== val); state.conditions.push({ op: 'neq', col, val }); return api; },
+      in(col, vals) { state.filters.push(r => vals.includes(r[col])); state.conditions.push({ op: 'in', col, val: vals }); return api; },
+      gte(col, val) { state.filters.push(r => r[col] >= val); state.conditions.push({ op: 'gte', col, val }); return api; },
+      lte(col, val) { state.filters.push(r => r[col] <= val); state.conditions.push({ op: 'lte', col, val }); return api; },
+      match(m) {
+        Object.keys(m).forEach(k => {
+          state.filters.push(r => r[k] === m[k]);
+          state.conditions.push({ op: 'eq', col: k, val: m[k] });
+        });
+        return api;
+      },
       order(col, opts) { state._order = { col, asc: !(opts && opts.ascending === false) }; return api; },
       limit(n) { state._limit = n; return api; },
       single() { state._single = true; return api; },
       then(resolve, reject) {
-        try {
+        (async () => {
           let result;
           if (state.op === 'select') {
+            if (hasRealAuth() && window.HZsupa) {
+              let query = window.HZsupa.from(table).select(state._cols || '*');
+              state.conditions.forEach(({ op, col, val }) => {
+                if (op === 'eq') query = query.eq(col, val);
+                else if (op === 'neq') query = query.neq(col, val);
+                else if (op === 'in') query = query.in(col, val);
+                else if (op === 'gte') query = query.gte(col, val);
+                else if (op === 'lte') query = query.lte(col, val);
+              });
+              if (state._order) query = query.order(state._order.col, { ascending: state._order.asc });
+              if (state._limit != null) query = query.limit(state._limit);
+              const { data: liveRows, error } = state._single ? await query.maybeSingle() : await query;
+              if (error) throw error;
+              result = liveRows || (state._single ? null : []);
+            } else {
             const rows = apply(data[table] || []);
             result = state._single ? rows[0] || null : rows;
+            }
           } else if (state.op === 'insert') {
             const withIds = state._payload.map(p => ({ ...p, id: p.id || ('x_' + Math.random().toString(36).slice(2,10)) }));
             data[table] = [...(data[table] || []), ...withIds];
@@ -1022,11 +1045,11 @@
             removed.forEach(r => emit(table, { eventType: 'DELETE', new: null, old: r }));
             result = removed;
           }
-          resolve({ data: result, error: null });
-        } catch (e) {
+          return { data: result, error: null };
+        })().then(resolve).catch(e => {
           resolve({ data: null, error: e });
           if (reject) reject(e);
-        }
+        });
       },
     };
     return api;
@@ -1130,6 +1153,25 @@
       role: meta.requested_role === 'athlete' ? 'athlete' : 'parent',
       display_name: meta.display_name || (user?.email ? user.email.split('@')[0] : 'Hit Zero Member'),
       program_id: null,
+    };
+  }
+  function identityConflictProfile(user, matchedProfile) {
+    const email = user?.email || matchedProfile?.email || '';
+    return {
+      id: user?.id,
+      email,
+      role: 'parent',
+      display_name: user?.user_metadata?.display_name || user?.user_metadata?.full_name || (email ? email.split('@')[0] : 'Hit Zero Member'),
+      program_id: null,
+      identity_conflict: true,
+      identity_conflict_reason: 'email_profile_id_mismatch',
+      identity_conflict_profile: matchedProfile ? {
+        id: matchedProfile.id,
+        email: matchedProfile.email,
+        role: matchedProfile.role,
+        program_id: matchedProfile.program_id,
+        display_name: matchedProfile.display_name,
+      } : null,
     };
   }
 	  async function liveToken() {
@@ -1292,14 +1334,24 @@
     }
     if (!profile && user.email) {
       try {
-        const byEmail = await window.HZsupa.from('profiles').select('*').eq('email', user.email).maybeSingle();
-        if (byEmail.data) profile = { ...byEmail.data, id: user.id, email: user.email };
+        const byEmail = await window.HZsupa
+          .from('profiles')
+          .select('*')
+          .eq('email', user.email)
+          .order('updated_at', { ascending: false })
+          .limit(1);
+        const emailProfile = byEmail.data?.[0] || null;
+        if (emailProfile) {
+          profile = emailProfile.id === user.id
+            ? emailProfile
+            : identityConflictProfile(user, emailProfile);
+        }
       } catch (err) {
         console.warn('[HZ] profile lookup by email failed', err);
       }
     }
     profile = normalizeProfile(profile, user);
-    if (profile) upsertLocalProfile(profile);
+    if (profile && !profile.identity_conflict) upsertLocalProfile(profile);
     return profile;
   }
   function wrapSession(raw, profile, mode = hasRealAuth() ? 'live' : 'prototype') {
@@ -1324,6 +1376,7 @@
       actualRole: profile.role,
       canViewAs,
       viewAsRole: effectiveProfile.role,
+      identityConflict: !!profile.identity_conflict,
       mode,
     };
   }
@@ -1852,6 +1905,7 @@
       }
       const patch = { status, notes, decision_reason: extra.decision_reason || null, decided_at: new Date().toISOString(), decided_by: getSession()?.profile?.id || null };
       if (extra.class_id !== undefined) patch.class_id = extra.class_id || null;
+      if (extra.payment_status === 'comped' || extra.payment_status === 'none') patch.payment_status = extra.payment_status;
       const row = (data.registrations || []).find(r => r.id === registrationId);
       if (!row) return { data: null, error: new Error('Registration not found.') };
       Object.assign(row, patch);

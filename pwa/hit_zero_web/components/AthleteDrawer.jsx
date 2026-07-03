@@ -21,9 +21,79 @@ const ATHLETE_TABS = [
 ];
 
 function tabsForAthleteViewer(session) {
-  const role = session?.actualProfile?.role || session?.profile?.role || '';
+  const role = session?.profile?.role || session?.actualProfile?.role || '';
   if (role === 'athlete') return ATHLETE_TABS.filter(t => !['medical', 'uniform', 'billing'].includes(t.id));
   return ATHLETE_TABS;
+}
+
+function athleteDrawerSkillsLiveMode() {
+  return Boolean(window.HZsupa && window.HZdb?.auth?._mode?.() === 'live');
+}
+
+function athleteDrawerSkillAthleteIsUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
+}
+
+async function persistAthleteDrawerSkill(payload) {
+  if (athleteDrawerSkillsLiveMode() && athleteDrawerSkillAthleteIsUuid(payload.athlete_id)) {
+    const { data, error } = await window.HZsupa
+      .from('athlete_skills')
+      .upsert(payload, { onConflict: 'athlete_id,skill_id' })
+      .select('*')
+      .single();
+    if (error) return { data: null, error };
+    await window.HZdb.from('athlete_skills').upsert(data || payload, { onConflict: 'athlete_id,skill_id' });
+    return { data: data || payload, error: null };
+  }
+  return await window.HZdb.from('athlete_skills').upsert(payload, { onConflict: 'athlete_id,skill_id' });
+}
+
+async function refreshAthleteDrawerSkills() {
+  if (window.HZsel?._refresh) await window.HZsel._refresh();
+  window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table: 'athlete_skills', action: 'update' } }));
+}
+
+function athleteDrawerMedicalCanEdit(session) {
+  const role = session?.profile?.role || session?.actualProfile?.role || '';
+  return role === 'owner' || role === 'coach';
+}
+
+async function persistAthleteDrawerMedicalRecord(payload) {
+  if (athleteDrawerSkillsLiveMode() && athleteDrawerSkillAthleteIsUuid(payload.athlete_id)) {
+    const { data, error } = await window.HZsupa
+      .from('medical_records')
+      .upsert(payload, { onConflict: 'athlete_id' })
+      .select('*')
+      .single();
+    if (error) return { data: null, error };
+    await window.HZdb.from('medical_records').upsert(data || payload, { onConflict: 'athlete_id' });
+    await refreshAthleteDrawerMedical();
+    return { data: data || payload, error: null };
+  }
+  const result = await window.HZdb.from('medical_records').upsert(payload, { onConflict: 'athlete_id' });
+  if (!result.error) await refreshAthleteDrawerMedical();
+  return result;
+}
+
+async function insertAthleteDrawerEmergencyContact(payload) {
+  if (athleteDrawerSkillsLiveMode() && athleteDrawerSkillAthleteIsUuid(payload.athlete_id)) {
+    const { data, error } = await window.HZsupa
+      .from('emergency_contacts')
+      .insert(payload)
+      .select('*')
+      .single();
+    if (error) return { data: null, error };
+    await window.HZdb.from('emergency_contacts').upsert(data || payload, { onConflict: 'id' });
+    return { data: data || payload, error: null };
+  }
+  return await window.HZdb.from('emergency_contacts').insert(payload);
+}
+
+async function refreshAthleteDrawerMedical() {
+  if (window.HZsel?._refresh) await window.HZsel._refresh();
+  ['medical_records', 'emergency_contacts'].forEach((table) => {
+    window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table, action: 'update' } }));
+  });
 }
 
 // Shared athlete view: identity, quick stats, tab strip, tab content.
@@ -86,7 +156,7 @@ function AthleteCoreView({ a, snap, session, tab, setTab }) {
       <div style={{ marginTop: 20 }}>
         {activeTab === 'overview' && <OverviewTab a={a} snap={snap}/>}
         {activeTab === 'skills'   && <SkillsTab   a={a} snap={snap} session={session}/>}
-        {activeTab === 'medical'  && <MedicalTab  a={a}/>}
+        {activeTab === 'medical'  && <MedicalTab  a={a} session={session}/>}
         {activeTab === 'uniform'  && <UniformTab  a={a} snap={snap}/>}
         {activeTab === 'billing'  && <BillingTab  a={a}/>}
         {activeTab === 'timeline' && <TimelineTab a={a} snap={snap}/>}
@@ -268,17 +338,109 @@ function SkillsTab({ a, snap, session }) {
   Object.values(skillsByCat).forEach(arr => arr.sort((x, y) => x.level - y.level));
 
   const statusMap = {};
-  (snap.athlete_skills || []).filter(x => x.athlete_id === a.id).forEach(r => { statusMap[r.skill_id] = r.status; });
+  const skillRowMap = {};
+  (snap.athlete_skills || []).filter(x => x.athlete_id === a.id).forEach(r => {
+    statusMap[r.skill_id] = r.status;
+    skillRowMap[r.skill_id] = r;
+  });
   const summary = window.HZsel.athleteSkillsSummary(a.id);
-  const canEdit = ['coach', 'owner'].includes(session?.profile?.role);
+  const viewerProfile = session?.profile || session?.actualProfile || {};
+  const actorProfile = session?.actualProfile || session?.profile || {};
+  const canEdit = ['coach', 'owner'].includes(viewerProfile.role || '');
+  const [localStatus, setLocalStatus] = _adUS({});
+  const [savingSkillId, setSavingSkillId] = _adUS('');
+  const [saveError, setSaveError] = _adUS('');
+  const [selectedSkillId, setSelectedSkillId] = _adUS('');
+  const [noteDraft, setNoteDraft] = _adUS('');
+  const [savingNote, setSavingNote] = _adUS(false);
+
+  const statusFor = (skillId) => localStatus[skillId] || statusMap[skillId] || 'none';
+  const selectedSkill = (snap.skills || []).find((skill) => skill.id === selectedSkillId) || null;
+  const selectedSkillRow = selectedSkillId ? skillRowMap[selectedSkillId] || null : null;
+  const selectedSkillStatus = selectedSkillId ? statusFor(selectedSkillId) : 'none';
+  const selectedSkillNote = selectedSkillRow?.note || '';
+
+  React.useEffect(() => {
+    if (!selectedSkillId) {
+      setNoteDraft('');
+      return;
+    }
+    setNoteDraft(selectedSkillNote);
+  }, [selectedSkillId, selectedSkillNote]);
+
+  React.useEffect(() => {
+    if (selectedSkillId || !(snap.skills || []).length) return;
+    setSelectedSkillId(snap.skills[0].id);
+  }, [selectedSkillId, snap.skills, setSelectedSkillId]);
+
+  const persistSkill = async (skillId, nextStatus, noteValue) => {
+    if (!canEdit || savingSkillId || savingNote) return;
+    const updatedAt = new Date().toISOString();
+    setSaveError('');
+    setSavingSkillId(skillId);
+    setSelectedSkillId(skillId);
+    const cur = statusFor(skillId);
+    setLocalStatus(prev => ({ ...prev, [skillId]: nextStatus }));
+    try {
+      const { error } = await persistAthleteDrawerSkill({
+        athlete_id: a.id,
+        skill_id: skillId,
+        status: nextStatus,
+        note: noteValue,
+        updated_by: actorProfile.id || session?.user?.id || null,
+        updated_at: updatedAt,
+      });
+      if (error) throw error;
+      await refreshAthleteDrawerSkills();
+    } catch (error) {
+      setLocalStatus(prev => ({ ...prev, [skillId]: cur }));
+      setSaveError(error?.message || 'That skill did not save. Try again.');
+    } finally {
+      setSavingSkillId('');
+    }
+  };
+
+  const setSkillStatus = async (skillId, nextStatus) => {
+    await persistSkill(skillId, nextStatus, (skillRowMap[skillId]?.note || '').trim() || null);
+  };
 
   const cycle = async (skillId) => {
-    if (!canEdit) return;
+    if (!canEdit || savingSkillId || savingNote) return;
     const order = ['none','working','got_it','mastered'];
-    const cur = statusMap[skillId] || 'none';
+    const cur = statusFor(skillId);
     const next = order[(order.indexOf(cur) + 1) % order.length];
-    await window.HZdb.from('athlete_skills')
-      .upsert({ athlete_id: a.id, skill_id: skillId, status: next, updated_at: new Date().toISOString() }, { onConflict: 'athlete_id,skill_id' });
+    await persistSkill(skillId, next, (skillRowMap[skillId]?.note || '').trim() || null);
+  };
+
+  const saveSkillNote = async () => {
+    if (!canEdit || !selectedSkillId || savingSkillId || savingNote) return;
+    const updatedAt = new Date().toISOString();
+    setSaveError('');
+    setSavingNote(true);
+    try {
+      const { error } = await persistAthleteDrawerSkill({
+        athlete_id: a.id,
+        skill_id: selectedSkillId,
+        status: selectedSkillStatus,
+        note: noteDraft.trim() || null,
+        updated_by: actorProfile.id || session?.user?.id || null,
+        updated_at: updatedAt,
+      });
+      if (error) throw error;
+      await refreshAthleteDrawerSkills();
+      window.HZToast?.({
+        kind: 'success',
+        eyebrow: 'Skill note',
+        title: 'Skill note saved',
+        body: `${a.display_name} now has a note on ${selectedSkill?.name || 'that skill'}.`,
+      });
+    } catch (error) {
+      const message = error?.message || 'That skill note did not save. Try again.';
+      setSaveError(message);
+      window.HZToast?.({ kind: 'error', eyebrow: 'Skill note', title: 'Save failed', body: message });
+    } finally {
+      setSavingNote(false);
+    }
   };
 
   const CAT_ORDER = ['standing_tumbling','running_tumbling','jumps','stunts','pyramids','baskets'];
@@ -303,6 +465,7 @@ function SkillsTab({ a, snap, session }) {
           <span style={{ color: 'var(--hz-dim)', fontSize: 11 }}>Dim = not started. Updates live as coaches log progress.</span>
         </div>
       )}
+      {saveError && <div style={{ color: 'var(--hz-pink)', fontSize: 12.5 }}>{saveError}</div>}
       {CAT_ORDER.map(cat => (
         <div key={cat}>
           <div className="hz-eyebrow" style={{ marginBottom: 8 }}>{CAT_LABEL[cat]}</div>
@@ -311,9 +474,14 @@ function SkillsTab({ a, snap, session }) {
               <div style={{ color: 'var(--hz-dim)', fontSize: 12 }}>No skills loaded for this category yet.</div>
             )}
             {(skillsByCat[cat] || []).map(s => {
-              const st = statusMap[s.id] || 'none';
+              const st = statusFor(s.id);
+              const hasNote = Boolean(String(skillRowMap[s.id]?.note || '').trim());
               return (
-                <div key={s.id} onClick={() => cycle(s.id)}
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => { setSelectedSkillId(s.id); cycle(s.id); }}
+                  disabled={!canEdit}
                   style={{
                     padding: '6px 10px', borderRadius: 6, fontSize: 11, cursor: canEdit ? 'pointer' : 'default',
                     background: st === 'mastered' ? 'linear-gradient(135deg, rgba(39,207,215,0.3), rgba(249,127,172,0.3))'
@@ -325,25 +493,228 @@ function SkillsTab({ a, snap, session }) {
                       : st === 'working' ? 'var(--hz-amber)'
                       : 'var(--hz-dim)',
                     border: st === 'mastered' ? '1px solid rgba(249,127,172,0.3)' : '1px solid transparent',
+                    opacity: savingSkillId === s.id ? 0.72 : 1,
                   }}
-                  title={canEdit ? s.name + ' · Level ' + s.level + ' — click to cycle' : s.name + ' · Level ' + s.level}>
+                  title={canEdit ? s.name + ' · Level ' + s.level + (hasNote ? ' · note saved' : '') + ' — click to cycle' : s.name + ' · Level ' + s.level}>
                   <span style={{ opacity: 0.6, fontFamily: 'var(--hz-mono)', fontSize: 9, marginRight: 6 }}>L{s.level}</span>
                   {s.name}
-                </div>
+                  {hasNote && (
+                    <span style={{
+                      marginLeft: 6,
+                      padding: '1px 4px',
+                      borderRadius: 999,
+                      fontSize: 9,
+                      fontWeight: 700,
+                      letterSpacing: '0.06em',
+                      background: 'rgba(255,255,255,0.08)',
+                      color: '#fff',
+                    }}>
+                      N
+                    </span>
+                  )}
+                </button>
               );
             })}
           </div>
         </div>
       ))}
+      {selectedSkill && (
+        <div className="hz-card" style={{ padding: 16, display: 'grid', gap: 12, borderColor: 'rgba(39,207,215,0.24)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div>
+              <div className="hz-eyebrow" style={{ marginBottom: 5 }}>Selected skill</div>
+              <div style={{ fontSize: 17, fontWeight: 900 }}>{selectedSkill.name}</div>
+              <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>
+                {a.display_name} · Level {selectedSkill.level} · {CAT_LABEL[selectedSkill.category] || selectedSkill.category}
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {[
+                ['none', 'Not started'],
+                ['working', 'Working'],
+                ['got_it', 'Got it'],
+                ['mastered', 'Mastered'],
+              ].map(([statusId, label]) => (
+                <button
+                  key={statusId}
+                  type="button"
+                  className="hz-btn hz-btn-sm"
+                  disabled={!canEdit || savingSkillId === selectedSkillId || savingNote}
+                  onClick={() => setSkillStatus(selectedSkillId, statusId)}
+                  style={{
+                    borderColor: selectedSkillStatus === statusId ? 'rgba(39,207,215,0.45)' : 'var(--hz-line)',
+                    background: selectedSkillStatus === statusId ? 'rgba(39,207,215,0.12)' : undefined,
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Coach note for this athlete</div>
+            <textarea
+              className="hz-input"
+              rows={3}
+              placeholder="Technique reminder, progression cue, safety note, or what to fix next."
+              value={noteDraft}
+              onChange={(event) => setNoteDraft(event.target.value)}
+              disabled={!canEdit || savingNote}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+              <div style={{ color: 'var(--hz-dim)', fontSize: 12 }}>
+                Notes stay attached to this athlete + skill pairing and follow the saved status.
+              </div>
+              <button
+                type="button"
+                className="hz-btn hz-btn-primary hz-btn-sm"
+                disabled={!canEdit || savingNote || noteDraft === selectedSkillNote}
+                onClick={saveSkillNote}
+              >
+                {savingNote ? 'Saving note...' : 'Save note'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── Medical tab ──────────────────────────────────────────────────────────
-function MedicalTab({ a }) {
+function MedicalTab({ a, session }) {
   const { record, contacts, injuries } = window.HZsel.athleteMedical(a.id);
+  const canEdit = athleteDrawerMedicalCanEdit(session);
+  const actorId = session?.actualProfile?.id || session?.profile?.id || session?.user?.id || null;
+  const linkedParents = (() => {
+    const snap = window.HZsel?.cache?.() || {};
+    return (snap.parent_links || [])
+      .filter((link) => link.athlete_id === a.id)
+      .map((link) => ({
+        ...link,
+        profile: (snap.profiles || []).find((profile) => profile.id === link.parent_id) || null,
+      }))
+      .filter((link) => link.profile);
+  })();
+  const [medicalForm, setMedicalForm] = React.useState(() => ({
+    blood_type: record?.blood_type || '',
+    allergies: record?.allergies || '',
+    medications: record?.medications || '',
+    conditions: record?.conditions || '',
+    insurance_carrier: record?.insurance_carrier || '',
+    insurance_member_id: record?.insurance_member_id || '',
+    physician_name: record?.physician_name || '',
+    physician_phone: record?.physician_phone || '',
+    last_physical: record?.last_physical || '',
+    notes: record?.notes || '',
+  }));
+  const [contactForm, setContactForm] = React.useState({ name: '', relation: 'Parent', phone: '', email: '', is_primary: contacts.length === 0 });
+  const [savingMedical, setSavingMedical] = React.useState(false);
+  const [savingContact, setSavingContact] = React.useState(false);
+  const [saveError, setSaveError] = React.useState('');
+
+  React.useEffect(() => {
+    setMedicalForm({
+      blood_type: record?.blood_type || '',
+      allergies: record?.allergies || '',
+      medications: record?.medications || '',
+      conditions: record?.conditions || '',
+      insurance_carrier: record?.insurance_carrier || '',
+      insurance_member_id: record?.insurance_member_id || '',
+      physician_name: record?.physician_name || '',
+      physician_phone: record?.physician_phone || '',
+      last_physical: record?.last_physical || '',
+      notes: record?.notes || '',
+    });
+  }, [record?.athlete_id, record?.updated_at]);
+
+  async function saveMedical() {
+    if (!canEdit || savingMedical) return;
+    setSaveError('');
+    setSavingMedical(true);
+    try {
+      const payload = {
+        athlete_id: a.id,
+        blood_type: medicalForm.blood_type.trim() || null,
+        allergies: medicalForm.allergies.trim() || null,
+        medications: medicalForm.medications.trim() || null,
+        conditions: medicalForm.conditions.trim() || null,
+        insurance_carrier: medicalForm.insurance_carrier.trim() || null,
+        insurance_member_id: medicalForm.insurance_member_id.trim() || null,
+        physician_name: medicalForm.physician_name.trim() || null,
+        physician_phone: medicalForm.physician_phone.trim() || null,
+        last_physical: medicalForm.last_physical || null,
+        notes: medicalForm.notes.trim() || null,
+        updated_by: actorId,
+        updated_at: new Date().toISOString(),
+      };
+      const { error } = await persistAthleteDrawerMedicalRecord(payload);
+      if (error) throw error;
+      await refreshAthleteDrawerMedical();
+      window.HZToast?.({ kind: 'success', eyebrow: 'Athlete medical', title: 'Medical info saved', body: `${a.display_name} now has updated medical details.` });
+    } catch (error) {
+      const message = error?.message || 'Could not save medical info.';
+      setSaveError(message);
+      window.HZToast?.({ kind: 'error', eyebrow: 'Athlete medical', title: 'Save failed', body: message });
+    } finally {
+      setSavingMedical(false);
+    }
+  }
+
+  async function addContact() {
+    if (!canEdit || savingContact) return;
+    if (!contactForm.name.trim() || !contactForm.phone.trim()) {
+      const message = 'Contact name and phone are required.';
+      setSaveError(message);
+      window.HZToast?.({ kind: 'error', eyebrow: 'Athlete medical', title: 'Contact not saved', body: message });
+      return;
+    }
+    setSaveError('');
+    setSavingContact(true);
+    try {
+      const payload = {
+        id: window.crypto?.randomUUID?.() || `contact-${Date.now()}`,
+        athlete_id: a.id,
+        name: contactForm.name.trim(),
+        relation: contactForm.relation.trim() || 'Parent',
+        phone: contactForm.phone.trim(),
+        email: contactForm.email.trim() || null,
+        is_primary: !!contactForm.is_primary,
+      };
+      const { error } = await insertAthleteDrawerEmergencyContact(payload);
+      if (error) throw error;
+      await refreshAthleteDrawerMedical();
+      setContactForm({ name: '', relation: 'Parent', phone: '', email: '', is_primary: false });
+      window.HZToast?.({ kind: 'success', eyebrow: 'Athlete medical', title: 'Contact added', body: `${payload.name} is now attached to ${a.display_name}.` });
+    } catch (error) {
+      const message = error?.message || 'Could not save emergency contact.';
+      setSaveError(message);
+      window.HZToast?.({ kind: 'error', eyebrow: 'Athlete medical', title: 'Contact not saved', body: message });
+    } finally {
+      setSavingContact(false);
+    }
+  }
+
   return (
     <div style={{ display: 'grid', gap: 14 }}>
+      {(linkedParents.length > 0 || canEdit) && (
+        <div className="hz-card" style={{ padding: 16 }}>
+          <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Linked parents</div>
+          {linkedParents.length === 0 && <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>No linked parent account is attached yet.</div>}
+          {linkedParents.map((link) => (
+            <div key={link.parent_id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px dashed var(--hz-line)' }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{link.profile.display_name || link.profile.email || 'Parent account'}</div>
+                <div style={{ fontSize: 11, color: 'var(--hz-dim)', textTransform: 'capitalize' }}>
+                  {link.relation || (link.is_primary ? 'primary parent' : 'linked parent')}
+                </div>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--hz-teal)' }}>{link.profile.email || 'No email on file'}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="hz-card" style={{ padding: 16 }}>
         <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Emergency contacts</div>
         {contacts.length === 0 && <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>None on file.</div>}
@@ -359,6 +730,25 @@ function MedicalTab({ a }) {
             </div>
           </div>
         ))}
+        {canEdit && (
+          <div style={{ marginTop: 14, display: 'grid', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <input className="hz-input" placeholder="Parent/contact name" value={contactForm.name} onChange={(event) => setContactForm((prev) => ({ ...prev, name: event.target.value }))}/>
+              <input className="hz-input" placeholder="Relation" value={contactForm.relation} onChange={(event) => setContactForm((prev) => ({ ...prev, relation: event.target.value }))}/>
+              <input className="hz-input" placeholder="Phone" value={contactForm.phone} onChange={(event) => setContactForm((prev) => ({ ...prev, phone: event.target.value }))}/>
+              <input className="hz-input" placeholder="Email" value={contactForm.email} onChange={(event) => setContactForm((prev) => ({ ...prev, email: event.target.value }))}/>
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--hz-dim)' }}>
+              <input type="checkbox" checked={!!contactForm.is_primary} onChange={(event) => setContactForm((prev) => ({ ...prev, is_primary: event.target.checked }))}/>
+              Mark as primary contact
+            </label>
+            <div>
+              <button className="hz-btn hz-btn-primary hz-btn-sm" disabled={savingContact} onClick={addContact}>
+                {savingContact ? 'Saving...' : 'Add emergency contact'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="hz-card" style={{ padding: 16 }}>
@@ -376,6 +766,27 @@ function MedicalTab({ a }) {
             <KV label="Dr. phone"     v={record.physician_phone || '—'}/>
             <KV label="Last physical" v={record.last_physical || '—'}/>
             <KV label="Notes"         v={record.notes || '—'}/>
+          </div>
+        )}
+        {canEdit && (
+          <div style={{ marginTop: 14, display: 'grid', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <input className="hz-input" placeholder="Blood type" value={medicalForm.blood_type} onChange={(event) => setMedicalForm((prev) => ({ ...prev, blood_type: event.target.value }))}/>
+              <input className="hz-input" placeholder="Last physical (YYYY-MM-DD)" value={medicalForm.last_physical} onChange={(event) => setMedicalForm((prev) => ({ ...prev, last_physical: event.target.value }))}/>
+              <textarea className="hz-input" rows={2} placeholder="Allergies" value={medicalForm.allergies} onChange={(event) => setMedicalForm((prev) => ({ ...prev, allergies: event.target.value }))}/>
+              <textarea className="hz-input" rows={2} placeholder="Medications" value={medicalForm.medications} onChange={(event) => setMedicalForm((prev) => ({ ...prev, medications: event.target.value }))}/>
+              <textarea className="hz-input" rows={2} placeholder="Conditions / restrictions" value={medicalForm.conditions} onChange={(event) => setMedicalForm((prev) => ({ ...prev, conditions: event.target.value }))}/>
+              <textarea className="hz-input" rows={2} placeholder="Notes" value={medicalForm.notes} onChange={(event) => setMedicalForm((prev) => ({ ...prev, notes: event.target.value }))}/>
+              <input className="hz-input" placeholder="Insurance carrier" value={medicalForm.insurance_carrier} onChange={(event) => setMedicalForm((prev) => ({ ...prev, insurance_carrier: event.target.value }))}/>
+              <input className="hz-input" placeholder="Policy / member #" value={medicalForm.insurance_member_id} onChange={(event) => setMedicalForm((prev) => ({ ...prev, insurance_member_id: event.target.value }))}/>
+              <input className="hz-input" placeholder="Physician" value={medicalForm.physician_name} onChange={(event) => setMedicalForm((prev) => ({ ...prev, physician_name: event.target.value }))}/>
+              <input className="hz-input" placeholder="Physician phone" value={medicalForm.physician_phone} onChange={(event) => setMedicalForm((prev) => ({ ...prev, physician_phone: event.target.value }))}/>
+            </div>
+            <div>
+              <button className="hz-btn hz-btn-primary hz-btn-sm" disabled={savingMedical} onClick={saveMedical}>
+                {savingMedical ? 'Saving...' : record ? 'Update medical info' : 'Save medical info'}
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -400,6 +811,7 @@ function MedicalTab({ a }) {
           </div>
         ))}
       </div>
+      {saveError && <div style={{ color: 'var(--hz-pink)', fontSize: 12.5 }}>{saveError}</div>}
     </div>
   );
 }

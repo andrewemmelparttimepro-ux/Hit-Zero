@@ -89,6 +89,7 @@
 
   const STATUS_PCT = { none: 0, working: 0.33, got_it: 0.75, mastered: 1.0 };
   const round2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+  const isSettledRegistrationPayment = (status) => status === 'paid' || status === 'comped';
 
   function athleteById(id) { return cache?.athletes.find(a => a.id === id); }
   function skillById(id) { return cache?.skills.find(s => s.id === id); }
@@ -97,11 +98,15 @@
   }
   function activeProgramId() {
     const session = currentSession();
-    return session?.actualProfile?.program_id || session?.profile?.program_id || null;
+    const raw = session?.actualProfile?.program_id || session?.profile?.program_id || null;
+    return window.HZisPlaceholderProgramId?.(raw) ? null : raw;
   }
   function programProfile() {
     const pid = activeProgramId();
-    return (pid ? cache?.programs?.find(p => p.id === pid) : null) || cache?.programs?.[0] || null;
+    return (pid ? cache?.programs?.find(p => p.id === pid) : null)
+      || cache?.programs?.find(p => !window.HZisPlaceholderProgramId?.(p.id))
+      || cache?.programs?.[0]
+      || null;
   }
   function programPaymentSettings() {
     const pid = programProfile()?.id;
@@ -367,7 +372,7 @@
     const total = round2(Math.max(accountTotal, chargeTotal, estimatedRegistrationTotal, enrollmentPaid, registrationPaid, paid));
     const owed = round2(Math.max(0, total - paid));
     const delinquent = accounts.filter(a => (a.owed || 0) > 0).length;
-    const pendingRegistrations = registrations.filter(row => ['pending', 'none', 'failed', null, undefined].includes(row.payment_status)).length;
+    const pendingRegistrations = registrations.filter(row => !isSettledRegistrationPayment(row.payment_status) && row.payment_status !== 'refunded').length;
     const syncedPaid = accounts.reduce((s,a) => s + Number(a.synced_paid || 0), 0);
     const syncedOpen = accounts.reduce((s,a) => s + Number(a.synced_open_amount || 0), 0);
     const syncedOpenInvoices = accounts.reduce((s,a) => s + Number(a.synced_open_invoice_count || 0), 0);
@@ -434,10 +439,15 @@
     const email = String(profile.email || '').trim().toLowerCase();
     const scope = window.HZviewerScope ? window.HZviewerScope(cache, sessionOrProfile?.profile ? sessionOrProfile : { profile }) : null;
     const visibleIds = scope?.visibleAthleteIds || new Set();
+    const allowEmailFallback = !scope?.isLive || (!profile.id && !visibleIds.size);
     const rows = (cache.class_enrollments || []).filter(row => {
       if (profile.id && row.parent_id === profile.id) return true;
       if (row.athlete_id && visibleIds.has(row.athlete_id)) return true;
-      return !!email && String(row.parent_email || '').trim().toLowerCase() === email;
+      if (!allowEmailFallback) return false;
+      return !!email
+        && !row.parent_id
+        && (!row.athlete_id || !visibleIds.size)
+        && String(row.parent_email || '').trim().toLowerCase() === email;
     });
     const seen = new Set();
     return rows
@@ -613,7 +623,7 @@
   // Registrations
   function isCheckoutHold(row) {
     const meta = row?.intake_metadata || {};
-    return row?.payment_status !== 'paid'
+    return !isSettledRegistrationPayment(row?.payment_status)
       && (meta.payment_gate_required === true || meta.payment_gate_state === 'checkout_started');
   }
   function pendingRegistrations() {
@@ -736,7 +746,7 @@
     formTemplatesActive, formResponsesForTemplate,
     volunteerRolesAndAssignments,
     practicePlanForSession, allPracticePlans,
-    pendingRegistrations, registrationSummary, isCheckoutHold,
+    pendingRegistrations, registrationSummary, isCheckoutHold, isSettledRegistrationPayment,
     pinDesignById, pinInventory, pinDropsForAthlete, pinQuests, pinStats,
     // AI Judge
     activeRubric, rubricCategories,

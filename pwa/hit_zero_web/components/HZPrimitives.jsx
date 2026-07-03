@@ -255,7 +255,11 @@ function HZviewerScope(snap = {}, session = {}) {
   if (role === 'athlete') {
     visibleAthletes = ownAthlete ? [ownAthlete] : [];
   } else if (role === 'parent') {
-    visibleAthletes = linkedAthletes.length ? linkedAthletes : (isStaffFamilyView ? staffProgramAthletes : []);
+    visibleAthletes = linkedAthletes.length
+      ? linkedAthletes
+      : (isStaffFamilyView
+          ? (ownAthlete ? [ownAthlete] : [])
+          : []);
   } else if (role === 'coach' || role === 'owner') {
     visibleAthletes = staffProgramAthletes;
   }

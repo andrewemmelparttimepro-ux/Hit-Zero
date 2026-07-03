@@ -62,7 +62,12 @@ function SkillMatrix({ snap, session, openAthlete, pushToast }) {
     .sort((a,b) => a.category.localeCompare(b.category) || a.level - b.level);
 
   const statusByAS = {};
-  (snap.athlete_skills || []).forEach(r => { statusByAS[r.athlete_id + ':' + r.skill_id] = r.status; });
+  const rowByAS = {};
+  (snap.athlete_skills || []).forEach(r => {
+    const key = r.athlete_id + ':' + r.skill_id;
+    statusByAS[key] = r.status;
+    rowByAS[key] = r;
+  });
   const scope = window.HZviewerScope ? window.HZviewerScope(snap, session) : null;
   const visibleAthletes = scope?.visibleAthletes?.length ? scope.visibleAthletes : (window.HZsel.programAthletes?.() || snap.athletes || []);
 
@@ -243,15 +248,17 @@ function SkillMatrix({ snap, session, openAthlete, pushToast }) {
                   {skills.map(s => {
                     const st = statusByAS[a.id + ':' + s.id] || 'none';
                     const key = a.id + ':' + s.id;
+                    const note = String(rowByAS[key]?.note || '').trim();
                     return (
                       <td key={s.id} style={{ padding: 3, borderBottom: '1px solid var(--hz-line)' }}>
                         <div
                           className={`skill-cell status-${st}`}
                           onClick={() => savingKey ? null : cycle(a.id, s.id)}
-                          title={`${a.display_name} · ${s.name} · ${SKILL_STATUS_LABELS[st]}`}
-                          style={{ opacity: savingKey === key ? 0.55 : 1, cursor: savingKey ? 'wait' : 'pointer' }}
+                          title={`${a.display_name} · ${s.name} · ${SKILL_STATUS_LABELS[st]}${note ? ` · Note: ${note}` : ''}`}
+                          style={{ opacity: savingKey === key ? 0.55 : 1, cursor: savingKey ? 'wait' : 'pointer', position: 'relative' }}
                         >
                           {savingKey === key ? '…' : st === 'none' ? '' : st === 'working' ? '·' : st === 'got_it' ? '✓' : '★'}
+                          {note && <span className="skill-cell__note">N</span>}
                         </div>
                       </td>
                     );
@@ -273,7 +280,7 @@ function SkillMatrix({ snap, session, openAthlete, pushToast }) {
         <Legend color="rgba(255,180,84,0.18)" label="Working"/>
         <Legend color="rgba(39,207,215,0.22)" label="Got It"/>
         <Legend color="linear-gradient(135deg, rgba(39,207,215,0.35), rgba(249,127,172,0.35))" label="Mastered"/>
-        <span style={{ marginLeft: 'auto', fontStyle: 'italic' }}>Click any cell to cycle. Saved rows refresh across signed-in devices.</span>
+        <span style={{ marginLeft: 'auto', fontStyle: 'italic' }}>Click any cell to cycle. Click an athlete name to open their skill notes.</span>
       </div>
     </div>
   );
