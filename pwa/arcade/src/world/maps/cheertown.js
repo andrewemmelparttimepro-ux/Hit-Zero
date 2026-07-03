@@ -67,7 +67,44 @@ export const cheertownMap = {
   canStand: makeCanStand(collision.isBlocked),
   build,
   makeInteractables,
+  // Super Squad
+  npcs: [
+    {
+      name: 'Sparkle',
+      avatar: { skin: 0, hair: 'long', hairColor: 5, bow: 3, uniform: 2, cape: 2 },
+      home: { c0: 3, r0: 4, c1: 22, r1: 7 },
+      superset: ['superjump', 'kickdouble'],
+    },
+    {
+      name: 'Miss Flip',
+      avatar: { skin: 3, hair: 'ponytail', hairColor: 0, bow: 1, uniform: 1, cape: 3 },
+      home: { c0: 32, r0: 4, c1: 38, r1: 8 },
+      superset: ['fulltwist', 'doublefull', 'kickdouble'],
+      pass: { from: { c: 32.5, r: 8 }, to: { c: 38, r: 4 } },
+    },
+  ],
+  minimap: {
+    regions: [
+      { c0: 0, r0: 0, c1: 25, r1: ROWS - 1, color: '#18261c' },                          // grass
+      { ...SIDEWALK_N, color: '#30303a' }, { ...SIDEWALK_S, color: '#30303a' },
+      { ...STREET, color: '#22222c' },
+      { ...GYM, color: '#2b2b3d' },
+      ...HOUSES.map(h => ({ c0: h.c0, r0: 0, c1: h.c1, r1: 1, color: hex(h.color) })),
+      { c0: HOUSE_S.c0, r0: 10, c1: HOUSE_S.c1, r1: 11, color: hex(HOUSE_S.color) },
+      { ...PRACTICE_MAT, color: '#2a3150' },
+      { c0: IN.c0, r0: 0, c1: IN.c1, r1: ROWS - 1, color: '#1a1a24' },                   // gym interior
+      { ...IN_SPRING, color: '#2a3150' },
+    ],
+    pois: [
+      { c: GYM_DOOR.c + 1, r: GYM_DOOR.r + 0.5, color: 'accent' },                       // gym door
+      { c: PERFORM.c + 0.5, r: PERFORM.r + 0.5, color: '#ffd166' },                      // comp star
+      { c: PORTAL.c0 + 0.5, r: 6, color: '#b387ff' },                                    // lobby portal
+      { c: CART_PARK.c + 0.5, r: CART_PARK.r + 0.5, color: '#f4f4f8' },                  // golf cart
+    ],
+  },
 };
+
+function hex(n) { return '#' + n.toString(16).padStart(6, '0'); }
 
 // ─────────────────────────────────────────────────────────────────────────
 // Geometry

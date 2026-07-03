@@ -14,9 +14,10 @@ import { loadTheme } from './theme.js';
 import * as audio from './audio.js';
 import { createRenderer } from './world/renderer.js';
 import { createAvatar, facingFromVector, sanitizeAvatar } from './world/avatar.js';
-import { gridToWorld } from './world/tilemap.js';
+import { gridToWorld, worldToGrid } from './world/tilemap.js';
 import { lobbyMap } from './world/maps/lobby.js';
 import { cheertownMap } from './world/maps/cheertown.js';
+import { createNpcDriver } from './world/npc.js';
 import { createNet } from './net/channel.js';
 import { PHRASES } from './net/protocol.js';
 import { createJoystick } from './ui/joystick.js';
@@ -178,6 +179,7 @@ async function boot() {
   // ── 5. player + scene state ──
   let scene = 'lobby';
   let interactables = null;
+  let npcDriver = null;
   let player = null;
 
   if (mode === 'player' || mode === 'offline') {
@@ -187,7 +189,7 @@ async function boot() {
       team: teamName,
       theme, isSelf: true, fx: rend.fx,
     });
-    player = { x: 0, y: 0, avatar, moving: false, cart: false };
+    player = { x: 0, y: 0, avatar, moving: false, cart: false, sparkleUntil: 0 };
     rend.follow(() => ({ x: player.x, y: player.y }));
     // tap yourself to hop off the golf cart — only interactive while riding,
     // so the avatar never eats taps meant for things you're standing on
@@ -361,6 +363,18 @@ async function boot() {
       syncPeerVisibility(p);
     }
     interactables = map.makeInteractables(ctx);
+    npcDriver = map.npcs?.length
+      ? createNpcDriver({
+          rend, map, theme,
+          getPlayer: () => player,
+          sfx: audio.sfx,
+          toast: hud.toast,
+          grantSparkle(seconds) {
+            if (player) player.sparkleUntil = performance.now() + seconds * 1000;
+          },
+        })
+      : null;
+    hud.setMinimapScene(map.minimap, map.cols, map.rows, key === 'town' ? 'Cheer Town' : 'The Lobby');
     net.updatePresence({ s: key });
   }
 
@@ -413,6 +427,8 @@ async function boot() {
   if (!wheelsEnabled) hud.actions.style.display = 'none';
 
   // ── 9. game loop ──
+  let sparkleAcc = 0;
+  let miniAcc = 0;
   rend.onTick((dt) => {
     if (player && !traveling) {
       const vx = joy.vector.x, vy = joy.vector.y;
@@ -455,6 +471,40 @@ async function boot() {
     player?.avatar.update(dt);
 
     interactables?.update(dt);
+    npcDriver?.update(dt);
+
+    // super-sparkle gift trail
+    if (player && player.sparkleUntil > performance.now()) {
+      sparkleAcc += dt;
+      if (sparkleAcc > 0.1) {
+        sparkleAcc = 0;
+        rend.fx.burst(player.x + (Math.random() - 0.5) * 16, player.y - 40 - Math.random() * 30, 'spark', 2);
+      }
+    }
+
+    // minimap refresh (~10Hz)
+    miniAcc += dt;
+    if (miniAcc > 0.1) {
+      miniAcc = 0;
+      const ents = [];
+      if (player) {
+        const g = worldToGrid(player.x, player.y);
+        ents.push({ c: g.c, r: g.r, kind: 'me' });
+      }
+      for (const p of peers.values()) {
+        if (p.avatar?.container.visible) {
+          const g = worldToGrid(p.x, p.y);
+          ents.push({ c: g.c, r: g.r, kind: 'peer' });
+        }
+      }
+      if (npcDriver) {
+        for (const n of npcDriver.entities()) {
+          const g = worldToGrid(n.x, n.y);
+          ents.push({ c: g.c, r: g.r, kind: 'npc' });
+        }
+      }
+      hud.updateMinimap(ents);
+    }
   });
 
   window.addEventListener('beforeunload', () => net.leave());
@@ -464,6 +514,7 @@ async function boot() {
     mode,
     get player() { return player; },
     get scene() { return scene; },
+    get npcs() { return npcDriver?.entities() || []; },
     travel: (k) => switchScene(k),
     peers, rend, theme,
   };

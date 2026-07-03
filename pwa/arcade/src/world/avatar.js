@@ -15,8 +15,11 @@ export const HAIR_STYLES = ['ponytail', 'bun', 'long', 'short'];
 export const BOW_COLORS = [null, 0xffffff, 0xff4f79, 0x35c2ff, 0xb387ff, 0xffd166, 0x43e97b, 0x14141c];
 // uniform colorway: [top, trim] — index 0 = program colors
 export const UNIFORMS = [null, [0x14141c, 0xf97fac], [0x27334d, 0x74d7db], [0x4b2a5e, 0xffffff]];
+// capes: index 0 = none. The first real cosmetic slot — Super Squad NPCs
+// wear them now; kids earn them later via skill mastery.
+export const CAPES = [null, 0xffd166, 0x74d7db, null /* program accent */, 0xffffff, 0xb387ff];
 
-export const DEFAULT_AVATAR = { skin: 1, hair: 'ponytail', hairColor: 0, bow: 0, uniform: 0 };
+export const DEFAULT_AVATAR = { skin: 1, hair: 'ponytail', hairColor: 0, bow: 0, uniform: 0, cape: 0 };
 
 export function sanitizeAvatar(cfg) {
   const a = { ...DEFAULT_AVATAR, ...(cfg && typeof cfg === 'object' ? cfg : {}) };
@@ -24,6 +27,7 @@ export function sanitizeAvatar(cfg) {
   a.hairColor = idx(a.hairColor, HAIR_COLORS.length);
   a.bow = idx(a.bow, BOW_COLORS.length);
   a.uniform = idx(a.uniform, UNIFORMS.length);
+  a.cape = idx(a.cape, CAPES.length);
   if (!HAIR_STYLES.includes(a.hair)) a.hair = 'ponytail';
   return a;
 }
@@ -40,7 +44,7 @@ export function facingFromVector(vx, vy) {
   return [0, 7, 6, 5, 4, 3, 2, 1][oct]; // flip to our clockwise S→SE… order
 }
 
-export function createAvatar({ config, name, team, theme, isSelf = false, fx = null }) {
+export function createAvatar({ config, name, team, theme, isSelf = false, npc = false, fx = null }) {
   const root = new Container();
   root.cullable = true;
   let cfg = sanitizeAvatar(config);
@@ -64,6 +68,9 @@ export function createAvatar({ config, name, team, theme, isSelf = false, fx = n
   const rig = new Container();       // vertical offset for jumps
   root.addChild(rig);
 
+  const cape = new Graphics();       // cosmetic slot — behind everything
+  rig.addChild(cape);
+
   const legL = new Graphics(), legR = new Graphics();
   const torso = new Graphics();
   const armL = new Graphics(), armR = new Graphics();
@@ -83,10 +90,10 @@ export function createAvatar({ config, name, team, theme, isSelf = false, fx = n
   // ── name tag ──
   const tag = new Container();
   const tagText = new Text({
-    text: team ? `${name} · ${team}` : (name || ''),
+    text: (npc ? '⭐ ' : '') + (team ? `${name} · ${team}` : (name || '')),
     style: {
       fontFamily: 'system-ui, -apple-system, sans-serif', fontSize: 12.5, fontWeight: '800',
-      fill: isSelf ? 0xffffff : 0xd8d8e2, align: 'center',
+      fill: npc ? 0xffe9a8 : isSelf ? 0xffffff : 0xd8d8e2, align: 'center',
     },
     resolution: 2,
   });
@@ -95,6 +102,7 @@ export function createAvatar({ config, name, team, theme, isSelf = false, fx = n
   const tw = tagText.width + 16, th = 20;
   tagBg.roundRect(-tw / 2, -th / 2, tw, th, 10).fill({ color: 0x0a0a10, alpha: 0.72 });
   if (isSelf) tagBg.roundRect(-tw / 2, -th / 2, tw, th, 10).stroke({ color: theme.accentNum, width: 1.4, alpha: 0.9 });
+  if (npc) tagBg.roundRect(-tw / 2, -th / 2, tw, th, 10).stroke({ color: 0xffd166, width: 1.6, alpha: 0.95 });
   tag.addChild(tagBg, tagText);
   tag.position.set(0, -128);
   root.addChild(tag);
@@ -128,6 +136,19 @@ export function createAvatar({ config, name, team, theme, isSelf = false, fx = n
     const C = colors();
     const back = FACING_BACK.has(facing);
     const side = FACING_SIDE.has(facing);
+
+    // cape (cosmetic slot; index 3 resolves to program accent)
+    cape.clear();
+    if (cfg.cape > 0) {
+      const capeColor = CAPES[cfg.cape] ?? theme.accentNum;
+      cape.moveTo(-13, -52).quadraticCurveTo(-30, -30, -24, -4)
+        .quadraticCurveTo(-8, 2, 0, -2).quadraticCurveTo(8, 2, 24, -4)
+        .quadraticCurveTo(30, -30, 13, -52).closePath()
+        .fill({ color: capeColor, alpha: back ? 1 : 0.92 })
+        .stroke({ color: 0xffffff, width: 1.4, alpha: 0.25 });
+      cape.circle(-12, -53, 3.4).fill(0xffd166);
+      cape.circle(12, -53, 3.4).fill(0xffd166);
+    }
 
     // legs: skin with white shoes
     for (const leg of [legL, legR]) {
@@ -244,13 +265,17 @@ export function createAvatar({ config, name, team, theme, isSelf = false, fx = n
   }
 
   // ── emotes ──
+  // The last four are SUPER moves — not on the kids' emote wheel (the
+  // protocol EMOTES list gates what athletes can broadcast). Super Squad
+  // NPCs use them to show skills the girls can't do yet.
   const EMOTE_DUR = {
     wave: 1.0, hit: 1.05, spirit: 1.3, highv: 1.0,
     toetouch: 1.1, backflip: 1.05, laugh: 1.1, hearthands: 1.3,
+    fulltwist: 1.3, doublefull: 1.25, kickdouble: 1.3, superjump: 1.5,
   };
   function playEmote(key) {
     if (!(key in EMOTE_DUR)) return;
-    emote = { key, t: 0, dur: EMOTE_DUR[key], fired: false };
+    emote = { key, t: 0, dur: EMOTE_DUR[key], fired: false, baseSX: rig.scale.x, lastFx: 0 };
   }
   function setPose(key) { pose = key; if (key) emote = null; applyNeutral(); }
 
@@ -317,9 +342,67 @@ export function createAvatar({ config, name, team, theme, isSelf = false, fx = n
         armL.rotation = -2.1; armR.rotation = 2.1;
         if (!e.fired && p > 0.3) { e.fired = true; fx?.burst(wx, wy - 132, 'heart'); }
         break;
+
+      // ── SUPER moves (NPC showcase tier) ──
+      case 'fulltwist': {
+        // layout flip with a full twist: rotation + a scale-x spin
+        rig.y = -jumpArc(p) * 84;
+        rig.pivot.y = -46;
+        rig.rotation = -Math.PI * 2 * easeOut(p);
+        rig.scale.x = e.baseSX * Math.cos(Math.min(1, p * 1.15) * Math.PI * 2);
+        armL.rotation = -2.9; armR.rotation = 2.9;
+        trail(e, wx, wy, 'star');
+        break;
+      }
+      case 'doublefull': {
+        rig.y = -jumpArc(p) * 74;
+        rig.pivot.y = -46;
+        rig.rotation = -Math.PI * 2 * easeOut(p);
+        rig.scale.x = e.baseSX * Math.cos(Math.min(1, p * 1.1) * Math.PI * 4); // two twists
+        trail(e, wx, wy, 'spark');
+        break;
+      }
+      case 'kickdouble': {
+        if (p < 0.3) {
+          legR.rotation = -2.5 * (p / 0.3); // huge kick
+          armL.rotation = -2.6;
+        } else {
+          const q = (p - 0.3) / 0.7;
+          rig.y = -jumpArc(q) * 60;
+          rig.pivot.y = -46;
+          rig.rotation = -Math.PI * 2 * easeOut(q);
+          rig.scale.x = e.baseSX * Math.cos(Math.min(1, q * 1.1) * Math.PI * 4);
+        }
+        trail(e, wx, wy, 'spark');
+        break;
+      }
+      case 'superjump': {
+        rig.y = -jumpArc(p) * 130; // sky-high
+        armL.rotation = -2.8; armR.rotation = 2.8;
+        const split = Math.max(0, Math.sin(p * Math.PI));
+        legL.rotation = -1.2 * split; legR.rotation = 1.2 * split;
+        trail(e, wx, wy, 'star');
+        if (!e.fired && p > 0.85) { e.fired = true; fx?.burst(wx, wy - 20, 'confetti', 18); }
+        break;
+      }
     }
     shadow.scale.set(1 - Math.min(0.35, -rig.y / 160));
-    if (p >= 1) { emote = null; rig.pivot.y = 0; applyNeutral(); }
+    if (p >= 1) {
+      const baseSX = e.baseSX;
+      emote = null;
+      rig.pivot.y = 0;
+      rig.rotation = 0;
+      rig.scale.x = baseSX;
+      applyNeutral();
+    }
+  }
+
+  // sparkle trail while a super move is airborne
+  function trail(e, wx, wy, kind) {
+    if (e.t - e.lastFx > 0.13 && rig.y < -14) {
+      e.lastFx = e.t;
+      fx?.burst(wx, wy + rig.y - 60, kind, 3);
+    }
   }
 
   // ── poses (photo booth + cart) ──
@@ -339,6 +422,7 @@ export function createAvatar({ config, name, team, theme, isSelf = false, fx = n
 
   function update(dt) {
     idlePhase += dt;
+    if (cfg.cape > 0) cape.skew.x = Math.sin(idlePhase * 1.9) * 0.05 + (moving ? 0.12 : 0);
     if (bubble.visible) {
       bubbleTimer -= dt;
       bubble.alpha = Math.min(1, bubble.alpha + dt * 8);

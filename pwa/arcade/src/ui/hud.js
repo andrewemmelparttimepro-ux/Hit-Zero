@@ -29,6 +29,74 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
   });
   tr.appendChild(muteBtn);
 
+  // ── persistent minimap (top-left) ──
+  // Schematic top-down view in plain grid space: regions from the map spec,
+  // live dots for you / teammates / Super Squad. Redrawn ~10Hz by main.
+  const mini = document.createElement('div');
+  mini.className = 'arc-minimap';
+  const miniCanvas = document.createElement('canvas');
+  mini.appendChild(miniCanvas);
+  const miniLabel = document.createElement('div');
+  miniLabel.className = 'arc-minimap-label';
+  mini.appendChild(miniLabel);
+  document.body.appendChild(mini);
+
+  const MINI_W = 150;
+  let miniDims = null;   // {cols, rows, W, H}
+  let miniBase = null;   // prerendered regions+pois
+
+  function resolveColor(c) { return c === 'accent' ? theme.accent : c; }
+
+  function setMinimapScene(spec, cols, rows, label) {
+    if (!spec) { mini.style.display = 'none'; miniBase = null; return; }
+    mini.style.display = '';
+    miniLabel.textContent = label || '';
+    const H = Math.max(52, Math.round(MINI_W * (rows / cols)));
+    miniDims = { cols, rows, W: MINI_W, H };
+    miniCanvas.width = MINI_W * 2; miniCanvas.height = H * 2;
+    miniCanvas.style.width = MINI_W + 'px'; miniCanvas.style.height = H + 'px';
+
+    miniBase = document.createElement('canvas');
+    miniBase.width = MINI_W * 2; miniBase.height = H * 2;
+    const b = miniBase.getContext('2d');
+    b.scale(2, 2);
+    const sx = MINI_W / cols, sy = H / rows;
+    for (const r of spec.regions) {
+      b.fillStyle = resolveColor(r.color);
+      b.fillRect(r.c0 * sx, r.r0 * sy, (r.c1 - r.c0 + 1) * sx, (r.r1 - r.r0 + 1) * sy);
+    }
+    for (const p of spec.pois || []) {
+      b.fillStyle = resolveColor(p.color);
+      b.beginPath();
+      b.arc(p.c * sx, p.r * sy, 2.6, 0, Math.PI * 2);
+      b.fill();
+    }
+  }
+
+  const DOT_COLORS = { me: null /* accent */, peer: '#f4f4f8', npc: '#ffd166' };
+  function updateMinimap(entities) {
+    if (!miniBase || !miniDims) return;
+    const ctx = miniCanvas.getContext('2d');
+    ctx.clearRect(0, 0, miniCanvas.width, miniCanvas.height);
+    ctx.drawImage(miniBase, 0, 0);
+    ctx.save();
+    ctx.scale(2, 2);
+    const sx = miniDims.W / miniDims.cols, sy = miniDims.H / miniDims.rows;
+    for (const e of entities) {
+      const x = e.c * sx, y = e.r * sy;
+      if (e.kind === 'me') {
+        ctx.fillStyle = theme.accent;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      } else {
+        ctx.fillStyle = DOT_COLORS[e.kind] || '#f4f4f8';
+        ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
   // ── banner (observer / offline) ──
   let banner = null;
   function setBanner(html) {
@@ -168,6 +236,7 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
   return {
     actions, toast, flash, setBanner, setPresence, setCoachHere,
     openStylePanel, closeStylePanel,
+    setMinimapScene, updateMinimap,
     setMuteIcon(muted) { muteBtn.textContent = muted ? '🔇' : '🔊'; },
   };
 }

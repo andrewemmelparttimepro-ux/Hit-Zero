@@ -78,6 +78,24 @@ html, body {
 }
 .arc-banner b { color: var(--arc-text); }
 
+/* ─── Persistent minimap (top-left) ─── */
+.arc-minimap {
+  position: fixed; top: calc(10px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left));
+  z-index: 40;
+  padding: 6px 6px 4px;
+  background: var(--arc-panel); border: 1px solid var(--arc-line);
+  border-radius: 12px;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+}
+.arc-minimap canvas { display: block; border-radius: 7px; }
+.arc-minimap-label {
+  font-size: 9px; font-weight: 800; letter-spacing: 0.14em;
+  color: var(--arc-dim); text-align: center; padding-top: 3px; text-transform: uppercase;
+}
+@media (max-width: 700px) {
+  .arc-minimap { transform: scale(0.72); transform-origin: top left; }
+}
+
 /* ─── Presence pill + coach tag + mute (top-right stack) ─── */
 .arc-hud-tr {
   position: fixed; top: calc(10px + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right));

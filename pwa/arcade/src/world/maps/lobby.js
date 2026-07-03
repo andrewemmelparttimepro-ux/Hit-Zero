@@ -43,6 +43,29 @@ export const lobbyMap = {
   canStand: makeCanStand(collision.isBlocked),
   build,
   makeInteractables,
+  // Super Squad
+  npcs: [
+    {
+      name: 'Captain Cheer',
+      avatar: { skin: 2, hair: 'bun', hairColor: 1, bow: 5, uniform: 0, cape: 1 },
+      home: { c0: 5, r0: 5, c1: 14, r1: 9 },
+      superset: ['fulltwist', 'superjump', 'doublefull'],
+    },
+  ],
+  minimap: {
+    regions: [
+      { c0: 0, r0: 0, c1: COLS - 1, r1: ROWS - 1, color: '#1a1a24' },
+      { ...SPRING_FLOOR, color: '#2a3150' },
+      { ...TUMBLE_TRACK, color: '#453a5c' },
+      { ...PHOTO_BOOTH, color: '#241a2c' },
+    ],
+    pois: [
+      { c: 5, r: 0.5, color: '#ffd166' },   // cabinets
+      { c: 10, r: 0.5, color: '#ffd166' },
+      { c: 15, r: 0.5, color: '#ffd166' },
+      { c: MEGAPHONE.c + 0.5, r: MEGAPHONE.r + 0.5, color: 'accent' },
+    ],
+  },
 };
 
 // ─────────────────────────────────────────────────────────────────────────
