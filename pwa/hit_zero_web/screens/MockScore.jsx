@@ -100,7 +100,9 @@ function MockScore({ session, snap, pushToast }) {
   const { useState, useEffect, useRef, useMemo } = React;
 
   const teams = window.HZsel.programTeams?.() || snap.teams || [];
-  const [teamId, setTeamId] = useState(null);
+  // smart default: remember the last team you scored
+  const [teamId, setTeamId] = useState(() => { try { return localStorage.getItem('hz_mockscore_team') || null; } catch { return null; } });
+  const pickTeam = (id) => { setTeamId(id); try { localStorage.setItem('hz_mockscore_team', id); } catch { /* fine */ } };
   const team = teams.find(t => t.id === teamId) || teams.find(Boolean) || null;
   const teamLabel = team
     ? `${team.name || 'Team'}${team.level ? ` · L${team.level}` : ''}`
@@ -140,7 +142,11 @@ function MockScore({ session, snap, pushToast }) {
 
   // ── run mode + clock ──
   const [runOpen, setRunOpen] = useState(false);
-  const [runLen, setRunLen] = useState(150);
+  // smart default: remember the routine length this program uses
+  const [runLen, setRunLenRaw] = useState(() => {
+    try { return Number(localStorage.getItem('hz_mockscore_runlen')) || 150; } catch { return 150; }
+  });
+  const setRunLen = (sec) => { setRunLenRaw(sec); try { localStorage.setItem('hz_mockscore_runlen', String(sec)); } catch { /* fine */ } };
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const baseRef = useRef({ base: 0, startedAt: 0 });
@@ -226,6 +232,21 @@ function MockScore({ session, snap, pushToast }) {
     })).reverse().slice(0, 8);
   }, [snap.score_runs, team?.id]);
 
+  // Real progress only — every number below comes from saved runs.
+  const progress = useMemo(() => {
+    const all = (snap.score_runs || []).filter(r => !team?.id || r.team_id === team.id);
+    const best = all.reduce((m, r) => Math.max(m, r.total || 0), 0);
+    // HIT ZERO streak: consecutive most-recent runs with no deductions
+    const newestFirst = [...all].sort((a, b) => new Date(b.run_at) - new Date(a.run_at));
+    let streak = 0;
+    for (const r of newestFirst) {
+      if ((r.deductions || 0) === 0) streak++;
+      else break;
+    }
+    return { count: all.length, best, streak };
+  }, [snap.score_runs, team?.id]);
+  const comp = window.HZsel.daysToComp?.() || null;
+
   const totalColor = total >= maxTotal * 0.9 ? 'var(--hz-green)' : total >= maxTotal * 0.8 ? 'var(--hz-teal)' : 'var(--hz-amber)';
 
   return (
@@ -242,10 +263,50 @@ function MockScore({ session, snap, pushToast }) {
       }/>
       {error && <div className="hz-card" style={{ color: 'var(--hz-red)', marginBottom: 14, padding: 12 }}>{error}</div>}
 
+      {/* Endowed progress — all real: saved runs, real comp date, real streak */}
+      {(progress.count > 0 || comp) && (
+        <div className="hz-card" style={{ marginBottom: 16, padding: '12px 16px', display: 'flex', gap: 22, flexWrap: 'wrap', alignItems: 'center' }}>
+          {comp && (
+            <div>
+              <div className="hz-eyebrow">Days to comp</div>
+              <div className="hz-display" style={{ fontSize: 26, color: comp.days <= 7 ? 'var(--hz-amber)' : '#fff' }}>{comp.days}</div>
+            </div>
+          )}
+          {progress.count > 0 && (
+            <>
+              <div>
+                <div className="hz-eyebrow">Runs logged</div>
+                <div className="hz-display" style={{ fontSize: 26 }}>{progress.count}</div>
+              </div>
+              <div>
+                <div className="hz-eyebrow">Best score</div>
+                <div className="hz-display" style={{ fontSize: 26, color: 'var(--hz-teal)' }}>{progress.best.toFixed(1)}</div>
+              </div>
+              <div>
+                <div className="hz-eyebrow">Hit Zero streak</div>
+                <div className="hz-display" style={{ fontSize: 26, color: progress.streak > 0 ? 'var(--hz-green)' : 'var(--hz-dim)' }}>
+                  {progress.streak > 0 ? `🔥 ${progress.streak}` : '—'}
+                </div>
+              </div>
+              {progress.streak > 0 && (
+                <div style={{ fontSize: 12, color: 'var(--hz-dim)', maxWidth: 240 }}>
+                  {progress.streak} clean run{progress.streak === 1 ? '' : 's'} in a row — one deduction ends it.
+                </div>
+              )}
+            </>
+          )}
+          {progress.count === 0 && (
+            <div style={{ fontSize: 12.5, color: 'var(--hz-dim)' }}>
+              First run starts the record — every full-out from here builds the trend line toward comp.
+            </div>
+          )}
+        </div>
+      )}
+
       {teams.length > 1 && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
           {teams.map(t => (
-            <button key={t.id} className="hz-btn" onClick={() => setTeamId(t.id)}
+            <button key={t.id} className="hz-btn" onClick={() => pickTeam(t.id)}
               style={{ borderColor: (team?.id === t.id) ? 'var(--hz-pink)' : 'var(--hz-line-2)' }}>
               {t.name}{t.level ? ` · L${t.level}` : ''}
             </button>
@@ -435,8 +496,10 @@ function MockScore({ session, snap, pushToast }) {
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 14, flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: 160, fontSize: 12.5, color: 'var(--hz-dim)' }}>
               {events.length > 0
-                ? <>Last: <b style={{ color: '#fff' }}>{events[events.length - 1].label}</b>{events[events.length - 1].atSec != null ? ` at ${msFmt(events[events.length - 1].atSec)}` : ''}</>
-                : 'Hit zero! No deductions yet.'}
+                ? <>Last: <b style={{ color: '#fff' }}>{events[events.length - 1].label}</b>{events[events.length - 1].atSec != null ? ` at ${msFmt(events[events.length - 1].atSec)}` : ''}{progress.streak > 0 ? <span style={{ color: 'var(--hz-amber)' }}> · streak of {progress.streak} ends if this run saves</span> : null}</>
+                : progress.streak > 0
+                  ? <span style={{ color: 'var(--hz-green)' }}>🔥 Streak of {progress.streak} on the line — keep it clean.</span>
+                  : 'Hit zero! No deductions yet.'}
             </div>
             <button className="hz-btn" style={{ minHeight: 52, minWidth: 110 }} onClick={undoEvent} disabled={events.length === 0}>↩ Undo</button>
             <button className="hz-btn hz-btn-primary" style={{ minHeight: 52, minWidth: 150 }} onClick={() => { setRunning(false); baseRef.current.base = elapsed; setRunOpen(false); }}>

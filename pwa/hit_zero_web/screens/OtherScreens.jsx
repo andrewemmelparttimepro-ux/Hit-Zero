@@ -626,6 +626,34 @@ function SkillTree({ snap, session }) {
   };
   const solidCount = Object.values({ ...statusMap, ...localStatus }).filter(s => s === 'mastered' || s === 'got_it').length;
 
+  // Endowed progress — real numbers from real skill rows, never inflated.
+  const merged = { ...statusMap, ...localStatus };
+  const effective = (id) => merged[id] || 'none';
+  const totalSkills = (snap.skills || []).length;
+  const workingCount = (snap.skills || []).filter(s => effective(s.id) === 'working').length;
+  const solidPct = totalSkills ? Math.round((solidCount / totalSkills) * 100) : 0;
+  const ProgressBar = ({ pct, height = 8 }) => (
+    <div style={{ height, borderRadius: height / 2, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+      <div style={{ height: '100%', width: `${Math.min(100, pct)}%`, borderRadius: height / 2, background: 'linear-gradient(90deg, var(--hz-teal), var(--hz-pink))', transition: 'width 400ms ease' }}/>
+    </div>
+  );
+  const progressBlock = (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 7 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 700 }}>
+          {isParentViewer ? `${firstName} already has` : "You've already got"} <span style={{ color: 'var(--hz-teal)' }}>{solidCount} of {totalSkills}</span> skills solid
+        </span>
+        <span className="hz-mono" style={{ fontSize: 13, fontWeight: 800, color: 'var(--hz-teal)' }}>{solidPct}%</span>
+      </div>
+      <ProgressBar pct={solidPct}/>
+      {workingCount > 0 && (
+        <div style={{ fontSize: 11.5, color: 'var(--hz-dim)', marginTop: 7 }}>
+          {workingCount} more already in progress — {isParentViewer ? 'the next ones to land' : 'those are your next wins'}.
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div>
       <SectionHeading eyebrow={myAthlete.display_name} title={isParentViewer ? 'Skill tree.' : 'My skill tree.'} trailing={<Pill tone="teal">{solidCount} solid</Pill>}/>
@@ -648,6 +676,7 @@ function SkillTree({ snap, session }) {
               </span>
             ))}
           </div>
+          {progressBlock}
         </div>
       ) : (
         <div className="hz-card" style={{ marginBottom: 20, borderColor: 'rgba(39,207,215,0.35)' }}>
@@ -656,6 +685,7 @@ function SkillTree({ snap, session }) {
           <div style={{ color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.55, maxWidth: 760 }}>
             This updates your profile so coaches and parents can see where you are. Pick honestly: Working is still a win.
           </div>
+          {progressBlock}
           {error && <div style={{ color: 'var(--hz-pink)', fontSize: 13, marginTop: 12 }}>{error}</div>}
         </div>
       )}
@@ -664,9 +694,18 @@ function SkillTree({ snap, session }) {
           const cSkills = snap.skills.filter(s => s.category === cat).sort((a,b) => a.level - b.level);
           return (
             <div key={cat} className="hz-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
-                <div className="hz-display" style={{ fontSize: 24 }}>{CAT_LABEL[cat]}</div>
-                <div style={{ fontSize: 11, color: 'var(--hz-dim)' }}>{cSkills.filter(s => ['got_it','mastered'].includes(statusFor(s.id))).length} / {cSkills.length}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, marginBottom: 14 }}>
+                <div className="hz-display" style={{ fontSize: 24, whiteSpace: 'nowrap' }}>{CAT_LABEL[cat]}</div>
+                {(() => {
+                  const solid = cSkills.filter(s => ['got_it','mastered'].includes(statusFor(s.id))).length;
+                  const pct = cSkills.length ? (solid / cSkills.length) * 100 : 0;
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, maxWidth: 260 }}>
+                      <div style={{ flex: 1 }}><ProgressBar pct={pct} height={6}/></div>
+                      <span className="hz-mono" style={{ fontSize: 11, color: pct === 100 ? 'var(--hz-green)' : 'var(--hz-dim)', whiteSpace: 'nowrap' }}>{solid} / {cSkills.length}</span>
+                    </div>
+                  );
+                })()}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10 }}>
                 {cSkills.map(s => {

@@ -155,6 +155,39 @@ function CoachToday({ snap, openAthlete, navigate, pushToast, session }) {
               <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 6 }}>
                 If we ran it clean today · {predicted.deductions > 0 ? `−${predicted.deductions.toFixed(2)} deductions` : 'no deductions yet'}
               </div>
+              {(() => {
+                // Real mock-run receipts (never predicted): last total, trend, hit-zero streak
+                const runs = [...(snap.score_runs || [])]
+                  .filter(r => !team?.id || r.team_id === team.id)
+                  .sort((a, b) => new Date(a.run_at) - new Date(b.run_at));
+                if (!runs.length) {
+                  return (
+                    <div style={{ fontSize: 12, color: 'var(--hz-dim)', marginTop: 10 }}>
+                      No scored full-outs yet — <span style={{ color: 'var(--hz-teal)', cursor: 'pointer', fontWeight: 700 }} onClick={() => navigate('score')}>run one</span> and the real trend starts here.
+                    </div>
+                  );
+                }
+                const last = runs[runs.length - 1];
+                const delta = runs.length > 1 ? (last.total || 0) - (runs[runs.length - 2].total || 0) : null;
+                let streak = 0;
+                for (let i = runs.length - 1; i >= 0; i--) {
+                  if ((runs[i].deductions || 0) === 0) streak++;
+                  else break;
+                }
+                return (
+                  <div style={{ display: 'flex', gap: 14, alignItems: 'baseline', marginTop: 12, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12, color: 'var(--hz-dim)' }}>Last full-out:</span>
+                    <span className="hz-mono" style={{ fontSize: 16, fontWeight: 800 }}>{(last.total || 0).toFixed(1)}</span>
+                    {delta != null && Math.abs(delta) >= 0.05 && (
+                      <span className="hz-mono" style={{ fontSize: 12, fontWeight: 800, color: delta > 0 ? 'var(--hz-green)' : 'var(--hz-red)' }}>
+                        {delta > 0 ? '▲' : '▼'}{Math.abs(delta).toFixed(1)}
+                      </span>
+                    )}
+                    {streak > 0 && <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--hz-green)' }}>🔥 {streak} clean in a row</span>}
+                    <span style={{ fontSize: 11, color: 'var(--hz-dimmer)' }}>{runs.length} run{runs.length === 1 ? '' : 's'} logged</span>
+                  </div>
+                );
+              })()}
             </div>
             <button className="hz-btn hz-btn-sm" onClick={() => navigate('score')}>Open sheet <HZIcon name="arrow-right" size={12}/></button>
           </div>
