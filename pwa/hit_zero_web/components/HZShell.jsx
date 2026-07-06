@@ -2327,7 +2327,7 @@ function walkthroughStepsForRole(role) {
     parent: [
       { title: 'Family home', body: 'Start with the family overview: linked athletes, upcoming schedule, recent wins, balances, and anything the gym needs from you.', action: 'Open Home', nav: 'parent' },
       { title: 'Daily parent jobs', body: 'Schedule, Messages, Medical, Billing, and Gym Feed are the main places to handle logistics without digging through the app.', action: 'Open Schedule', nav: 'schedule' },
-      { title: 'Athlete progress', body: 'Use Skills, Reel, and AI Judge to review progress with context from the gym. These views are read-only for parents unless staff opens an action.', action: 'Open Skills', nav: 'skilltree' },
+      { title: 'Athlete progress', body: 'Skills is yours to keep current: tap any skill and pick Not yet, Working, Got it, or Mastered — it saves instantly and coaches see the same tree. Reel and AI Judge show progress with context from the gym.', action: 'Open Skills', nav: 'skilltree' },
     ],
     athlete: [
       { title: 'Your reel', body: 'See wins, readiness, attendance, and what to work on next.', action: 'Open My Reel', nav: 'reel' },

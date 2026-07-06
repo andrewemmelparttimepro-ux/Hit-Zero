@@ -318,11 +318,24 @@
       d.volunteer_assignments = [];
       d.celebrations = [];
     }
+    // PostgREST caps every select at 1000 rows; athlete_skills and attendance
+    // exceed that at real gym scale (athletes × skills / athletes × sessions),
+    // and a single capped fetch silently drops the newest rows. Page through.
+    async function fetchAllPages(makeQuery) {
+      const out = [];
+      for (let from = 0; ; from += 1000) {
+        const { data: page, error } = await makeQuery().range(from, from + 999);
+        if (error) return { data: null, error };
+        out.push(...(page || []));
+        if ((page || []).length < 1000) break;
+      }
+      return { data: out, error: null };
+    }
     if (aIds.length) {
       const [ask, pl, attendanceRows, billingRows, contactRows, medicalRows, injuryRows, waiverRows, uniformOrderRows, formResponseRows] = await Promise.all([
-        s.from('athlete_skills').select('*').in('athlete_id', aIds),
+        fetchAllPages(() => s.from('athlete_skills').select('*').in('athlete_id', aIds).order('updated_at', { ascending: true })),
         s.from('parent_links').select('*').in('athlete_id', aIds),
-        s.from('attendance').select('*').in('athlete_id', aIds),
+        fetchAllPages(() => s.from('attendance').select('*').in('athlete_id', aIds).order('session_id', { ascending: true })),
         s.from('billing_accounts').select('*').in('athlete_id', aIds),
         s.from('emergency_contacts').select('*').in('athlete_id', aIds),
         s.from('medical_records').select('*').in('athlete_id', aIds),
