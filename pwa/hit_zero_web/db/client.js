@@ -2462,8 +2462,16 @@
     // AI Judge
     analyzeRoutine,
     applySkillUpdate,
-    // Escape hatches for the prototype (not present in real Supabase)
-    _reset() { localStorage.removeItem(LS_KEY); data = load(); listeners.clear(); },
+    // Escape hatches for the prototype (not present in real Supabase).
+    // _reset refuses outside localhost prototype mode: on the shipped domain
+    // a reseed would splash stale demo rows into live-mirrored views.
+    _reset() {
+      if (!window.HZ_FORCE_PROTOTYPE) {
+        console.warn('[HZdb] _reset ignored — only available in localhost prototype mode.');
+        return;
+      }
+      localStorage.removeItem(LS_KEY); data = load(); listeners.clear();
+    },
     _raw: () => data,
   };
 })();

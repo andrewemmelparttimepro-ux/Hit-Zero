@@ -1649,7 +1649,10 @@ function AdminConsole({ snap, navigate, session }) {
   return (
     <div>
       <SectionHeading eyebrow={`Owner · ${programName}`} title="Program." trailing={
-        session?.mode === 'prototype'
+        // Dev-only: HZ_FORCE_PROTOTYPE is hard-gated to localhost + ?prototype=1,
+        // so this can never render on the shipped domain regardless of what a
+        // stored session claims.
+        window.HZ_FORCE_PROTOTYPE === true
           ? <button className="hz-btn hz-btn-danger" onClick={() => { if (confirm('Reset all demo data?')) { window.HZdb._reset(); location.reload(); } }}><HZIcon name="trash" size={13}/> Reset demo data</button>
           : null
       }/>
