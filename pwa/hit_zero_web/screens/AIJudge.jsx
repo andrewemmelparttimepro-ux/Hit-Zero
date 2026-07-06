@@ -109,7 +109,7 @@ function AIJudge({ snap, session, navigate }) {
       }
       setDraft({
         key: `${analysis.id}:${Date.now()}`,
-        division: analysis.division || team.division || 'Senior Coed 4',
+        division: analysis.division || team.division || 'Senior Elite 4',
         level: Number(analysis.level ?? team.level ?? 4),
         teamSize: Number(analysis.team_size ?? 20),
         pf: coachFlagsFromPreflight(analysis.preflight),
@@ -222,8 +222,8 @@ const ROUTINE_MAX_SEC = {
   'Youth':                150,
   'Junior':               150,
   'Senior':               150,
-  'Senior Coed':          150,
-  'Senior Coed 4':        150,
+  'Senior Elite':          150,
+  'Senior Elite 4':        150,
   'International Open':   150,
   'International Open Coed': 150,
   'Open Elite':           150,
@@ -548,7 +548,7 @@ async function prepVideoForGemini(file, { onProgress } = {}) {
 }
 
 function NewAnalysis({ team, onDone, draft }) {
-  const [division, setDivision] = _aiUS(draft?.division || team?.division || 'Senior Coed 4');
+  const [division, setDivision] = _aiUS(draft?.division || team?.division || 'Senior Elite 4');
   const [level, setLevel] = _aiUS(draft?.level || team?.level || 4);
   const [teamSize, setTeamSize] = _aiUS(draft?.teamSize || 20);
   const [file, setFile] = _aiUS(null);
@@ -792,7 +792,7 @@ function NewAnalysis({ team, onDone, draft }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
           <L label="Division">
             <select value={division} onChange={(e) => setDivision(e.target.value)} className="hz-input">
-              {['Tiny','Mini','Youth','Junior','Senior','Senior Coed','Senior Coed 4','International Open','International Open Coed','Open Elite'].map(d => <option key={d}>{d}</option>)}
+              {['Tiny','Mini','Youth','Junior','Senior','Senior Elite','Senior Elite 4','International Open','International Open Coed','Open Elite'].map(d => <option key={d}>{d}</option>)}
             </select>
           </L>
           <L label="Level">

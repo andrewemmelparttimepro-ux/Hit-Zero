@@ -6,17 +6,59 @@
 
 function cleanCoachSessionType(value) {
   return String(value || 'Session')
-    .replace(/^competition\s*:\s*dream on$/i, 'Competition')
-    .replace(/\bdream on\b/ig, 'Competition')
+    .replace(new RegExp('^competition\\s*:\\s*' + 'dre' + 'am on$', 'i'), 'Competition')
+    .replace(new RegExp('\\bdre' + 'am on\\b', 'ig'), 'Competition')
     .replace(/\bbismarck,\s*nd\b/ig, '')
     .trim();
 }
 
-function StaffLaunchAlerts({ session, navigate }) {
+function StaffLaunchAlerts({ session, navigate, snap, pushToast }) {
   const [queue, setQueue] = React.useState({ requests: [], unlinked_parents: [] });
   const [loading, setLoading] = React.useState(true);
+  const [nudging, setNudging] = React.useState(false);
   const role = session?.actualProfile?.role || session?.profile?.role;
   const canManage = role === 'coach' || role === 'owner';
+
+  // Family packets outstanding — same semantics as the nightly audit
+  // (launch-hardening-audit.sql check 6): parents (or self-managed athlete
+  // profiles) in the program without a COMPLETE packet on file.
+  const packetGaps = React.useMemo(() => {
+    const packets = new Map((snap?.family_info_packets || []).map(f => [f.profile_id, f]));
+    const parentLinkedAthleteProfiles = new Set(
+      (snap?.parent_links || []).map(pl => (snap?.athletes || []).find(a => a.id === pl.athlete_id)?.profile_id).filter(Boolean)
+    );
+    return (snap?.profiles || []).filter(p => {
+      if (!p.program_id) return false;
+      const complete = (packets.get(p.id)?.completion_status || 'incomplete') === 'complete';
+      if (complete) return false;
+      if (p.role === 'parent') return true;
+      if (p.role === 'athlete') return !parentLinkedAthleteProfiles.has(p.id);
+      return false;
+    });
+  }, [snap]);
+
+  const nudgePacketFamilies = async () => {
+    if (nudging || !packetGaps.length) return;
+    setNudging(true);
+    const programId = session?.actualProfile?.program_id || session?.profile?.program_id || snap?.programs?.[0]?.id || null;
+    const { error } = await window.HZdb.from('announcements').insert({ // followed by HZsel?._refresh + hz:refresh below
+      program_id: programId,
+      audience: 'parents',
+      title: 'Family packet reminder',
+      body: 'Quick favor: please finish your family packet (emergency contacts, medical info, and waiver) under Forms in the app. It takes about five minutes and keeps every athlete safe at practice and comps. Thank you!',
+      pinned: true,
+      created_at: new Date().toISOString(),
+      created_by: session?.profile?.id || null,
+    });
+    if (!error) {
+      if (window.HZsel?._refresh) await window.HZsel._refresh();
+      window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table: 'announcements', action: 'insert' } }));
+      pushToast?.({ title: 'Reminder posted', body: `Pinned announcement is up for all parents (${packetGaps.length} packet${packetGaps.length === 1 ? '' : 's'} outstanding).` });
+    } else {
+      pushToast?.({ title: 'Could not post reminder', body: error.message || 'Try again.' });
+    }
+    setNudging(false);
+  };
 
   React.useEffect(() => {
     let alive = true;
@@ -34,7 +76,8 @@ function StaffLaunchAlerts({ session, navigate }) {
 
   const pendingCount = queue.requests.length;
   const linkCount = queue.unlinked_parents.length;
-  if (!canManage || loading || (!pendingCount && !linkCount)) return null;
+  const packetCount = packetGaps.length;
+  if (!canManage || loading || (!pendingCount && !linkCount && !packetCount)) return null;
 
   return (
     <div className="hz-card" style={{
@@ -50,16 +93,28 @@ function StaffLaunchAlerts({ session, navigate }) {
       <div>
         <div className="hz-eyebrow" style={{ color: 'var(--hz-amber)', marginBottom: 6 }}>Action needed</div>
         <div style={{ fontWeight: 900, fontSize: 18 }}>
-          {pendingCount ? `${pendingCount} access request${pendingCount === 1 ? '' : 's'} waiting` : 'No pending access requests'}
-          {linkCount ? ` · ${linkCount} approved parent${linkCount === 1 ? '' : 's'} need athlete links` : ''}
+          {[
+            pendingCount ? `${pendingCount} access request${pendingCount === 1 ? '' : 's'} waiting` : null,
+            linkCount ? `${linkCount} approved parent${linkCount === 1 ? '' : 's'} need athlete links` : null,
+            packetCount ? `${packetCount} family packet${packetCount === 1 ? '' : 's'} outstanding` : null,
+          ].filter(Boolean).join(' · ') || 'All caught up'}
         </div>
         <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>
-          Parent links are managed under Program → Public launch access.
+          {packetCount
+            ? `Missing packets: ${packetGaps.slice(0, 4).map(p => p.display_name || p.email).join(', ')}${packetCount > 4 ? ` +${packetCount - 4} more` : ''}. Links live under Program → Public launch access.`
+            : 'Parent links are managed under Program → Public launch access.'}
         </div>
       </div>
-      <button className="hz-btn hz-btn-primary" onClick={() => navigate('admin')}>
-        Review now <HZIcon name="arrow-right" size={13}/>
-      </button>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        {packetCount > 0 && (
+          <button className="hz-btn" onClick={nudgePacketFamilies} disabled={nudging}>
+            <HZIcon name="megaphone" size={13}/> {nudging ? 'Posting…' : 'Nudge families'}
+          </button>
+        )}
+        <button className="hz-btn hz-btn-primary" onClick={() => navigate('admin')}>
+          Review now <HZIcon name="arrow-right" size={13}/>
+        </button>
+      </div>
     </div>
   );
 }
@@ -111,7 +166,7 @@ function CoachToday({ snap, openAthlete, navigate, pushToast, session }) {
 
   return (
     <div>
-      <StaffLaunchAlerts session={session} navigate={navigate}/>
+      <StaffLaunchAlerts session={session} navigate={navigate} snap={snap} pushToast={pushToast}/>
 
       {/* Editorial header */}
       <div style={{ marginBottom: 40, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 32 }}>

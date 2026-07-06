@@ -112,7 +112,7 @@ window.HZ_SKILL_STATUS = [
 // Each athlete has a role: flyer / base / backspot / tumbler / all-around.
 // ─────────────────────────────────────────────────────────────────────────────
 window.HZ_ROSTER = [
-  { id: 'a01', name: 'Kenzie Rhodes',    age: 16, role: 'flyer',     joined: '2023-08', paid: 4800, owed: 0,    photo: '#f97fac', initials: 'KR' },
+  { id: 'a01', name: 'Kenzie Rowe',    age: 16, role: 'flyer',     joined: '2023-08', paid: 4800, owed: 0,    photo: '#f97fac', initials: 'KR' },
   { id: 'a02', name: 'Avery Lang',       age: 15, role: 'flyer',     joined: '2022-08', paid: 4800, owed: 0,    photo: '#27cfd7', initials: 'AL' },
   { id: 'a03', name: 'Brooklyn Pate',    age: 17, role: 'base',      joined: '2021-08', paid: 4800, owed: 0,    photo: '#f97fac', initials: 'BP' },
   { id: 'a04', name: 'Maddox Rivera',    age: 16, role: 'base',      joined: '2023-01', paid: 4200, owed: 600,  photo: '#27cfd7', initials: 'MR' },
@@ -138,9 +138,9 @@ window.HZ_ROSTER = [
 window.HZ_TEAM = {
   id: 't_magic_s4',
   name: 'Magic',
-  division: 'Senior Coed 4',
+  division: 'Senior Elite 4',
   level: 4,
-  gym: 'Magic City Allstars',
+  gym: 'Magic City Athletics',
   city: 'Minot, ND',
   seasonStart: '2025-05-01',
   nextComp: { name: 'Next Competition', date: '2026-05-09', city: '', daysOut: 20 },

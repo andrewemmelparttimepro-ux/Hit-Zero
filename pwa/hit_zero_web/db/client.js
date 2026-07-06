@@ -158,7 +158,7 @@
 
     const announcements = [
       { id: 'an1', program_id: 'p_mca', audience: 'all', title: 'Competition week checklist', body: 'Bus leaves the gym Friday morning. Uniform + warm-ups + red bow required. Parents: travel details are in email.', pinned: true, created_at: new Date(Date.now()-1000*60*60*6).toISOString(), created_by: 'owner' },
-      { id: 'an2', program_id: 'p_mca', audience: 'parents', title: 'Choreo fee — final reminder', body: 'Final $150 choreo balance due Friday. Venmo @magiccityallstars or square link in your billing tab.', pinned: false, created_at: new Date(Date.now()-1000*60*60*24*2).toISOString(), created_by: 'owner' },
+      { id: 'an2', program_id: 'p_mca', audience: 'parents', title: 'Choreo fee — final reminder', body: 'Final $150 choreo balance due Friday. Venmo @magiccityathletics or square link in your billing tab.', pinned: false, created_at: new Date(Date.now()-1000*60*60*24*2).toISOString(), created_by: 'owner' },
     ];
 
     const routineAudioAssets = routine ? [{
@@ -338,17 +338,17 @@
     const program = {
       id: 'p_mca',
       slug: 'mca',
-      name: 'Magic City Allstars',
-      public_name: 'Magic City Allstars',
-      legal_name: 'Magic City Allstars',
-      brand_name: 'Magic City Allstars',
+      name: 'Magic City Athletics',
+      public_name: 'Magic City Athletics',
+      legal_name: 'Magic City Athletics',
+      brand_name: 'Magic City Athletics',
       city: 'Minot',
       state: 'ND',
       country: 'US',
       timezone: 'America/Chicago',
       description: 'All-star cheer gym in Minot, ND. Hit Zero treats this gym as the top-level business object for teams, roster, billing, leads, registrations, and Square.',
       website_url: 'https://mcaminot.com',
-      public_email: 'info@magiccityallstars.com',
+      public_email: 'info@magiccityathletics.com',
       public_phone: '',
       address_line1: 'Minot, ND',
       address_line2: '',
@@ -393,11 +393,11 @@
       program_invite_redemptions: [],
       teams: [{ id: team.id, program_id: 'p_mca', name: team.name, division: team.division, level: team.level, season_start: team.seasonStart }],
       profiles: [
-        { id: 'u_coach', program_id: 'p_mca', role: 'coach', display_name: 'Coach Brynn', email: 'brynn@magiccityallstars.com' },
-        { id: 'u_coach_2', program_id: 'p_mca', role: 'coach', display_name: 'Carlie Wilson', email: 'carlie@magiccityallstars.com' },
-        { id: 'u_owner', program_id: 'p_mca', role: 'owner', display_name: 'Erin Magic', email: 'erin@magiccityallstars.com' },
-        { id: 'u_athlete', program_id: 'p_mca', role: 'athlete', display_name: demoAthlete?.name || 'Athlete Demo', email: 'athlete@demo.com' },
-        { id: 'u_parent', program_id: 'p_mca', role: 'parent', display_name: 'Sam Rhodes', email: 'sam@demo.com' },
+        { id: 'u_coach', program_id: 'p_mca', role: 'coach', display_name: 'Coach Brynn', email: 'brynn@magiccityathletics.com' },
+        { id: 'u_coach_2', program_id: 'p_mca', role: 'coach', display_name: 'Carlie Wilson', email: 'carlie@magiccityathletics.com' },
+        { id: 'u_owner', program_id: 'p_mca', role: 'owner', display_name: 'Erin Magic', email: 'erin@magiccityathletics.com' },
+        { id: 'u_athlete', program_id: 'p_mca', role: 'athlete', display_name: demoAthlete?.name || 'Athlete Demo', email: 'athlete@example.org' },
+        { id: 'u_parent', program_id: 'p_mca', role: 'parent', display_name: 'Sam Rowe', email: 'sam@example.org' },
       ],
       athletes: roster.map(a => ({
         id: a.id, team_id: team.id, profile_id: a.id === 'a01' ? 'u_athlete' : null, display_name: a.name, initials: a.initials, age: a.age,
@@ -524,25 +524,25 @@
         created_at: iso(-days(14)) },
     ];
     const registrations = [
-      { id: 'reg1', window_id: 'rw1', program_id: 'p_mca', athlete_name: 'Ava Lindgren',  parent_name: 'Kristi Lindgren', parent_email: 'kristi@demo.com', parent_phone: '701-555-0148', level_interest: 3, source: 'referral',  status: 'pending',  created_at: iso(-days(1)) },
-      { id: 'reg2', window_id: 'rw1', program_id: 'p_mca', athlete_name: 'Mila Pearson',  parent_name: 'Jen Pearson',     parent_email: 'jen@demo.com',    parent_phone: '701-555-0151', level_interest: 4, source: 'instagram', status: 'accepted', created_at: iso(-days(3)), decided_at: iso(-hours(12)), decided_by: 'u_owner' },
-      { id: 'reg3', window_id: 'rw2', program_id: 'p_mca', athlete_name: 'Reed Becker',   parent_name: 'Tom Becker',      parent_email: 'tom@demo.com',    parent_phone: '701-555-0177', level_interest: 2, source: 'google',    status: 'pending',  created_at: iso(-hours(8)) },
+      { id: 'reg1', window_id: 'rw1', program_id: 'p_mca', athlete_name: 'Ava Lindgren',  parent_name: 'Kristi Lindgren', parent_email: 'kristi@example.org', parent_phone: '701-555-0148', level_interest: 3, source: 'referral',  status: 'pending',  created_at: iso(-days(1)) },
+      { id: 'reg2', window_id: 'rw1', program_id: 'p_mca', athlete_name: 'Mila Pearson',  parent_name: 'Jen Pearson',     parent_email: 'jen@example.org',    parent_phone: '701-555-0151', level_interest: 4, source: 'instagram', status: 'accepted', created_at: iso(-days(3)), decided_at: iso(-hours(12)), decided_by: 'u_owner' },
+      { id: 'reg3', window_id: 'rw2', program_id: 'p_mca', athlete_name: 'Reed Becker',   parent_name: 'Tom Becker',      parent_email: 'tom@example.org',    parent_phone: '701-555-0177', level_interest: 2, source: 'google',    status: 'pending',  created_at: iso(-hours(8)) },
     ];
 
     // ─── Waivers ───
     const waiver_templates = [
       { id: 'wt1', program_id: 'p_mca', title: 'Participation & Liability Release',
         version: 3, effective_at: iso(-days(60)),
-        body: '# Magic City Allstars — Participation Waiver\n\nThe undersigned acknowledges the inherent risks of cheerleading, including the possibility of injury. Participant consents to emergency medical care. Parent/guardian signature required for minors.',
+        body: '# Magic City Athletics — Participation Waiver\n\nThe undersigned acknowledges the inherent risks of cheerleading, including the possibility of injury. Participant consents to emergency medical care. Parent/guardian signature required for minors.',
         created_by: 'u_owner', created_at: iso(-days(60)) },
       { id: 'wt2', program_id: 'p_mca', title: 'Media Release',
         version: 1, effective_at: iso(-days(60)),
-        body: '# Media Release\n\nPermission for Magic City Allstars to use photos/video of the athlete in promotional materials. Opt out at any time by emailing erin@magiccityallstars.com.',
+        body: '# Media Release\n\nPermission for Magic City Athletics to use photos/video of the athlete in promotional materials. Opt out at any time by emailing erin@magiccityathletics.com.',
         created_by: 'u_owner', created_at: iso(-days(60)) },
     ];
     const waiver_signatures = [
-      { id: 'ws1', template_id: 'wt1', program_id: 'p_mca', athlete_id: 'a01', signer_name: 'Sam Rhodes', signer_email: 'sam@demo.com', signed_at: iso(-days(45)) },
-      { id: 'ws2', template_id: 'wt2', program_id: 'p_mca', athlete_id: 'a01', signer_name: 'Sam Rhodes', signer_email: 'sam@demo.com', signed_at: iso(-days(45)) },
+      { id: 'ws1', template_id: 'wt1', program_id: 'p_mca', athlete_id: 'a01', signer_name: 'Sam Rowe', signer_email: 'sam@example.org', signed_at: iso(-days(45)) },
+      { id: 'ws2', template_id: 'wt2', program_id: 'p_mca', athlete_id: 'a01', signer_name: 'Sam Rowe', signer_email: 'sam@example.org', signed_at: iso(-days(45)) },
     ];
 
     // ─── Forms / evaluations ───
@@ -573,7 +573,7 @@
       id: 'ec_' + a.id, athlete_id: a.id,
       name: ['Kristi','Sam','Jen','Tom','Alex','Jordan','Casey','Drew'][i] + ' ' + a.name.split(' ').slice(-1)[0],
       relation: 'parent', phone: '701-555-' + String(100 + i).padStart(4,'0'),
-      email: a.name.split(' ')[0].toLowerCase() + 'parent@demo.com',
+      email: a.name.split(' ')[0].toLowerCase() + 'parent@example.org',
       is_primary: true, created_at: iso(-days(60)),
     }));
     const medical_records = roster.slice(0, 6).map((a, i) => ({
@@ -617,11 +617,11 @@
 
     // ─── Leads / CRM ───
     const leads = [
-      { id: 'ld1', program_id: 'p_mca', parent_name: 'Hanna Grove',   parent_email: 'hanna@demo.com',   parent_phone: '701-555-0211', athlete_name: 'Nora Grove',   athlete_age: 9,  interest: 'tryouts',     source: 'instagram', stage: 'trial',     assigned_to: 'u_owner', created_at: iso(-days(6)),  updated_at: iso(-hours(12)) },
-      { id: 'ld2', program_id: 'p_mca', parent_name: 'Marcus Banks',  parent_email: 'marcus@demo.com',  parent_phone: '701-555-0232', athlete_name: 'Taya Banks',    athlete_age: 12, interest: 'tumbling',    source: 'referral',  stage: 'contacted', assigned_to: 'u_owner', created_at: iso(-days(4)),  updated_at: iso(-days(2)) },
-      { id: 'ld3', program_id: 'p_mca', parent_name: 'Priya Rao',      parent_email: 'priya@demo.com',   parent_phone: '701-555-0245', athlete_name: 'Maya Rao',      athlete_age: 7,  interest: 'half-year',   source: 'google',    stage: 'new',       assigned_to: null,      created_at: iso(-hours(14)), updated_at: iso(-hours(14)) },
-      { id: 'ld4', program_id: 'p_mca', parent_name: 'Jordan Allen',   parent_email: 'jallen@demo.com',  parent_phone: '701-555-0260', athlete_name: 'Skye Allen',    athlete_age: 10, interest: 'tryouts',     source: 'walk-in',   stage: 'tour',      assigned_to: 'u_owner', created_at: iso(-days(2)),  updated_at: iso(-days(1)) },
-      { id: 'ld5', program_id: 'p_mca', parent_name: 'Leah Christiansen', parent_email: 'leahc@demo.com', parent_phone: '701-555-0271', athlete_name: 'Ellis C.',     athlete_age: 14, interest: 'tryouts',     source: 'instagram', stage: 'converted', assigned_to: 'u_owner', converted_at: iso(-days(12)), created_at: iso(-days(25)), updated_at: iso(-days(12)) },
+      { id: 'ld1', program_id: 'p_mca', parent_name: 'Hanna Grove',   parent_email: 'hanna@example.org',   parent_phone: '701-555-0211', athlete_name: 'Nora Grove',   athlete_age: 9,  interest: 'tryouts',     source: 'instagram', stage: 'trial',     assigned_to: 'u_owner', created_at: iso(-days(6)),  updated_at: iso(-hours(12)) },
+      { id: 'ld2', program_id: 'p_mca', parent_name: 'Marcus Banks',  parent_email: 'marcus@example.org',  parent_phone: '701-555-0232', athlete_name: 'Taya Banks',    athlete_age: 12, interest: 'tumbling',    source: 'referral',  stage: 'contacted', assigned_to: 'u_owner', created_at: iso(-days(4)),  updated_at: iso(-days(2)) },
+      { id: 'ld3', program_id: 'p_mca', parent_name: 'Priya Rao',      parent_email: 'priya@example.org',   parent_phone: '701-555-0245', athlete_name: 'Maya Rao',      athlete_age: 7,  interest: 'half-year',   source: 'google',    stage: 'new',       assigned_to: null,      created_at: iso(-hours(14)), updated_at: iso(-hours(14)) },
+      { id: 'ld4', program_id: 'p_mca', parent_name: 'Jordan Allen',   parent_email: 'jallen@example.org',  parent_phone: '701-555-0260', athlete_name: 'Skye Allen',    athlete_age: 10, interest: 'tryouts',     source: 'walk-in',   stage: 'tour',      assigned_to: 'u_owner', created_at: iso(-days(2)),  updated_at: iso(-days(1)) },
+      { id: 'ld5', program_id: 'p_mca', parent_name: 'Leah Christiansen', parent_email: 'leahc@example.org', parent_phone: '701-555-0271', athlete_name: 'Ellis C.',     athlete_age: 14, interest: 'tryouts',     source: 'instagram', stage: 'converted', assigned_to: 'u_owner', converted_at: iso(-days(12)), created_at: iso(-days(25)), updated_at: iso(-days(12)) },
     ];
     const lead_touches = [
       { id: 'lt1', lead_id: 'ld1', kind: 'tour',  body: 'Came in for a tour — parents impressed. Daughter shy but willing.', author_id: 'u_owner', created_at: iso(-days(5)) },
@@ -684,9 +684,9 @@
       { id: 'ap7', athlete_id: 'a03', design_id: 'pin_clothespin',     quantity: 1, favorite: true,  unlocked_at: iso(-days(2)) },
     ];
     const pin_drops = [
-      { id: 'pd1', design_id: 'pin_confetti_heart', from_athlete_id: 'a07', to_athlete_id: 'a01', recipient_name: 'Kenzie Rhodes', recipient_program: 'Magic City Allstars', recipient_city: 'Minot, ND', event_name: 'Comp warm-up', message: 'You looked unreal in warm-ups.', created_at: iso(-hours(18)), status: 'received' },
-      { id: 'pd2', design_id: 'pin_hit_zero',       from_athlete_id: 'a01', to_athlete_id: 'a03', recipient_name: 'Brooklyn Hale', recipient_program: 'Magic City Allstars', recipient_city: 'Minot, ND', event_name: 'Friday full-out',  message: 'That jump section ate.', created_at: iso(-days(2)),  status: 'sent' },
-      { id: 'pd3', design_id: 'pin_red_bow',        from_athlete_id: 'a03', to_athlete_id: 'a01', recipient_name: 'Kenzie Rhodes', recipient_program: 'Magic City Allstars', recipient_city: 'Minot, ND', event_name: 'Bus ride',         message: 'Thanks for the pep talk.', created_at: iso(-days(3)),  status: 'received' },
+      { id: 'pd1', design_id: 'pin_confetti_heart', from_athlete_id: 'a07', to_athlete_id: 'a01', recipient_name: 'Kenzie Rowe', recipient_program: 'Magic City Athletics', recipient_city: 'Minot, ND', event_name: 'Comp warm-up', message: 'You looked unreal in warm-ups.', created_at: iso(-hours(18)), status: 'received' },
+      { id: 'pd2', design_id: 'pin_hit_zero',       from_athlete_id: 'a01', to_athlete_id: 'a03', recipient_name: 'Brooklyn Hale', recipient_program: 'Magic City Athletics', recipient_city: 'Minot, ND', event_name: 'Friday full-out',  message: 'That jump section ate.', created_at: iso(-days(2)),  status: 'sent' },
+      { id: 'pd3', design_id: 'pin_red_bow',        from_athlete_id: 'a03', to_athlete_id: 'a01', recipient_name: 'Kenzie Rowe', recipient_program: 'Magic City Athletics', recipient_city: 'Minot, ND', event_name: 'Bus ride',         message: 'Thanks for the pep talk.', created_at: iso(-days(3)),  status: 'received' },
       { id: 'pd4', design_id: 'pin_country_crossover', from_athlete_id: 'a01', to_athlete_id: null, recipient_name: 'Tatum Lee', recipient_program: 'Cheer Athletics', recipient_city: 'Dallas, TX', event_name: 'Next major comp', message: 'Save this one for an athlete you meet out of state.', created_at: iso(days(7)), status: 'planned' },
     ];
     const pin_quests = [
@@ -790,7 +790,7 @@
     const analysis_deductions = [];
 
     const analysis_feedback = [
-      { id: 'af1', analysis_id: analysisId, audience: 'coach',   priority: 0, kind: 'observation',     category_code: null,           body: 'Projected total: 77.2/100 (77.2%) for Senior Coed 4. Routine Composition is your strongest category at 93%.', created_at: iso(-1000*60*60*48) },
+      { id: 'af1', analysis_id: analysisId, audience: 'coach',   priority: 0, kind: 'observation',     category_code: null,           body: 'Projected total: 77.2/100 (77.2%) for Senior Elite 4. Routine Composition is your strongest category at 93%.', created_at: iso(-1000*60*60*48) },
       { id: 'af2', analysis_id: analysisId, audience: 'coach',   priority: 1, kind: 'recommendation',  category_code: 'jumps',        body: 'Jumps sit at 73% — one half-point per jump sequence is 2 full points back. Focus on hurdler form and sync.',    created_at: iso(-1000*60*60*48) },
       { id: 'af3', analysis_id: analysisId, audience: 'coach',   priority: 2, kind: 'praise',          category_code: 'pyramids',     body: "Best element of the run: Extended Pyramid — max (10.4 pts, confidence 85%).",                                     created_at: iso(-1000*60*60*48) },
       { id: 'af4', analysis_id: analysisId, audience: 'athlete', priority: 0, kind: 'praise',          category_code: null,           body: 'You showed up. Projected 77% — top category Routine Composition.',                                               created_at: iso(-1000*60*60*48) },

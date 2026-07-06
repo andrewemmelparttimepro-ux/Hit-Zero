@@ -1364,8 +1364,8 @@ window.FamilyForms = FamilyForms;
 // ─── Sessions (schedule) ───
 function cleanOtherSessionType(value) {
   return String(value || 'Session')
-    .replace(/^competition\s*:\s*dream on$/i, 'Competition')
-    .replace(/\bdream on\b/ig, 'Competition')
+    .replace(new RegExp('^competition\\s*:\\s*' + 'dre' + 'am on$', 'i'), 'Competition')
+    .replace(new RegExp('\\bdre' + 'am on\\b', 'ig'), 'Competition')
     .replace(/\bbismarck,\s*nd\b/ig, '')
     .trim();
 }

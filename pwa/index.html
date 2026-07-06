@@ -125,7 +125,7 @@
       .order('created_at', { ascending: false }).limit(n);
     if (!data) return;
     // Drop any stale local rows whose team_id doesn't match the live team —
-    // otherwise the seeded "Senior Coed 4 L4" demo row lingers in history.
+    // otherwise the seeded "Senior Elite 4 L4" demo row lingers in history.
     if (d) {
       const keep = new Set(data.map(r => r.id));
       const filt = (arr) => (arr || []).filter(r => !r.team_id || r.team_id === teamId || keep.has(r.analysis_id) || keep.has(r.id));
@@ -138,7 +138,7 @@
     for (const r of data) await mirrorAnalysis(r.id);
   }
   // Mirror the live team + athletes from Supabase. The HZdb mock seeds a
-  // Senior Coed 4 team; if the real roster has been updated (e.g. Magic Minis
+  // Senior Elite 4 team; if the real roster has been updated (e.g. Magic Minis
   // Mini L1), we overwrite the first team slot so every screen picks it up.
   async function mirrorRosterLive() {
     const d = window.HZdb && window.HZdb._raw && window.HZdb._raw();
@@ -214,33 +214,43 @@
         s.from('registration_windows').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
         s.from('class_enrollments').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
       ]);
-      d.program_tracks = tracks.data || [];
-      d.program_classes = classes.data || [];
-      d.registration_windows = windows.data || [];
-      d.class_enrollments = classEnrollments.error ? [] : (classEnrollments.data || []);
-      const [waiverTemplates, formTemplates, announcements, uniforms, volunteerRoles, drills] = await Promise.all([
-        s.from('waiver_templates').select('*').in('program_id', programIds).order('effective_at', { ascending: false }),
-        s.from('form_templates').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
-        s.from('announcements').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
-        s.from('uniforms').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
-        s.from('volunteer_roles').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
-        s.from('drills').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
-      ]);
-      d.waiver_templates = waiverTemplates.data || [];
-      d.form_templates = formTemplates.data || [];
-      d.announcements = announcements.data || [];
-      d.uniforms = uniforms.data || [];
-      d.volunteer_roles = volunteerRoles.data || [];
-      d.drills = drills.data || [];
-      const formTemplateIds = d.form_templates.map(row => row.id);
-      if (formTemplateIds.length) {
-        const formFields = await s.from('form_fields').select('*').in('template_id', formTemplateIds).order('position');
-        d.form_fields = formFields.data || [];
+      // NEVER clobber local data with an errored (or unauthorized) query —
+      // a transient failure here used to silently EMPTY the owner's feed,
+      // uniforms, volunteer roles and drills until the next good mirror.
+      if (!tracks.error) d.program_tracks = tracks.data || [];
+      if (!classes.error) d.program_classes = classes.data || [];
+      if (!windows.error) d.registration_windows = windows.data || [];
+      if (!classEnrollments.error) d.class_enrollments = classEnrollments.data || [];
+      if (isLiveSession) {
+        // Members-only tables: only meaningful with a real signed-in session.
+        // In prototype / logged-out contexts these queries run as anon, get
+        // nothing past RLS, and used to wipe the local demo data.
+        const [waiverTemplates, formTemplates, announcements, uniforms, volunteerRoles, drills] = await Promise.all([
+          s.from('waiver_templates').select('*').in('program_id', programIds).order('effective_at', { ascending: false }),
+          s.from('form_templates').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
+          s.from('announcements').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
+          s.from('uniforms').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
+          s.from('volunteer_roles').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
+          s.from('drills').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
+        ]);
+        if (!waiverTemplates.error) d.waiver_templates = waiverTemplates.data || [];
+        if (!formTemplates.error) d.form_templates = formTemplates.data || [];
+        if (!announcements.error) d.announcements = announcements.data || [];
+        if (!uniforms.error) d.uniforms = uniforms.data || [];
+        if (!volunteerRoles.error) d.volunteer_roles = volunteerRoles.data || [];
+        if (!drills.error) d.drills = drills.data || [];
       }
-      const uniformIds = d.uniforms.map(row => row.id);
-      if (uniformIds.length) {
-        const uniformItems = await s.from('uniform_items').select('*').in('uniform_id', uniformIds);
-        d.uniform_items = uniformItems.data || [];
+      if (isLiveSession) {
+        const formTemplateIds = (d.form_templates || []).map(row => row.id);
+        if (formTemplateIds.length) {
+          const formFields = await s.from('form_fields').select('*').in('template_id', formTemplateIds).order('position');
+          if (!formFields.error) d.form_fields = formFields.data || [];
+        }
+        const uniformIds = (d.uniforms || []).map(row => row.id);
+        if (uniformIds.length) {
+          const uniformItems = await s.from('uniform_items').select('*').in('uniform_id', uniformIds);
+          if (!uniformItems.error) d.uniform_items = uniformItems.data || [];
+        }
       }
       if (isStaff) {
         const [registrations, leads, leadTouches, packets] = await Promise.all([
@@ -249,11 +259,11 @@
           s.from('lead_touches').select('*').order('created_at', { ascending: false }).limit(200),
           s.from('family_info_packets').select('*').in('program_id', programIds).order('updated_at', { ascending: false }),
         ]);
-        d.registrations = registrations.data || [];
-        d.leads = leads.data || [];
-        const leadIds = new Set(d.leads.map(row => row.id));
-        d.lead_touches = (leadTouches.data || []).filter(row => leadIds.has(row.lead_id));
-        d.family_info_packets = packets.data || [];
+        if (!registrations.error) d.registrations = registrations.data || [];
+        if (!leads.error) d.leads = leads.data || [];
+        const leadIds = new Set((d.leads || []).map(row => row.id));
+        if (!leadTouches.error) d.lead_touches = (leadTouches.data || []).filter(row => leadIds.has(row.lead_id));
+        if (!packets.error) d.family_info_packets = packets.data || [];
       } else if (isLiveSession) {
         d.registrations = [];
         d.leads = [];
@@ -279,17 +289,17 @@
       s.from('athletes').select('*').in('team_id', ids).is('deleted_at', null),
       profileQuery || Promise.resolve({ data: liveProfile ? [liveProfile] : [] }),
     ]);
-    d.athletes = athletes || [];
+    if (athletes) d.athletes = athletes;
     if (profileRows?.data?.length) d.profiles = profileRows.data;
-    const aIds = d.athletes.map(a => a.id);
+    const aIds = (d.athletes || []).map(a => a.id);
     const sessionRows = await s.from('sessions').select('*').in('team_id', ids).order('scheduled_at');
-    d.sessions = (sessionRows.data || []).map(row => ({ ...row, scheduled: row.scheduled === false ? false : true }));
+    if (!sessionRows.error) d.sessions = (sessionRows.data || []).map(row => ({ ...row, scheduled: row.scheduled === false ? false : true }));
     const planRows = await s.from('practice_plans').select('*').in('team_id', ids).order('created_at', { ascending: false });
-    d.practice_plans = planRows.data || [];
-    const planIds = d.practice_plans.map(row => row.id);
+    if (!planRows.error) d.practice_plans = planRows.data || [];
+    const planIds = (d.practice_plans || []).map(row => row.id);
     if (planIds.length) {
       const planBlocks = await s.from('practice_plan_blocks').select('*').in('plan_id', planIds).order('position');
-      d.practice_plan_blocks = planBlocks.data || [];
+      if (!planBlocks.error) d.practice_plan_blocks = planBlocks.data || [];
     } else {
       d.practice_plan_blocks = [];
     }
@@ -299,10 +309,10 @@
         s.from('session_availability').select('*').in('session_id', sessionIds),
         s.from('volunteer_assignments').select('*').in('session_id', sessionIds),
       ]);
-      d.session_availability = availabilityRows.data || [];
-      d.volunteer_assignments = volunteerAssignments.data || [];
+      if (!availabilityRows.error) d.session_availability = availabilityRows.data || [];
+      if (!volunteerAssignments.error) d.volunteer_assignments = volunteerAssignments.data || [];
       const celebrationRows = await s.from('celebrations').select('*').in('team_id', ids).order('created_at', { ascending: false });
-      d.celebrations = celebrationRows.data || [];
+      if (!celebrationRows.error) d.celebrations = celebrationRows.data || [];
     } else {
       d.session_availability = [];
       d.volunteer_assignments = [];
@@ -321,17 +331,17 @@
         s.from('uniform_orders').select('*').in('athlete_id', aIds),
         s.from('form_responses').select('*').in('subject_athlete_id', aIds),
       ]);
-      d.athlete_skills = ask.data || [];
-      d.parent_links = pl.data || [];
-      d.attendance = attendanceRows.data || [];
-      d.billing_accounts = billingRows.data || [];
-      d.emergency_contacts = contactRows.data || [];
-      d.medical_records = medicalRows.data || [];
-      d.injuries = injuryRows.data || [];
-      d.waiver_signatures = waiverRows.data || [];
-      d.uniform_orders = uniformOrderRows.data || [];
-      d.form_responses = formResponseRows.data || [];
-      const formResponseIds = d.form_responses.map(row => row.id);
+      if (!ask.error) d.athlete_skills = ask.data || [];
+      if (!pl.error) d.parent_links = pl.data || [];
+      if (!attendanceRows.error) d.attendance = attendanceRows.data || [];
+      if (!billingRows.error) d.billing_accounts = billingRows.data || [];
+      if (!contactRows.error) d.emergency_contacts = contactRows.data || [];
+      if (!medicalRows.error) d.medical_records = medicalRows.data || [];
+      if (!injuryRows.error) d.injuries = injuryRows.data || [];
+      if (!waiverRows.error) d.waiver_signatures = waiverRows.data || [];
+      if (!uniformOrderRows.error) d.uniform_orders = uniformOrderRows.data || [];
+      if (!formResponseRows.error) d.form_responses = formResponseRows.data || [];
+      const formResponseIds = (d.form_responses || []).map(row => row.id);
       if (formResponseIds.length) {
         const answers = await s.from('form_answers').select('*').in('response_id', formResponseIds);
         d.form_answers = answers.data || [];
