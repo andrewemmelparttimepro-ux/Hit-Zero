@@ -1669,3 +1669,40 @@ select:disabled,
   .main { padding: 0; }
   .hz-card { border-color: #ccc; background: #fff; color: #000; }
 }
+
+/* ─── Routine Builder — print-perfect 8-count sheet ───
+   Hidden on screen; when the coach hits Print, the app chrome disappears
+   and this clean light-theme document is all that prints. */
+.routine-print-sheet { display: none; }
+@media print {
+  body { background: #fff !important; }
+  .app-shell, .arc-minimap, .arc-hud-tr, .arc-actions { display: none !important; }
+  .routine-print-sheet {
+    display: block !important;
+    position: absolute; top: 0; left: 0; width: 100%;
+    background: #fff; color: #14141c;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    padding: 8px 4px;
+  }
+  .routine-print-sheet .print-head {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    border-bottom: 3px solid #14141c; padding-bottom: 10px; margin-bottom: 14px;
+  }
+  .routine-print-sheet .print-title { font-size: 22px; font-weight: 900; letter-spacing: -0.02em; }
+  .routine-print-sheet .print-meta { font-size: 11px; color: #555; margin-top: 3px; }
+  .routine-print-sheet .print-brand { font-size: 10px; color: #888; text-align: right; }
+  .routine-print-sheet table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+  .routine-print-sheet th {
+    background: #efefef; text-align: left; font-size: 9px; text-transform: uppercase;
+    letter-spacing: 0.07em; padding: 5px 7px; border: 1px solid #bbb;
+  }
+  .routine-print-sheet td { border: 1px solid #ccc; padding: 4px 7px; vertical-align: top; }
+  .routine-print-sheet tr.print-section-start td { border-top: 2px solid #14141c; }
+  .routine-print-sheet td.print-count { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; width: 40px; }
+  .routine-print-sheet td.print-time { font-variant-numeric: tabular-nums; color: #555; white-space: nowrap; width: 44px; }
+  .routine-print-sheet .print-sec-label { font-weight: 800; }
+  .routine-print-sheet .print-cont { color: #999; }
+  .routine-print-sheet .print-notes { font-style: italic; color: #333; }
+  .routine-print-sheet .print-open td { background: #fff8e8; color: #8a6a20; font-weight: 700; }
+  .routine-print-sheet .print-foot { margin-top: 12px; font-size: 9.5px; color: #999; display: flex; justify-content: space-between; }
+}

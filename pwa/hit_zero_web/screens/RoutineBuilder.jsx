@@ -794,6 +794,8 @@ function CoachRoutineBuilder({ snap, navigate, pushToast }) {
     try { return localStorage.getItem('hz_rb_tab') || 'sheet'; } catch { return 'sheet'; }
   });
   const setTab = (t) => { setTabRaw(t); try { localStorage.setItem('hz_rb_tab', t); } catch { /* fine */ } };
+  // inline note editing on the count sheet: { sectionId, value } while typing
+  const [sheetNote, setSheetNote] = React.useState(null);
   const fileInputRef = React.useRef(null);
   const audioRef = React.useRef(null);
   const playbackClockRef = React.useRef({ anchorAudio: 0, anchorNow: 0, playbackRate: 1 });
@@ -2495,13 +2497,38 @@ function CoachRoutineBuilder({ snap, navigate, pushToast }) {
                     {c8}<span style={{ color: 'var(--hz-dimmer)', fontWeight: 500 }}>×8</span>
                   </div>
                   <div style={{ width: 10, height: 10, borderRadius: 5, background: color ? color.dot : 'transparent', border: color ? 'none' : '1px dashed rgba(255,180,84,0.6)' }}/>
-                  <div style={{ minWidth: 0 }}>
+                  <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     {sec ? (
                       <>
-                        <span style={{ fontSize: 13, fontWeight: isSectionStart ? 800 : 500, color: isSectionStart ? '#fff' : 'var(--hz-dim)' }}>
+                        <span style={{ fontSize: 13, fontWeight: isSectionStart ? 800 : 500, color: isSectionStart ? '#fff' : 'var(--hz-dim)', whiteSpace: 'nowrap' }}>
                           {isSectionStart ? (sec.label || sec.section_type.replace('_', ' ')) : '↓'}
                         </span>
-                        {isSectionStart && sec.notes && <span style={{ fontSize: 11.5, color: 'var(--hz-dim)', marginLeft: 8, fontStyle: 'italic' }}>{sec.notes}</span>}
+                        {isSectionStart && (
+                          sheetNote?.sectionId === sec.id ? (
+                            <input
+                              className="hz-input"
+                              autoFocus
+                              value={sheetNote.value}
+                              placeholder="What happens on these counts…"
+                              onClick={e => e.stopPropagation()}
+                              onChange={e => setSheetNote({ sectionId: sec.id, value: e.target.value })}
+                              onBlur={() => { updateSection(sec.id, { notes: sheetNote.value }); setSheetNote(null); }}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') { updateSection(sec.id, { notes: sheetNote.value }); setSheetNote(null); }
+                                if (e.key === 'Escape') setSheetNote(null);
+                              }}
+                              style={{ flex: 1, minWidth: 160, fontSize: 12, padding: '5px 9px' }}
+                            />
+                          ) : (
+                            <span
+                              onClick={e => { e.stopPropagation(); setSheetNote({ sectionId: sec.id, value: sec.notes || '' }); }}
+                              title="Edit note"
+                              style={{ fontSize: 11.5, color: sec.notes ? 'var(--hz-dim)' : 'var(--hz-dimmer)', fontStyle: 'italic', cursor: 'text', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                            >
+                              {sec.notes || '✎ add note'}
+                            </span>
+                          )
+                        )}
                       </>
                     ) : (
                       <span style={{ fontSize: 12.5, color: 'var(--hz-amber)', fontWeight: 700 }}>Open 8-count — nothing choreographed yet</span>
@@ -3295,6 +3322,72 @@ function CoachRoutineBuilder({ snap, navigate, pushToast }) {
           </div>
         </div>
       </div>
+      )}
+
+      {/* ── Print-perfect 8-count sheet ── rendered into document.body so the
+           print stylesheet can hide the app shell and show only this. The
+           header "Print sheet" button (window.print) produces this document. */}
+      {ReactDOM.createPortal(
+        <div className="routine-print-sheet">
+          <div className="print-head">
+            <div>
+              <div className="print-title">{routine.name}</div>
+              <div className="print-meta">
+                {team ? `${team.name || 'Team'}${team.level ? ` · Level ${team.level}` : ''}` : 'Team'}
+                {' · '}{countMap.bpm || routine.bpm || 144} BPM · {routine.length_counts} eight-counts
+                {audio?.original_filename ? ` · ${audio.original_filename}` : ''}
+              </div>
+            </div>
+            <div className="print-brand">
+              8-COUNT SHEET · {new Date().toLocaleDateString()}<br/>Built with Hit Zero
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th style={{ width: 40 }}>8-ct</th>
+                <th style={{ width: 44 }}>Time</th>
+                <th style={{ width: 150 }}>Section</th>
+                <th>Coach notes</th>
+                <th style={{ width: 220 }}>Assignments</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: routine.length_counts }).map((_, i) => {
+                const c8 = i + 1;
+                const sec = (routine.sections || []).find(s => c8 >= s.start_count && c8 <= s.end_count);
+                const isStart = sec && sec.start_count === c8;
+                const secAssignments = isStart ? (routine.assignments || []).filter(a => a.section_id === sec.id) : [];
+                if (!sec) {
+                  return (
+                    <tr key={c8} className="print-open">
+                      <td className="print-count">{c8}</td>
+                      <td className="print-time"/>
+                      <td colSpan="3">OPEN — not choreographed</td>
+                    </tr>
+                  );
+                }
+                return (
+                  <tr key={c8} className={isStart ? 'print-section-start' : ''}>
+                    <td className="print-count">{c8}</td>
+                    <td className="print-time">{isStart ? fmtTime(countToSeconds(sec.start_count, countMap)) : ''}</td>
+                    <td>{isStart ? <span className="print-sec-label">{sec.label || sec.section_type.replace('_', ' ')}</span> : <span className="print-cont">↓</span>}</td>
+                    <td className="print-notes">{isStart ? (sec.notes || '') : ''}</td>
+                    <td>{isStart ? secAssignments.map(a => {
+                      const roleLabel = ASSIGNMENT_ROLES.find(r => r.id === a.role)?.label || a.role || '';
+                      return `${athleteName(a.athlete_id)}${roleLabel ? ` (${roleLabel})` : ''}`;
+                    }).join(', ') : ''}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="print-foot">
+            <span>Deductions live in Mock Score · formations print from Choreo studio exports</span>
+            <span>thehitzero.net</span>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
