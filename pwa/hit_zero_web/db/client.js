@@ -2151,7 +2151,9 @@
     _lastEmail: lastEmail,
     _viewRoles: () => {
       const current = getSession();
-      return current?.mode === 'prototype'
+      // full role menu only in true localhost prototype mode — a stored
+      // session claiming 'prototype' is not enough on the shipped domain
+      return (current?.mode === 'prototype' && window.HZ_FORCE_PROTOTYPE)
         ? [...VIEW_AS_ROLES]
         : allowedViewRoles(current, current?.actualProfile || current?.profile);
     },

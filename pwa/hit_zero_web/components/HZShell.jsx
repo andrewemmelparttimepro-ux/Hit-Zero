@@ -723,7 +723,7 @@ window.App = App;
 
 // ─── Mobile top bar (just title + account chip) ───
 function MobileTopBar({ title, onAccount, session, snap }) {
-  const canSwitchRoles = roleSwitcherRoles(session).length > 1 || session.mode === 'prototype';
+  const canSwitchRoles = roleSwitcherRoles(session).length > 1 || (session.mode === 'prototype' && window.HZ_FORCE_PROTOTYPE === true);
   return (
     <div className="mobile-topbar hz-nosel">
       <div className="mobile-topbar__title">{title}</div>
@@ -920,7 +920,7 @@ function Sidebar({ nav, active, session, onNav, open, snap, program }) {
 
 // ─── Topbar ───
 function Topbar({ session, onOpenCmdk, onSignOut, onHamburger, onHelp, snap }) {
-  const canSwitchRoles = roleSwitcherRoles(session).length > 1 || session.mode === 'prototype';
+  const canSwitchRoles = roleSwitcherRoles(session).length > 1 || (session.mode === 'prototype' && window.HZ_FORCE_PROTOTYPE === true);
   return (
     <div className="topbar hz-nosel">
       <div className="topbar-left">
@@ -966,7 +966,7 @@ function AccountBadge({ session }) {
 
 function RoleSwitcher({ session, snap, compact = false }) {
   const [open, setOpen] = useState(false);
-  const roles = session.mode === 'prototype' ? ['coach','parent','athlete','owner'] : roleSwitcherRoles(session);
+  const roles = (session.mode === 'prototype' && window.HZ_FORCE_PROTOTYPE === true) ? ['coach','parent','athlete','owner'] : roleSwitcherRoles(session);
   const profiles = window.HZdb._raw().profiles;
   const liveViewAs = session.mode !== 'prototype';
   const currentRole = session.profile.role;

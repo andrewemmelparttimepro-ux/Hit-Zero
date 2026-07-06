@@ -2803,7 +2803,6 @@ function CoachRoutineBuilder({ snap, navigate, pushToast }) {
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button className={`hz-btn hz-btn-sm ${loopingSection ? 'hz-btn-primary' : ''}`} onClick={() => setLoopingSection(!loopingSection)} disabled={!selectedSection}>Loop section</button>
-              <button className="hz-btn hz-btn-sm" onClick={() => pushToast && pushToast({ kind: 'info', title: 'Count-in', body: 'Count-in/metronome is staged here; server/audio worker is the next infrastructure step.' })}>8-count in</button>
               <button className="hz-btn hz-btn-sm" onClick={() => generateSectionIdea('music')} disabled={!selectedSection}>Mark music hit</button>
               <button className="hz-btn hz-btn-sm hz-btn-primary" onClick={() => runAudioAnalysis('beat_map')} disabled={saving}>Audio map</button>
             </div>
