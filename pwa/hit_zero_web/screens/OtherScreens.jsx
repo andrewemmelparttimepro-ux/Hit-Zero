@@ -574,7 +574,8 @@ function SkillTree({ snap, session }) {
     got_it: 'I can do it.',
     mastered: 'I can do it clean and confident.',
   };
-  // Parents read progress; only the athlete (or staff) can write skill rows.
+  // Parents, athletes, and staff can all keep the tracker current.
+  // (RLS: "askill: parent updates/edits linked tracker" + athlete self policies.)
   const isParentViewer = session?.profile?.role === 'parent';
   const firstName = myAthlete.display_name.split(' ')[0];
   const STATUS_PARENT_HELP = {
@@ -598,7 +599,9 @@ function SkillTree({ snap, session }) {
       athlete_id: myAthlete.id,
       skill_id: skill.id,
       status,
-      updated_by: session?.profile?.id || session?.user?.id || null,
+      // actualProfile first: in kid-login mode the signed-in auth user is the
+      // parent, and RLS requires updated_by = auth.uid().
+      updated_by: session?.actualProfile?.id || session?.profile?.id || session?.user?.id || null,
       updated_at: new Date().toISOString(),
     };
     setError('');
@@ -628,13 +631,29 @@ function SkillTree({ snap, session }) {
 
   return (
     <div>
-      <SectionHeading eyebrow={myAthlete.display_name} title={isParentViewer ? 'Skill tree.' : 'My skill tree.'} trailing={<Pill tone="teal">{solidCount} solid</Pill>}/>
+      <SectionHeading eyebrow={myAthlete.display_name} title={isParentViewer ? `${firstName}'s skill tree.` : 'My skill tree.'} trailing={<Pill tone="teal">{solidCount} solid</Pill>}/>
+      {isParentViewer && scoped.choices.length > 1 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+          {scoped.choices.map(kid => (
+            <button
+              key={kid.id}
+              type="button"
+              className={'hz-btn hz-btn-sm' + (kid.id === myAthlete.id ? ' hz-btn-primary' : '')}
+              onClick={() => setSelectedAthleteId(kid.id)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
+            >
+              <Avatar name={kid.display_name} initials={kid.initials} color={kid.photo_color} src={kid.photo_url} size={20}/>
+              {kid.display_name.split(' ')[0]}
+            </button>
+          ))}
+        </div>
+      )}
       {isParentViewer ? (
         <div className="hz-card" style={{ marginBottom: 20, borderColor: 'rgba(39,207,215,0.35)' }}>
-          <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)', marginBottom: 8 }}>Progress tracker</div>
-          <div className="hz-display" style={{ fontSize: 32, marginBottom: 8 }}>Where {firstName} is today.</div>
+          <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)', marginBottom: 8 }}>Family tracker</div>
+          <div className="hz-display" style={{ fontSize: 32, marginBottom: 8 }}>Tap what {firstName} can do today.</div>
           <div style={{ color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.55, maxWidth: 760 }}>
-            Coaches and {firstName} update these as skills are practiced. Changes show up here live — nothing for you to fill out.
+            New skill from open gym or the backyard? Tap it below — one tap per skill, it saves instantly, and coaches see the same tree. Picked one by mistake? Tap <b style={{ color: 'var(--hz-text, #fff)' }}>Not yet</b> to clear it. Coaches and {firstName} can update these too.
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
             {['none','working','got_it','mastered'].map(s => (
@@ -648,6 +667,7 @@ function SkillTree({ snap, session }) {
               </span>
             ))}
           </div>
+          {error && <div style={{ color: 'var(--hz-pink)', fontSize: 13, marginTop: 12 }}>{error}</div>}
         </div>
       ) : (
         <div className="hz-card" style={{ marginBottom: 20, borderColor: 'rgba(39,207,215,0.35)' }}>
@@ -685,31 +705,20 @@ function SkillTree({ snap, session }) {
                         </div>
                         {saving === s.id && <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)' }}>Saving</div>}
                       </div>
-                      {isParentViewer ? (
-                        <div style={{
-                          display: 'inline-flex', alignItems: 'center',
-                          padding: '6px 12px', borderRadius: 999, fontSize: 11, fontWeight: 700,
-                          background: 'rgba(255,255,255,0.05)', border: '1px solid var(--hz-line)',
-                          color: st === 'none' ? 'var(--hz-dim)' : '#fff',
-                        }}>
-                          {STATUS_LABEL[st]}
-                        </div>
-                      ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
-                          {['none','working','got_it','mastered'].map(option => (
-                            <button
-                              key={option}
-                              type="button"
-                              className={'hz-btn hz-btn-sm' + (st === option ? ' hz-btn-primary' : '')}
-                              disabled={saving === s.id}
-                              onClick={() => updateSkill(s, option)}
-                              style={{ justifyContent: 'center', fontSize: 11, padding: '8px 9px' }}
-                            >
-                              {STATUS_LABEL[option]}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
+                        {['none','working','got_it','mastered'].map(option => (
+                          <button
+                            key={option}
+                            type="button"
+                            className={'hz-btn hz-btn-sm' + (st === option ? ' hz-btn-primary' : '')}
+                            disabled={saving === s.id}
+                            onClick={() => updateSkill(s, option)}
+                            style={{ justifyContent: 'center', fontSize: 11, padding: '8px 9px' }}
+                          >
+                            {STATUS_LABEL[option]}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   );
                 })}
