@@ -559,7 +559,12 @@ window.PinsHub = PinsHub;
 
 // ─── Skill Tree: athlete-scoped, full USASF ───
 function SkillTree({ snap, session }) {
-  const [selectedAthleteId, setSelectedAthleteId] = React.useState(null);
+  // The parent-home nudge can deep-link a specific kid via HZskillTreeFocus.
+  const [selectedAthleteId, setSelectedAthleteId] = React.useState(() => {
+    const focus = window.HZskillTreeFocus || null;
+    window.HZskillTreeFocus = null;
+    return focus;
+  });
   const scoped = scopedAthleteForFeature(snap, session, selectedAthleteId);
   const myAthlete = scoped.athlete;
   if (!myAthlete) {
@@ -732,6 +737,47 @@ function SkillTree({ snap, session }) {
 }
 window.SkillTree = SkillTree;
 
+// ─── Skill-tree nudge: shows on the parent home every visit until each kid's
+// tree has at least one skill marked (by anyone — parent, athlete, or coach).
+// "Later" snoozes for the current browser session only, so it comes back on
+// the next login. Disappears for good once the tree has real data.
+function SkillTreeNudgeCard({ kids, navigate, profileId }) {
+  const snoozeKey = 'hz_skillnudge_' + (profileId || 'me');
+  const [snoozed, setSnoozed] = React.useState(() => {
+    try { return sessionStorage.getItem(snoozeKey) === '1'; } catch { return false; }
+  });
+  if (!kids.length || snoozed) return null;
+  const firsts = kids.map(k => k.display_name.split(' ')[0]);
+  const nameList = firsts.length === 1 ? firsts[0] : firsts.slice(0, -1).join(', ') + ' and ' + firsts[firsts.length - 1];
+  const openFor = (kid) => {
+    window.HZskillTreeFocus = kid.id;
+    navigate('skilltree');
+  };
+  const snooze = () => {
+    try { sessionStorage.setItem(snoozeKey, '1'); } catch {}
+    setSnoozed(true);
+  };
+  return (
+    <div className="hz-card" style={{ marginBottom: 24, borderColor: 'rgba(39,207,215,0.4)' }}>
+      <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)', marginBottom: 8 }}>Skill tree · about 2 minutes</div>
+      <div style={{ fontWeight: 900, fontSize: 18 }}>Tell the coaches what {nameList} can already do.</div>
+      <div style={{ color: 'var(--hz-dim)', fontSize: 12.5, marginTop: 5, lineHeight: 1.5 }}>
+        Tap through the skill tree once — every skill is just one tap: Not yet, Working, Got it, or Mastered.
+        Coaches use it to plan practice and placements, and you'll watch it light up all season.
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
+        {kids.map(kid => (
+          <button key={kid.id} className="hz-btn hz-btn-primary" onClick={() => openFor(kid)}>
+            Fill out {kid.display_name.split(' ')[0]}'s skill tree <HZIcon name="arrow-right" size={13}/>
+          </button>
+        ))}
+        <button className="hz-btn" onClick={snooze}>Later</button>
+      </div>
+    </div>
+  );
+}
+window.SkillTreeNudgeCard = SkillTreeNudgeCard;
+
 // ─── Parent Dashboard ───
 function ParentDashboard({ snap, session, navigate, pushToast }) {
   const [createdKids, setCreatedKids] = React.useState([]);
@@ -825,6 +871,13 @@ function ParentDashboard({ snap, session, navigate, pushToast }) {
           <button className="hz-btn hz-btn-primary" onClick={() => navigate('family_forms')}>Open Forms <HZIcon name="arrow-right" size={13}/></button>
         </div>
       )}
+
+      <SkillTreeNudgeCard
+        kids={myKids.filter(Boolean).filter(kid => window.HZsel.athleteSkillsSummary(kid.id).notAssessed)}
+        navigate={navigate}
+        profileId={session.actualProfile?.id || session.profile?.id}
+      />
+
 
       {unlinkedPaidRegistrations.length > 0 && (
         <div className="hz-card" style={{ marginBottom: 24, borderColor: 'rgba(39,207,215,0.32)' }}>
