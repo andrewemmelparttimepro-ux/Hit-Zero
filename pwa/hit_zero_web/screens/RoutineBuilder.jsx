@@ -788,6 +788,12 @@ function CoachRoutineBuilder({ snap, navigate, pushToast }) {
   const [saving, setSaving] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
   const [sectionEditorPulse, setSectionEditorPulse] = React.useState(false);
+  // Workspace tabs — one job on screen at a time. Smart default: remember
+  // where the coach was working last.
+  const [tab, setTabRaw] = React.useState(() => {
+    try { return localStorage.getItem('hz_rb_tab') || 'sheet'; } catch { return 'sheet'; }
+  });
+  const setTab = (t) => { setTabRaw(t); try { localStorage.setItem('hz_rb_tab', t); } catch { /* fine */ } };
   const fileInputRef = React.useRef(null);
   const audioRef = React.useRef(null);
   const playbackClockRef = React.useRef({ anchorAudio: 0, anchorNow: 0, playbackRate: 1 });
@@ -1480,6 +1486,7 @@ function CoachRoutineBuilder({ snap, navigate, pushToast }) {
       pushToast && pushToast({ kind: 'info', title: 'Pick a section first', body: 'Choose a section before editing its counts and notes.' });
       return;
     }
+    setTab('sections'); // the editor lives on the Sections & team tab
     selectChoreoSection(section, { seek: false, focus: 'editor' });
     setSectionEditorPulse(true);
     window.setTimeout(() => {
@@ -2403,6 +2410,114 @@ function CoachRoutineBuilder({ snap, navigate, pushToast }) {
         </div>
       }/>
 
+      {/* ── Routine pulse: real design progress + the next thing blocking comp-ready ── */}
+      <div className="hz-card" style={{ padding: '14px 18px', marginBottom: 14, display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 800 }}>Routine designed</span>
+            <span className="hz-mono" style={{ fontSize: 13, fontWeight: 800, color: 'var(--hz-teal)' }}>{Math.round(designReadiness)}%</span>
+          </div>
+          <div style={{ height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${Math.round(designReadiness)}%`, background: 'linear-gradient(90deg, var(--hz-teal), var(--hz-pink))', transition: 'width 400ms ease' }}/>
+          </div>
+        </div>
+        <div>
+          <div className="hz-eyebrow">Score window</div>
+          <div className="hz-mono" style={{ fontSize: 16, fontWeight: 800 }}>{scoreLow.toFixed(1)}–{scoreHigh.toFixed(1)}</div>
+        </div>
+        {comp && (
+          <div>
+            <div className="hz-eyebrow">Days to comp</div>
+            <div className="hz-display" style={{ fontSize: 22, color: comp.days <= 14 ? 'var(--hz-amber)' : '#fff' }}>{comp.days}</div>
+          </div>
+        )}
+        {validationIssues.length > 0 ? (
+          <div style={{
+            maxWidth: 340, padding: '8px 12px', borderRadius: 10, fontSize: 12,
+            background: 'rgba(255,180,84,0.1)', border: '1px solid rgba(255,180,84,0.35)',
+          }}>
+            <b style={{ color: 'var(--hz-amber)' }}>Next fix:</b> {validationIssues[0].title}
+            <span style={{ color: 'var(--hz-dim)' }}> · {validationIssues.length - 1 > 0 ? `${validationIssues.length - 1} more after this` : 'last one'}</span>
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--hz-green)' }}>✓ Nothing blocking — comp-ready checklist clear</div>
+        )}
+      </div>
+
+      {/* ── Workspace tabs ── */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+        {[
+          { id: 'sheet', label: '📋 Count sheet' },
+          { id: 'choreo', label: '🎛 Choreo studio' },
+          { id: 'sections', label: '🧩 Sections & team' },
+        ].map(t => (
+          <button key={t.id} className={'hz-btn' + (tab === t.id ? ' hz-btn-primary' : '')} onClick={() => setTab(t.id)} style={{ minHeight: 42 }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── COUNT SHEET — the artifact coaches already think in ── */}
+      {tab === 'sheet' && (
+        <div className="hz-card" style={{ marginBottom: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+            <div>
+              <div className="hz-eyebrow">8-count sheet · {routine.length_counts} eight-counts · {countMap.bpm || routine.bpm || 144} BPM</div>
+              <div style={{ fontSize: 12, color: 'var(--hz-dim)', marginTop: 4 }}>Tap a row to edit that block. Colors match the timeline in Choreo studio.</div>
+            </div>
+            <button className="hz-btn hz-btn-sm" onClick={addSection}><HZIcon name="plus" size={12}/> Add block</button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {Array.from({ length: routine.length_counts }).map((_, i) => {
+              const c8 = i + 1;
+              const sec = (routine.sections || []).find(s => c8 >= s.start_count && c8 <= s.end_count);
+              const color = sec ? (SECTION_COLORS[sec.section_type] || SECTION_COLORS.transition) : null;
+              const isSectionStart = sec && sec.start_count === c8;
+              const secAssignments = sec ? (routine.assignments || []).filter(a => a.section_id === sec.id) : [];
+              return (
+                <div
+                  key={c8}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    if (sec) { setTab('sections'); setTimeout(() => openSectionEditor(sec), 80); }
+                    else addSection();
+                  }}
+                  onKeyDown={e => { if (e.key === 'Enter') { if (sec) { setTab('sections'); setTimeout(() => openSectionEditor(sec), 80); } else addSection(); } }}
+                  style={{
+                    display: 'grid', gridTemplateColumns: '46px 10px 1fr auto', gap: 12, alignItems: 'center',
+                    padding: '9px 12px', borderRadius: 10, cursor: 'pointer',
+                    background: sec ? 'rgba(255,255,255,0.025)' : 'rgba(255,180,84,0.05)',
+                    border: `1px solid ${sec ? 'var(--hz-line)' : 'rgba(255,180,84,0.3)'}`,
+                  }}
+                >
+                  <div className="hz-mono" style={{ fontSize: 12, fontWeight: 800, color: 'var(--hz-dim)' }}>
+                    {c8}<span style={{ color: 'var(--hz-dimmer)', fontWeight: 500 }}>×8</span>
+                  </div>
+                  <div style={{ width: 10, height: 10, borderRadius: 5, background: color ? color.dot : 'transparent', border: color ? 'none' : '1px dashed rgba(255,180,84,0.6)' }}/>
+                  <div style={{ minWidth: 0 }}>
+                    {sec ? (
+                      <>
+                        <span style={{ fontSize: 13, fontWeight: isSectionStart ? 800 : 500, color: isSectionStart ? '#fff' : 'var(--hz-dim)' }}>
+                          {isSectionStart ? (sec.label || sec.section_type.replace('_', ' ')) : '↓'}
+                        </span>
+                        {isSectionStart && sec.notes && <span style={{ fontSize: 11.5, color: 'var(--hz-dim)', marginLeft: 8, fontStyle: 'italic' }}>{sec.notes}</span>}
+                      </>
+                    ) : (
+                      <span style={{ fontSize: 12.5, color: 'var(--hz-amber)', fontWeight: 700 }}>Open 8-count — nothing choreographed yet</span>
+                    )}
+                  </div>
+                  <div className="hz-mono" style={{ fontSize: 10.5, color: 'var(--hz-dimmer)', textAlign: 'right' }}>
+                    {isSectionStart && <>{fmtTime(countToSeconds(sec.start_count, countMap))} · {secAssignments.length ? `${secAssignments.length} assigned` : 'no one assigned'}</>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {tab === 'choreo' && (
       <div className="routine-builder-setup" style={{ marginBottom: 24 }}>
         <div className="hz-card" style={{ padding: 24, overflow: 'hidden' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', marginBottom: 18 }}>
@@ -2842,7 +2957,9 @@ function CoachRoutineBuilder({ snap, navigate, pushToast }) {
           </div>
         </div>
       </div>
+      )}
 
+      {tab === 'sections' && (
       <div className="routine-builder-main">
         <div style={{ display: 'grid', gap: 18, alignContent: 'start' }}>
         <div ref={sectionEditorRef} tabIndex={-1} className={`hz-card routine-section-editor-card ${sectionEditorPulse ? 'routine-section-editor-card-active' : ''}`} data-testid="routine-section-editor">
@@ -3178,6 +3295,7 @@ function CoachRoutineBuilder({ snap, navigate, pushToast }) {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }
