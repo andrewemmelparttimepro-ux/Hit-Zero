@@ -34,6 +34,8 @@
       // Owner-managed offerings (drives the marketing site)
       program_tracks, program_classes,
       family_info_packets, class_enrollments,
+      // Mock Score
+      score_runs, score_deductions,
     ] = await Promise.all([
       q('programs'), q('teams'), q('athletes'), q('skills'), q('athlete_skills'), q('sessions'),
       q('attendance'), q('routines'), q('routine_sections'),
@@ -59,6 +61,7 @@
       q('analysis_feedback'), q('analysis_skill_updates'),
       q('program_tracks'), q('program_classes'),
       q('family_info_packets'), q('class_enrollments'),
+      q('score_runs'), q('score_deductions'),
     ]);
     cache = {
       programs, teams, athletes, skills, athlete_skills, sessions, attendance, routines, routine_sections,
@@ -83,6 +86,7 @@
       analysis_feedback, analysis_skill_updates,
       program_tracks, program_classes,
       family_info_packets, class_enrollments,
+      score_runs, score_deductions,
     };
     return cache;
   }
