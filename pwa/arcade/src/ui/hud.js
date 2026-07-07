@@ -1,7 +1,10 @@
 // DOM HUD: banner, presence pill, coach-present tag, mute + style + action
 // buttons, toasts, photo flash, and the avatar customization panel.
 
-import { SKINS, HAIR_COLORS, HAIR_STYLES, BOW_COLORS, UNIFORMS, sanitizeAvatar } from '../world/avatar.js';
+import {
+  SKINS, HAIR_COLORS, HAIR_STYLES, BOW_SHAPES, BOW_COLORS, UNIFORMS,
+  CAPES, TRAILS, NAMEPLATES, COSMETIC_LABELS, createAvatar, sanitizeAvatar,
+} from '../world/avatar.js';
 
 export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
   // ── top-right stack: presence pill, coach tag, mute ──
@@ -155,83 +158,218 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
   }
   function setCoachHere(on) { coachTag.style.display = on ? '' : 'none'; }
 
-  // ── avatar style panel ──
-  // firstRun: shown automatically the first time a kid ever opens the
-  // Arcade — same panel, warmer copy. Every tap auto-saves either way.
+  // ── Character Studio ──
+  // firstRun: shown automatically the first time a kid ever opens the Arcade.
+  // Every tap auto-saves either way, using the same avatar rig as the world.
   let panel = null;
-  function openStylePanel(current, { firstRun = false } = {}) {
+  let panelCleanup = null;
+
+  function openStylePanel(current, { firstRun = false, unlocks = null } = {}) {
     closeStylePanel();
     let cfg = sanitizeAvatar(current);
+    let activeTab = 'base';
+    let previewAvatar = null;
+    let previewApp = null;
+
     panel = document.createElement('div');
     panel.className = 'arc-style-panel';
 
     const cssHex = (n) => '#' + n.toString(16).padStart(6, '0');
-    const swatchRow = (label, colors, key, resolve) => {
+    const canUse = (slot, index) => {
+      if (index === 0) return true;
+      const allowed = unlocks?.allowed?.[slot];
+      if (!allowed) return false;
+      return Array.isArray(allowed) ? allowed.includes(index) : allowed.has?.(index);
+    };
+    const lockReason = (slot, index) =>
+      unlocks?.reasons?.[slot]?.[index] || 'Unlock from skill progress';
+    const progressCopy = (() => {
+      if (!unlocks?.loaded) return 'Skill unlocks are unavailable right now. Free looks still save.';
+      const s = unlocks.stats || {};
+      return `${s.mastered || 0} mastered · ${s.solid || 0} solid skills`;
+    })();
+
+    panel.innerHTML = `
+      <div class="arc-studio-head">
+        <div>
+          <h3>${firstRun ? 'Build your cheerleader!' : 'Character Studio'}</h3>
+          <div class="sub">${firstRun ? 'Pick a look, then come back anytime from STYLE.' : 'Changes save automatically and teammates see them live.'}</div>
+        </div>
+        <button class="arc-studio-close" type="button" aria-label="Close Character Studio">&times;</button>
+      </div>
+      <div class="arc-studio-body">
+        <div class="arc-studio-preview">
+          <div class="arc-preview-stage"></div>
+          <div class="arc-preview-title">Live Preview</div>
+          <div class="arc-preview-progress">${escapeHtml(progressCopy)}</div>
+        </div>
+        <div class="arc-studio-edit">
+          <div class="arc-studio-tabs" role="tablist"></div>
+          <div class="arc-studio-content"></div>
+        </div>
+      </div>
+      <button class="arc-style-done" type="button">${firstRun ? "LET'S GO!" : 'DONE'}</button>
+    `;
+
+    const closeBtn = panel.querySelector('.arc-studio-close');
+    closeBtn.addEventListener('click', closeStylePanel);
+    panel.querySelector('.arc-style-done').addEventListener('click', closeStylePanel);
+    document.body.appendChild(panel);
+
+    const previewHost = panel.querySelector('.arc-preview-stage');
+    const content = panel.querySelector('.arc-studio-content');
+    const tabs = panel.querySelector('.arc-studio-tabs');
+
+    async function mountPreview() {
+      const app = new PIXI.Application();
+      await app.init({
+        width: 168, height: 220, backgroundAlpha: 0,
+        antialias: true, resolution: Math.min(2, window.devicePixelRatio || 1), autoDensity: true,
+      });
+      if (!panel || !previewHost.isConnected) {
+        app.destroy(true);
+        return;
+      }
+      previewApp = app;
+      previewHost.appendChild(app.canvas);
+      previewAvatar = createAvatar({ config: cfg, name: 'You', team: '', theme, isSelf: true });
+      previewAvatar.container.position.set(84, 178);
+      previewAvatar.container.scale.set(1.14);
+      app.stage.addChild(previewAvatar.container);
+      app.ticker.add((t) => previewAvatar?.update(Math.min(0.05, t.deltaMS / 1000)));
+    }
+    mountPreview();
+
+    panelCleanup = () => {
+      previewAvatar = null;
+      if (previewApp) {
+        previewApp.destroy(true, { children: true });
+        previewApp = null;
+      }
+    };
+
+    function updatePreview() { previewAvatar?.setConfig(cfg); }
+
+    function choose(key, value) {
+      cfg = sanitizeAvatar({ ...cfg, [key]: value });
+      onAvatarChange({ ...cfg });
+      updatePreview();
+      sfx.tap();
+      renderTab(activeTab);
+    }
+
+    function colorRow(label, values, key, resolve) {
       const row = document.createElement('div');
       row.className = 'arc-style-row';
       row.innerHTML = `<label>${label}</label>`;
       const wrap = document.createElement('div');
       wrap.className = 'arc-swatches';
-      colors.forEach((c, i) => {
+      values.forEach((c, i) => {
         const b = document.createElement('button');
         b.className = 'arc-swatch' + (cfg[key] === i ? ' sel' : '');
         b.style.background = resolve ? resolve(c, i) : cssHex(c);
-        b.addEventListener('click', () => {
-          cfg[key] = i;
-          wrap.querySelectorAll('.arc-swatch').forEach((el, j) => el.classList.toggle('sel', j === i));
-          onAvatarChange({ ...cfg });
-          sfx.tap();
-        });
+        b.title = COSMETIC_LABELS[key]?.[i] || label;
+        b.addEventListener('click', () => choose(key, i));
         wrap.appendChild(b);
       });
       row.appendChild(wrap);
       return row;
-    };
+    }
 
-    panel.innerHTML = firstRun
-      ? `<h3>Build your cheerleader! 🎀</h3><div class="sub">Pick your look — you can change it anytime from the STYLE button. Everything saves automatically.</div>`
-      : `<h3>Your Look</h3><div class="sub">Changes save automatically — teammates see them live.</div>`;
-
-    panel.appendChild(swatchRow('Skin tone', SKINS, 'skin'));
-
-    // hair style chips
-    const hs = document.createElement('div');
-    hs.className = 'arc-style-row';
-    hs.innerHTML = '<label>Hair style</label>';
-    const hsWrap = document.createElement('div');
-    hsWrap.className = 'arc-swatches';
-    HAIR_STYLES.forEach((style) => {
-      const chip = document.createElement('button');
-      chip.className = 'arc-chip' + (cfg.hair === style ? ' sel' : '');
-      chip.textContent = style[0].toUpperCase() + style.slice(1);
-      chip.addEventListener('click', () => {
-        cfg.hair = style;
-        hsWrap.querySelectorAll('.arc-chip').forEach(el => el.classList.toggle('sel', el === chip));
-        onAvatarChange({ ...cfg });
-        sfx.tap();
+    function chipRow(label, values, key, labels = values) {
+      const row = document.createElement('div');
+      row.className = 'arc-style-row';
+      row.innerHTML = `<label>${label}</label>`;
+      const wrap = document.createElement('div');
+      wrap.className = 'arc-chip-grid';
+      values.forEach((value, i) => {
+        const b = document.createElement('button');
+        b.className = 'arc-chip' + (cfg[key] === value ? ' sel' : '');
+        b.textContent = labels[i];
+        b.addEventListener('click', () => choose(key, value));
+        wrap.appendChild(b);
       });
-      hsWrap.appendChild(chip);
+      row.appendChild(wrap);
+      return row;
+    }
+
+    function specialGrid(label, slot, values, resolve) {
+      const row = document.createElement('div');
+      row.className = 'arc-style-row';
+      row.innerHTML = `<label>${label}</label>`;
+      const wrap = document.createElement('div');
+      wrap.className = 'arc-special-grid';
+      values.forEach((value, i) => {
+        const allowed = canUse(slot, i);
+        const b = document.createElement('button');
+        b.className = 'arc-special-card' + (cfg[slot] === i ? ' sel' : '') + (!allowed ? ' locked' : '');
+        b.type = 'button';
+        b.disabled = !allowed;
+        const swatch = resolve ? resolve(value, i) : null;
+        b.innerHTML = `
+          <span class="arc-special-swatch" style="${swatch ? `background:${swatch}` : ''}">${slot === 'trail' && i > 0 ? '*' : ''}</span>
+          <span class="arc-special-copy">
+            <strong>${escapeHtml(COSMETIC_LABELS[slot][i])}</strong>
+            <small>${allowed ? (i === 0 ? 'Always available' : 'Unlocked') : escapeHtml(lockReason(slot, i))}</small>
+          </span>
+        `;
+        b.addEventListener('click', () => choose(slot, i));
+        wrap.appendChild(b);
+      });
+      row.appendChild(wrap);
+      return row;
+    }
+
+    const tabDefs = [
+      { id: 'base', label: 'Base' },
+      { id: 'bow', label: 'Bows' },
+      { id: 'uniform', label: 'Uniforms' },
+      { id: 'special', label: 'Unlocks' },
+    ];
+    tabDefs.forEach((tab) => {
+      const b = document.createElement('button');
+      b.className = 'arc-studio-tab';
+      b.type = 'button';
+      b.textContent = tab.label;
+      b.addEventListener('click', () => renderTab(tab.id));
+      tabs.appendChild(b);
     });
-    hs.appendChild(hsWrap);
-    panel.appendChild(hs);
 
-    panel.appendChild(swatchRow('Hair color', HAIR_COLORS, 'hairColor'));
-    panel.appendChild(swatchRow('Bow', BOW_COLORS, 'bow',
-      (c) => c === null ? `linear-gradient(120deg, ${theme.accent}, ${theme.accent2})` : cssHex(c)));
-    panel.appendChild(swatchRow('Uniform', UNIFORMS, 'uniform',
-      (u) => u === null
-        ? `linear-gradient(120deg, #14141c 50%, ${theme.accent} 50%)`
-        : `linear-gradient(120deg, ${cssHex(u[0])} 50%, ${cssHex(u[1])} 50%)`));
-
-    const done = document.createElement('button');
-    done.className = 'arc-style-done';
-    done.textContent = firstRun ? "LET'S GO!" : 'DONE';
-    done.addEventListener('click', closeStylePanel);
-    panel.appendChild(done);
-
-    document.body.appendChild(panel);
+    function renderTab(id) {
+      activeTab = id;
+      tabs.querySelectorAll('.arc-studio-tab').forEach((b) => b.classList.toggle('sel', b.textContent === tabDefs.find(t => t.id === id)?.label));
+      content.innerHTML = '';
+      if (id === 'base') {
+        content.appendChild(colorRow('Skin tone', SKINS, 'skin'));
+        content.appendChild(chipRow('Hair style', HAIR_STYLES, 'hair', COSMETIC_LABELS.hair));
+        content.appendChild(colorRow('Hair color', HAIR_COLORS, 'hairColor'));
+      } else if (id === 'bow') {
+        content.appendChild(chipRow('Bow shape', BOW_SHAPES.map((_, i) => i), 'bowShape', COSMETIC_LABELS.bowShape));
+        content.appendChild(colorRow('Bow color', BOW_COLORS, 'bow',
+          (c) => c === null ? `linear-gradient(120deg, ${theme.accent}, ${theme.accent2})` : cssHex(c)));
+      } else if (id === 'uniform') {
+        content.appendChild(colorRow('Uniform colorway', UNIFORMS, 'uniform',
+          (u) => u === null
+            ? `linear-gradient(120deg, #14141c 50%, ${theme.accent} 50%)`
+            : `linear-gradient(120deg, ${cssHex(u[0])} 50%, ${cssHex(u[1])} 50%)`));
+      } else {
+        content.appendChild(specialGrid('Capes', 'cape', CAPES,
+          (c, i) => i === 0 ? 'rgba(255,255,255,0.06)' : cssHex(c ?? theme.accentNum)));
+        content.appendChild(specialGrid('Trails', 'trail', TRAILS,
+          (_, i) => ['rgba(255,255,255,0.06)', '#ffd166', theme.accent2, '#b387ff', '#ff4f79'][i]));
+        content.appendChild(specialGrid('Nameplates', 'nameplate', NAMEPLATES,
+          (_, i) => ['rgba(255,255,255,0.06)', '#ffd166', theme.accent2, '#ffffff', theme.accent][i]));
+      }
+    }
+    renderTab(activeTab);
   }
-  function closeStylePanel() { panel?.remove(); panel = null; }
+
+  function closeStylePanel() {
+    panelCleanup?.();
+    panelCleanup = null;
+    panel?.remove();
+    panel = null;
+  }
 
   return {
     actions, toast, flash, setBanner, setPresence, setCoachHere,
@@ -239,4 +377,8 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
     setMinimapScene, updateMinimap,
     setMuteIcon(muted) { muteBtn.textContent = muted ? '🔇' : '🔊'; },
   };
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 }

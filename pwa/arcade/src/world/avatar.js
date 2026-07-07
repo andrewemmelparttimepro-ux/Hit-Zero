@@ -9,29 +9,67 @@
 const { Container, Graphics, Text } = PIXI;
 
 export const SKINS = [0xffdbc4, 0xf3c29e, 0xd99e6f, 0xa96f45, 0x7c4b2a];
-export const HAIR_COLORS = [0x2d2019, 0x0e0c0b, 0xe8c56a, 0x8c3f23, 0xf1a7c8, 0x74d7db];
-export const HAIR_STYLES = ['ponytail', 'bun', 'long', 'short'];
+export const HAIR_COLORS = [
+  0x2d2019, 0x0e0c0b, 0xe8c56a, 0x8c3f23, 0xf1a7c8,
+  0x74d7db, 0xb387ff, 0xf5f0e8, 0xc45b3c, 0x4a3227,
+];
+export const HAIR_STYLES = ['ponytail', 'bun', 'long', 'short', 'braids', 'pigtails', 'curly', 'bob'];
+export const BOW_SHAPES = ['classic', 'big', 'star', 'sparkle'];
 // bow index 0 = program accent (resolved at draw time)
-export const BOW_COLORS = [null, 0xffffff, 0xff4f79, 0x35c2ff, 0xb387ff, 0xffd166, 0x43e97b, 0x14141c];
+export const BOW_COLORS = [
+  null, 0xffffff, 0xff4f79, 0x35c2ff, 0xb387ff,
+  0xffd166, 0x43e97b, 0x14141c, 0xff8a65, 0xc7b6ff,
+];
 // uniform colorway: [top, trim] — index 0 = program colors
-export const UNIFORMS = [null, [0x14141c, 0xf97fac], [0x27334d, 0x74d7db], [0x4b2a5e, 0xffffff]];
+export const UNIFORMS = [
+  null,
+  [0x14141c, 0xf97fac],
+  [0x27334d, 0x74d7db],
+  [0x4b2a5e, 0xffffff],
+  [0xffffff, 0xf97fac],
+  [0x0f172a, 0xffd166],
+  [0x1f2937, 0x43e97b],
+  [0x5b2145, 0x74d7db],
+];
 // capes: index 0 = none. The first real cosmetic slot — Super Squad NPCs
 // wear them now; kids earn them later via skill mastery.
 export const CAPES = [null, 0xffd166, 0x74d7db, null /* program accent */, 0xffffff, 0xb387ff];
+export const TRAILS = [null, 'star', 'spark', 'confetti', 'heart'];
+export const NAMEPLATES = ['default', 'star', 'neon', 'varsity', 'captain'];
 
-export const DEFAULT_AVATAR = { skin: 1, hair: 'ponytail', hairColor: 0, bow: 0, uniform: 0, cape: 0 };
+export const COSMETIC_LABELS = {
+  skin: ['Glow 1', 'Glow 2', 'Glow 3', 'Glow 4', 'Glow 5'],
+  hair: ['Ponytail', 'Bun', 'Long', 'Short', 'Braids', 'Pigtails', 'Curly', 'Bob'],
+  hairColor: ['Brunette', 'Black', 'Blonde', 'Auburn', 'Pink', 'Teal', 'Purple', 'Platinum', 'Copper', 'Mocha'],
+  bowShape: ['Classic', 'Big Bow', 'Star Bow', 'Sparkle Bow'],
+  bow: ['Gym Colors', 'White', 'Hot Pink', 'Blue', 'Purple', 'Gold', 'Green', 'Black', 'Coral', 'Lavender'],
+  uniform: ['Gym Colors', 'Midnight Pink', 'Navy Teal', 'Royal White', 'White Pink', 'Gold Night', 'Green Glow', 'Plum Teal'],
+  cape: ['No Cape', 'Gold Cape', 'Teal Cape', 'Gym Cape', 'White Cape', 'Purple Cape'],
+  trail: ['No Trail', 'Star Trail', 'Sparkle Trail', 'Confetti Trail', 'Heart Trail'],
+  nameplate: ['Classic Tag', 'Star Tag', 'Neon Tag', 'Varsity Tag', 'Captain Tag'],
+};
+
+export const DEFAULT_AVATAR = {
+  skin: 1, hair: 'ponytail', hairColor: 0,
+  bowShape: 0, bow: 0, uniform: 0,
+  cape: 0, trail: 0, nameplate: 0,
+};
 
 export function sanitizeAvatar(cfg) {
   const a = { ...DEFAULT_AVATAR, ...(cfg && typeof cfg === 'object' ? cfg : {}) };
   a.skin = idx(a.skin, SKINS.length);
   a.hairColor = idx(a.hairColor, HAIR_COLORS.length);
+  a.bowShape = idx(a.bowShape, BOW_SHAPES.length);
   a.bow = idx(a.bow, BOW_COLORS.length);
   a.uniform = idx(a.uniform, UNIFORMS.length);
   a.cape = idx(a.cape, CAPES.length);
+  a.trail = idx(a.trail, TRAILS.length);
+  a.nameplate = idx(a.nameplate, NAMEPLATES.length);
   if (!HAIR_STYLES.includes(a.hair)) a.hair = 'ponytail';
   return a;
 }
 function idx(v, n) { const i = Math.round(Number(v)); return Number.isFinite(i) && i >= 0 && i < n ? i : 0; }
+function resolvedColor(entry, fallback) { return entry == null ? fallback : entry; }
 
 const FACING_BACK = new Set([3, 4, 5]);
 const FACING_WEST = new Set([5, 6, 7]);
@@ -100,9 +138,6 @@ export function createAvatar({ config, name, team, theme, isSelf = false, npc = 
   tagText.anchor.set(0.5);
   const tagBg = new Graphics();
   const tw = tagText.width + 16, th = 20;
-  tagBg.roundRect(-tw / 2, -th / 2, tw, th, 10).fill({ color: 0x0a0a10, alpha: 0.72 });
-  if (isSelf) tagBg.roundRect(-tw / 2, -th / 2, tw, th, 10).stroke({ color: theme.accentNum, width: 1.4, alpha: 0.9 });
-  if (npc) tagBg.roundRect(-tw / 2, -th / 2, tw, th, 10).stroke({ color: 0xffd166, width: 1.6, alpha: 0.95 });
   tag.addChild(tagBg, tagText);
   tag.position.set(0, -128);
   root.addChild(tag);
@@ -120,6 +155,7 @@ export function createAvatar({ config, name, team, theme, isSelf = false, npc = 
   let idlePhase = Math.random() * 10;
   let emote = null; // { key, t, dur }
   let pose = null;  // held photo-booth pose key
+  let trailAcc = 0;
 
   function colors() {
     const uni = UNIFORMS[cfg.uniform] || [0x14141c, theme.accentNum];
@@ -132,15 +168,43 @@ export function createAvatar({ config, name, team, theme, isSelf = false, npc = 
     };
   }
 
+  function redrawNameplate() {
+    tagBg.clear();
+    const style = npc ? 1 : cfg.nameplate;
+    const fill = style === 2 ? 0x071015 : style === 3 ? 0x111827 : 0x0a0a10;
+    const alpha = style === 0 ? 0.72 : 0.84;
+    const radius = style === 3 ? 5 : 10;
+    tagBg.roundRect(-tw / 2, -th / 2, tw, th, radius).fill({ color: fill, alpha });
+    if (style === 1 || npc) {
+      tagBg.roundRect(-tw / 2, -th / 2, tw, th, radius).stroke({ color: 0xffd166, width: 1.6, alpha: 0.95 });
+      tagBg.circle(-tw / 2 + 8, 0, 2.4).fill(0xffd166);
+      tagBg.circle(tw / 2 - 8, 0, 2.4).fill(0xffd166);
+    } else if (style === 2) {
+      tagBg.roundRect(-tw / 2, -th / 2, tw, th, radius).stroke({ color: theme.accent2Num, width: 1.7, alpha: 0.95 });
+      tagBg.roundRect(-tw / 2 + 3, -th / 2 + 3, tw - 6, th - 6, radius).stroke({ color: theme.accentNum, width: 1, alpha: 0.55 });
+    } else if (style === 3) {
+      tagBg.roundRect(-tw / 2, -th / 2, tw, th, radius).stroke({ color: 0xffffff, width: 1.3, alpha: 0.72 });
+      tagBg.moveTo(-tw / 2 + 8, th / 2 - 4).lineTo(tw / 2 - 8, th / 2 - 4)
+        .stroke({ color: theme.accentNum, width: 2, alpha: 0.75 });
+    } else if (style === 4) {
+      tagBg.roundRect(-tw / 2, -th / 2, tw, th, radius).fill({ color: theme.accentNum, alpha: 0.18 });
+      tagBg.roundRect(-tw / 2, -th / 2, tw, th, radius).stroke({ color: theme.accentNum, width: 1.8, alpha: 0.95 });
+      tagBg.moveTo(-tw / 2 + 5, 0).lineTo(-tw / 2 + 12, -5).lineTo(-tw / 2 + 19, 0).lineTo(-tw / 2 + 12, 5).closePath().fill(0xffd166);
+    } else if (isSelf) {
+      tagBg.roundRect(-tw / 2, -th / 2, tw, th, radius).stroke({ color: theme.accentNum, width: 1.4, alpha: 0.9 });
+    }
+  }
+
   function redraw() {
     const C = colors();
     const back = FACING_BACK.has(facing);
     const side = FACING_SIDE.has(facing);
+    redrawNameplate();
 
     // cape (cosmetic slot; index 3 resolves to program accent)
     cape.clear();
     if (cfg.cape > 0) {
-      const capeColor = CAPES[cfg.cape] ?? theme.accentNum;
+      const capeColor = resolvedColor(CAPES[cfg.cape], theme.accentNum);
       cape.moveTo(-13, -52).quadraticCurveTo(-30, -30, -24, -4)
         .quadraticCurveTo(-8, 2, 0, -2).quadraticCurveTo(8, 2, 24, -4)
         .quadraticCurveTo(30, -30, 13, -52).closePath()
@@ -217,6 +281,23 @@ export function createAvatar({ config, name, team, theme, isSelf = false, npc = 
     } else if (cfg.hair === 'long') {
       hairBack.moveTo(-22, -8).quadraticCurveTo(-31, 16, -22, 32).quadraticCurveTo(-14, 22, -16, 2).closePath().fill(H);
       hairBack.moveTo(22, -8).quadraticCurveTo(31, 16, 22, 32).quadraticCurveTo(14, 22, 16, 2).closePath().fill(H);
+    } else if (cfg.hair === 'braids') {
+      for (const sx of [-1, 1]) {
+        for (let i = 0; i < 4; i++) {
+          hairBack.ellipse(sx * (18 + (i % 2) * 2), -1 + i * 10, 6, 8).fill(H)
+            .stroke({ color: 0xffffff, width: 0.8, alpha: 0.1 });
+        }
+      }
+    } else if (cfg.hair === 'pigtails') {
+      hairBack.circle(-26, -1, 13).fill(H);
+      hairBack.circle(26, -1, 13).fill(H);
+      hairBack.circle(-26, -1, 13).stroke({ color: 0xffffff, width: 1.2, alpha: 0.12 });
+      hairBack.circle(26, -1, 13).stroke({ color: 0xffffff, width: 1.2, alpha: 0.12 });
+    } else if (cfg.hair === 'curly') {
+      const curls = [[-18, -6], [-10, -18], [0, -21], [10, -18], [18, -6], [-18, 8], [18, 8], [-8, 18], [8, 18]];
+      curls.forEach(([x, y]) => hairBack.circle(x, y, 8.5).fill(H));
+    } else if (cfg.hair === 'bob') {
+      hairBack.roundRect(-23, -8, 46, 40, 17).fill(H);
     }
 
     hair.clear();
@@ -228,15 +309,39 @@ export function createAvatar({ config, name, team, theme, isSelf = false, npc = 
         .closePath().fill(H); // crown + fringe
       hair.moveTo(-24.5, 0).quadraticCurveTo(-26, 10, -21, 16).lineTo(-19, 4).closePath().fill(H);
       hair.moveTo(24.5, 0).quadraticCurveTo(26, 10, 21, 16).lineTo(19, 4).closePath().fill(H);
+      if (cfg.hair === 'curly') {
+        [-18, -9, 0, 9, 18].forEach((x, i) => hair.circle(x, -6 + (i % 2) * 4, 6.5).fill(H));
+      } else if (cfg.hair === 'bob') {
+        hair.roundRect(-24, -2, 11, 28, 6).fill(H);
+        hair.roundRect(13, -2, 11, 28, 6).fill(H);
+        hair.circle(-17, 13, 7).fill(H);
+        hair.circle(17, 13, 7).fill(H);
+      }
     }
 
-    // bow: two loops + knot, sits high on the crown
+    // bow: sits high on the crown, with a few readable shapes for the studio
     bow.clear();
     const B = C.bow;
     const by = cfg.hair === 'bun' ? -33 : -23;
-    bow.moveTo(-3, by).quadraticCurveTo(-16, by - 10, -13, by + 3).quadraticCurveTo(-8, by + 7, -3, by).closePath().fill(B);
-    bow.moveTo(3, by).quadraticCurveTo(16, by - 10, 13, by + 3).quadraticCurveTo(8, by + 7, 3, by).closePath().fill(B);
-    bow.circle(0, by + 1, 4).fill(B);
+    if (cfg.bowShape === 1) {
+      bow.moveTo(-3, by).quadraticCurveTo(-24, by - 15, -20, by + 7).quadraticCurveTo(-10, by + 13, -3, by).closePath().fill(B);
+      bow.moveTo(3, by).quadraticCurveTo(24, by - 15, 20, by + 7).quadraticCurveTo(10, by + 13, 3, by).closePath().fill(B);
+      bow.circle(0, by + 1, 5).fill(B);
+    } else if (cfg.bowShape === 2) {
+      starShape(bow, -9, by, 5, 11, 5).fill(B);
+      starShape(bow, 9, by, 5, 11, 5).fill(B);
+      bow.circle(0, by + 1, 4.5).fill(B);
+    } else if (cfg.bowShape === 3) {
+      bow.moveTo(-3, by).quadraticCurveTo(-16, by - 10, -13, by + 3).quadraticCurveTo(-8, by + 7, -3, by).closePath().fill(B);
+      bow.moveTo(3, by).quadraticCurveTo(16, by - 10, 13, by + 3).quadraticCurveTo(8, by + 7, 3, by).closePath().fill(B);
+      bow.circle(0, by + 1, 4).fill(B);
+      starShape(bow, 17, by - 8, 5, 4.5, 2).fill(0xffffff);
+      bow.circle(-16, by - 7, 2).fill({ color: 0xffffff, alpha: 0.75 });
+    } else {
+      bow.moveTo(-3, by).quadraticCurveTo(-16, by - 10, -13, by + 3).quadraticCurveTo(-8, by + 7, -3, by).closePath().fill(B);
+      bow.moveTo(3, by).quadraticCurveTo(16, by - 10, 13, by + 3).quadraticCurveTo(8, by + 7, 3, by).closePath().fill(B);
+      bow.circle(0, by + 1, 4).fill(B);
+    }
     bow.circle(-1.4, by - 0.4, 1.4).fill({ color: 0xffffff, alpha: 0.55 });
 
     // mirror for west-facing
@@ -423,6 +528,14 @@ export function createAvatar({ config, name, team, theme, isSelf = false, npc = 
   function update(dt) {
     idlePhase += dt;
     if (cfg.cape > 0) cape.skew.x = Math.sin(idlePhase * 1.9) * 0.05 + (moving ? 0.12 : 0);
+    if (cfg.trail > 0 && (moving || emote)) {
+      trailAcc += dt;
+      if (trailAcc > 0.14) {
+        trailAcc = 0;
+        const kind = TRAILS[cfg.trail] || 'spark';
+        fx?.burst(root.x + (Math.random() - 0.5) * 12, root.y - 36 + (Math.random() - 0.5) * 10, kind, kind === 'confetti' ? 4 : 3);
+      }
+    }
     if (bubble.visible) {
       bubbleTimer -= dt;
       bubble.alpha = Math.min(1, bubble.alpha + dt * 8);
@@ -470,4 +583,16 @@ export function createAvatar({ config, name, team, theme, isSelf = false, npc = 
     playEmote, say, setPose, update,
     isEmoting() { return !!emote; },
   };
+}
+
+function starShape(g, x, y, points, outer, inner) {
+  const step = Math.PI / points;
+  g.moveTo(x, y - outer);
+  for (let i = 1; i < points * 2; i++) {
+    const rr = i % 2 === 0 ? outer : inner;
+    const a = -Math.PI / 2 + i * step;
+    g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+  }
+  g.closePath();
+  return g;
 }

@@ -135,6 +135,7 @@ export function createNet({ supa, programId, me, observer = false, invisible = f
     },
     updatePresence(patch) {
       if (patch && typeof patch.s === 'string') me.scene = patch.s;
+      if (patch && patch.avatar && typeof patch.avatar === 'object') me.avatar = patch.avatar;
       if (!joined || invisible) return;
       channel.track({ name: me.name, team: me.team, staff: !!observer, avatar: me.avatar, s: me.scene || 'lobby', ...patch });
     },
@@ -157,11 +158,11 @@ const BOT_HOMES = {
   town:  { c0: 3, r0: 4, c1: 22, r1: 7 },   // street + sidewalks
 };
 const BOT_ROSTER = [
-  { id: 'bot-riley',  name: 'Riley',  team: 'Demo Team', scene: 'lobby', avatar: { skin: 0, hair: 'ponytail', hairColor: 2, bow: 0, uniform: 0 } },
-  { id: 'bot-harper', name: 'Harper', team: 'Demo Team', scene: 'lobby', avatar: { skin: 2, hair: 'bun',      hairColor: 0, bow: 2, uniform: 0 } },
-  { id: 'bot-quinn',  name: 'Quinn',  team: 'Demo Team', scene: 'lobby', avatar: { skin: 3, hair: 'long',     hairColor: 1, bow: 3, uniform: 0 } },
-  { id: 'bot-sutton', name: 'Sutton', team: 'Demo Team', scene: 'town',  avatar: { skin: 1, hair: 'long',     hairColor: 4, bow: 4, uniform: 0 } },
-  { id: 'bot-emery',  name: 'Emery',  team: 'Demo Team', scene: 'town',  avatar: { skin: 4, hair: 'ponytail', hairColor: 1, bow: 5, uniform: 0 } },
+  { id: 'bot-riley',  name: 'Riley',  team: 'Demo Team', scene: 'lobby', avatar: { skin: 0, hair: 'pigtails', hairColor: 2, bowShape: 1, bow: 0, uniform: 0 } },
+  { id: 'bot-harper', name: 'Harper', team: 'Demo Team', scene: 'lobby', avatar: { skin: 2, hair: 'braids',   hairColor: 0, bowShape: 2, bow: 2, uniform: 4 } },
+  { id: 'bot-quinn',  name: 'Quinn',  team: 'Demo Team', scene: 'lobby', avatar: { skin: 3, hair: 'curly',    hairColor: 6, bowShape: 3, bow: 3, uniform: 2 } },
+  { id: 'bot-sutton', name: 'Sutton', team: 'Demo Team', scene: 'town',  avatar: { skin: 1, hair: 'bob',      hairColor: 4, bowShape: 0, bow: 4, uniform: 5 } },
+  { id: 'bot-emery',  name: 'Emery',  team: 'Demo Team', scene: 'town',  avatar: { skin: 4, hair: 'ponytail', hairColor: 8, bowShape: 1, bow: 5, uniform: 6 } },
 ];
 const BOT_EMOTES = ['wave', 'spirit', 'toetouch', 'highv', 'laugh', 'hit', 'hearthands'];
 

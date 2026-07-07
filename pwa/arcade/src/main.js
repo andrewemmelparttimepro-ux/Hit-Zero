@@ -30,6 +30,8 @@ const PLAYER_SPEED = 235; // px/s screen-space
 const CART_BOOST = 1.75;
 
 const MAPS = { lobby: lobbyMap, town: cheertownMap };
+const SOLID_SKILL_STATUSES = new Set(['got_it', 'mastered']);
+const TUMBLING_CATEGORIES = new Set(['standing_tumbling', 'running_tumbling', 'tumbling']);
 
 const loaderSub = document.getElementById('loaderSub');
 const enterBtn = document.getElementById('enterBtn');
@@ -111,6 +113,8 @@ async function boot() {
 
   let myAvatarCfg = sanitizeAvatar(null);
   let teamName = '';
+  let athleteId = null;
+  let unlockState = mode === 'offline' ? demoUnlockState() : deriveUnlockState([], [], false);
   let firstVisit = false; // first time ever in the Arcade → auto-open the builder
   if (mode === 'player' && supa) {
     try {
@@ -123,15 +127,30 @@ async function boot() {
       }
     } catch (err) { console.warn('[arcade] arcade_profiles unavailable', err); }
     try {
-      const { data: ath } = await supa.from('athletes').select('team_id, teams(name)').eq('profile_id', profile.id).maybeSingle();
+      const { data: ath } = await supa.from('athletes').select('id, team_id, teams(name)').eq('profile_id', profile.id).maybeSingle();
+      athleteId = ath?.id || null;
       teamName = ath?.teams?.name || '';
     } catch { /* tag shows name only */ }
+    if (athleteId) {
+      try {
+        const [{ data: rows, error: rowsError }, { data: skills, error: skillsError }] = await Promise.all([
+          supa.from('athlete_skills').select('skill_id, status').eq('athlete_id', athleteId),
+          supa.from('skills').select('id, category'),
+        ]);
+        if (rowsError || skillsError) throw rowsError || skillsError;
+        unlockState = deriveUnlockState(rows || [], skills || [], true);
+      } catch (err) {
+        console.warn('[arcade] skill unlocks unavailable', err);
+        unlockState = deriveUnlockState([], [], false);
+      }
+    }
   } else {
     const stored = localStorage.getItem('hz_arcade_avatar');
     firstVisit = !stored;
     try { myAvatarCfg = sanitizeAvatar(JSON.parse(stored || 'null')); } catch { /* defaults */ }
     if (firstVisit) try { localStorage.setItem('hz_arcade_avatar', JSON.stringify(myAvatarCfg)); } catch { /* fine */ }
   }
+  myAvatarCfg = filterAvatarForUnlocks(myAvatarCfg, unlockState);
 
   let muted = localStorage.getItem('hz_arcade_muted') === '1';
   audio.setMuted(muted);
@@ -150,7 +169,7 @@ async function boot() {
       return muted;
     },
     onAvatarChange(cfg) {
-      myAvatarCfg = sanitizeAvatar(cfg);
+      myAvatarCfg = filterAvatarForUnlocks(sanitizeAvatar(cfg), unlockState);
       player?.avatar.setConfig(myAvatarCfg);
       saveAvatar();
       net?.updatePresence({ avatar: myAvatarCfg });
@@ -422,7 +441,7 @@ async function boot() {
     if (!wheelsEnabled) { hud.toast('Observers can watch, not play — grab an iPad and log in as an athlete!'); return; }
     if (act === 'emote') wheels.openEmotes(e.target.closest('[data-act]'));
     if (act === 'phrase') wheels.openPhrases(e.target.closest('[data-act]'));
-    if (act === 'style') hud.openStylePanel(myAvatarCfg);
+    if (act === 'style') hud.openStylePanel(myAvatarCfg, { unlocks: unlockState });
   });
   if (!wheelsEnabled) hud.actions.style.display = 'none';
 
@@ -532,7 +551,90 @@ async function boot() {
     // First time ever in the Arcade → drop straight into the builder.
     // Every tap in it auto-saves, so it's sticky from then on.
     if (firstVisit && wheelsEnabled) {
-      setTimeout(() => hud.openStylePanel(myAvatarCfg, { firstRun: true }), 650);
+      setTimeout(() => hud.openStylePanel(myAvatarCfg, { firstRun: true, unlocks: unlockState }), 650);
     }
   }, { once: true });
+}
+
+const UNLOCK_REASONS = {
+  cape: {
+    1: 'Master 1 skill',
+    2: 'Master 3 skills',
+    3: 'Master a tumbling skill',
+    4: 'Future team reward',
+    5: 'Future team reward',
+  },
+  trail: {
+    1: 'Master a jump skill',
+    2: 'Future team reward',
+    3: 'Get 10 solid skills',
+    4: 'Future team reward',
+  },
+  nameplate: {
+    1: 'Master 1 skill',
+    2: 'Master 3 skills',
+    3: 'Get 10 solid skills',
+    4: 'Master 10 skills',
+  },
+};
+
+function deriveUnlockState(skillRows = [], skills = [], loaded = true) {
+  const categoryById = new Map((skills || []).map((s) => [s.id, String(s.category || '').toLowerCase()]));
+  const stats = {
+    solid: 0,
+    mastered: 0,
+    tumblingMastered: false,
+    jumpMastered: false,
+  };
+
+  for (const row of skillRows || []) {
+    const status = String(row?.status || '').toLowerCase();
+    if (SOLID_SKILL_STATUSES.has(status)) stats.solid += 1;
+    if (status !== 'mastered') continue;
+    stats.mastered += 1;
+    const category = categoryById.get(row.skill_id) || '';
+    if (TUMBLING_CATEGORIES.has(category) || category.includes('tumbling')) stats.tumblingMastered = true;
+    if (category === 'jumps' || category.includes('jump')) stats.jumpMastered = true;
+  }
+
+  const allowed = { cape: [0], trail: [0], nameplate: [0] };
+  if (loaded) {
+    if (stats.mastered >= 1) { allowed.cape.push(1); allowed.nameplate.push(1); }
+    if (stats.mastered >= 3) { allowed.cape.push(2); allowed.nameplate.push(2); }
+    if (stats.tumblingMastered) allowed.cape.push(3);
+    if (stats.jumpMastered) allowed.trail.push(1);
+    if (stats.solid >= 10) { allowed.trail.push(3); allowed.nameplate.push(3); }
+    if (stats.mastered >= 10) allowed.nameplate.push(4);
+  }
+
+  return { loaded: !!loaded, stats, allowed, reasons: UNLOCK_REASONS };
+}
+
+function demoUnlockState() {
+  const demoRows = [
+    { skill_id: 'demo-tumbling-1', status: 'mastered' },
+    { skill_id: 'demo-dance-1', status: 'mastered' },
+    { skill_id: 'demo-dance-2', status: 'mastered' },
+    { skill_id: 'demo-jump-1', status: 'got_it' },
+    { skill_id: 'demo-dance-3', status: 'got_it' },
+    { skill_id: 'demo-dance-4', status: 'got_it' },
+    { skill_id: 'demo-dance-5', status: 'got_it' },
+    { skill_id: 'demo-dance-6', status: 'got_it' },
+    { skill_id: 'demo-dance-7', status: 'got_it' },
+    { skill_id: 'demo-dance-8', status: 'got_it' },
+  ];
+  const demoSkills = [
+    { id: 'demo-tumbling-1', category: 'standing_tumbling' },
+    { id: 'demo-jump-1', category: 'jumps' },
+  ];
+  return deriveUnlockState(demoRows, demoSkills, true);
+}
+
+function filterAvatarForUnlocks(cfg, unlocks) {
+  const next = sanitizeAvatar(cfg);
+  for (const slot of ['cape', 'trail', 'nameplate']) {
+    const allowed = unlocks?.allowed?.[slot] || [0];
+    if (!allowed.includes(next[slot])) next[slot] = 0;
+  }
+  return next;
 }
