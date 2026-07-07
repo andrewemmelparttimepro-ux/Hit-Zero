@@ -22,7 +22,7 @@ export function createJoystick() {
 
   window.addEventListener('pointerdown', (e) => {
     // ignore taps on HUD buttons/panels and the right action cluster
-    if (e.target.closest('button, .arc-actions, .arc-wheel, .arc-style-panel, .arc-hud-tr')) return;
+    if (e.target.closest('button, .arc-actions, .arc-wheel, .arc-style-panel, .arc-hud-tr, .arc-game')) return;
     if (pointerId !== null) return;
     if (e.clientX > window.innerWidth * 0.62) return;
     pointerId = e.pointerId;

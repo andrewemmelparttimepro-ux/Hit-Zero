@@ -164,6 +164,26 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
   let panel = null;
   let panelCleanup = null;
 
+  // The preview Pixi app is created ONCE and reused for every studio open.
+  // Destroying an Application corrupts Pixi 8.19's shared batcher pool and
+  // throws "Cannot read properties of null (reading 'clear')" in the WORLD
+  // app's next render pass — so we park it (stop ticker, detach canvas)
+  // instead of destroying it.
+  let studioAppPromise = null;
+  function getStudioApp() {
+    if (!studioAppPromise) {
+      studioAppPromise = (async () => {
+        const app = new PIXI.Application();
+        await app.init({
+          width: 168, height: 220, backgroundAlpha: 0,
+          antialias: true, resolution: Math.min(2, window.devicePixelRatio || 1), autoDensity: true,
+        });
+        return app;
+      })();
+    }
+    return studioAppPromise;
+  }
+
   function openStylePanel(current, { firstRun = false, unlocks = null } = {}) {
     closeStylePanel();
     let cfg = sanitizeAvatar(current);
@@ -220,32 +240,35 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
     const content = panel.querySelector('.arc-studio-content');
     const tabs = panel.querySelector('.arc-studio-tabs');
 
+    let previewTick = null;
     async function mountPreview() {
-      const app = new PIXI.Application();
-      await app.init({
-        width: 168, height: 220, backgroundAlpha: 0,
-        antialias: true, resolution: Math.min(2, window.devicePixelRatio || 1), autoDensity: true,
-      });
-      if (!panel || !previewHost.isConnected) {
-        app.destroy(true);
-        return;
-      }
+      const app = await getStudioApp();
+      if (!panel || !previewHost.isConnected) return; // closed while loading
       previewApp = app;
       previewHost.appendChild(app.canvas);
       previewAvatar = createAvatar({ config: cfg, name: 'You', team: '', theme, isSelf: true });
       previewAvatar.container.position.set(84, 178);
       previewAvatar.container.scale.set(1.14);
       app.stage.addChild(previewAvatar.container);
-      app.ticker.add((t) => previewAvatar?.update(Math.min(0.05, t.deltaMS / 1000)));
+      previewTick = (t) => previewAvatar?.update(Math.min(0.05, t.deltaMS / 1000));
+      app.ticker.add(previewTick);
+      app.ticker.start();
     }
     mountPreview();
 
     panelCleanup = () => {
-      previewAvatar = null;
+      // park the shared app — never destroy it (see getStudioApp note)
       if (previewApp) {
-        previewApp.destroy(true, { children: true });
+        if (previewTick) { previewApp.ticker.remove(previewTick); previewTick = null; }
+        if (previewAvatar) {
+          previewApp.stage.removeChild(previewAvatar.container);
+          previewAvatar.container.destroy({ children: true });
+        }
+        previewApp.ticker.stop();
+        previewApp.canvas.remove();
         previewApp = null;
       }
+      previewAvatar = null;
     };
 
     function updatePreview() { previewAvatar?.setConfig(cfg); }

@@ -217,7 +217,7 @@ function buildWalls(layer, theme) {
 // Interactables
 // ─────────────────────────────────────────────────────────────────────────
 
-function makeInteractables({ rend, theme, getPlayer, emote, say, toast, flash, sfx, travel }) {
+function makeInteractables({ rend, theme, getPlayer, emote, say, toast, flash, sfx, travel, openGame }) {
   const updaters = [];
 
   // ── arcade cabinets ──
@@ -227,6 +227,7 @@ function makeInteractables({ rend, theme, getPlayer, emote, say, toast, flash, s
     c.position.set(base.x, base.y);
     c.rotation = WALL_ANGLE;
     const isPortal = cab.key === 'center';
+    const isCounts = cab.key === 'left'; // HIT THE COUNTS — first real game
 
     const W = 150, H = 190;
     const body = new Graphics();
@@ -246,10 +247,10 @@ function makeInteractables({ rend, theme, getPlayer, emote, say, toast, flash, s
     c.addChild(neon);
 
     const marquee = new Text({
-      text: isPortal ? 'CHEER TOWN' : 'ARCADE',
+      text: isPortal ? 'CHEER TOWN' : isCounts ? 'HIT THE COUNTS' : 'ARCADE',
       style: {
-        fontFamily: 'system-ui, -apple-system, sans-serif', fontSize: 16, fontWeight: '900',
-        fill: isPortal ? theme.accentNum : 0xd8d8e2, letterSpacing: 2,
+        fontFamily: 'system-ui, -apple-system, sans-serif', fontSize: isCounts ? 13 : 16, fontWeight: '900',
+        fill: isPortal ? theme.accentNum : isCounts ? 0xffd166 : 0xd8d8e2, letterSpacing: isCounts ? 1 : 2,
       },
       resolution: 2,
     });
@@ -263,23 +264,54 @@ function makeInteractables({ rend, theme, getPlayer, emote, say, toast, flash, s
     const scr = new Graphics();
     screen.addChild(scr);
     const scrText = new Text({
-      text: isPortal ? 'TAP TO PLAY!' : 'COMING\nSOON',
+      text: (isPortal || isCounts) ? 'TAP TO PLAY!' : 'COMING\nSOON',
       style: {
-        fontFamily: 'system-ui, -apple-system, sans-serif', fontSize: isPortal ? 14 : 16,
+        fontFamily: 'system-ui, -apple-system, sans-serif', fontSize: (isPortal || isCounts) ? 14 : 16,
         fontWeight: '900', fill: 0xffffff, align: 'center', letterSpacing: 1.5, lineHeight: 19,
       },
       resolution: 2,
     });
     scrText.anchor.set(0.5);
-    scrText.position.y = isPortal ? 30 : 6;
+    scrText.position.y = (isPortal || isCounts) ? 30 : 6;
     screen.addChild(scrText);
+
+    // attract-mode count numbers for the rhythm cabinet
+    let countNum = null;
+    if (isCounts) {
+      countNum = new Text({
+        text: '1',
+        style: { fontFamily: 'system-ui, -apple-system, sans-serif', fontSize: 34, fontWeight: '900', fill: 0xffd166 },
+        resolution: 2,
+      });
+      countNum.anchor.set(0.5);
+      countNum.position.y = -6;
+      screen.addChild(countNum);
+    }
 
     const SW = W - 24, SH = 84;
     let t = Math.random() * 10;
     updaters.push((dt) => {
       t += dt;
       scr.clear();
-      if (isPortal) {
+      if (isCounts) {
+        // attract mode: a star pulses toward a target ring on the counts,
+        // the big count number cycles 1-8 at 140bpm — the game, in miniature
+        scr.roundRect(-SW / 2, -SH / 2, SW, SH, 6).fill(0x0d0a16);
+        const beat = 60 / 140;
+        const phase = (t % beat) / beat;
+        const count = (Math.floor(t / beat) % 8) + 1;
+        if (countNum) {
+          countNum.text = String(count);
+          countNum.scale.set(1.15 - phase * 0.25);
+          countNum.alpha = count % 2 === 1 ? 1 : 0.55;
+        }
+        // target ring (left) + incoming note (right→left each beat)
+        scr.circle(-SW / 2 + 20, 24, 9).stroke({ color: theme.accentNum, width: 2.5, alpha: 0.9 });
+        const nx = SW / 2 - 14 - phase * (SW - 48);
+        scr.circle(nx, 24, 6).fill(theme.accent2Num);
+        if (phase < 0.18) scr.circle(-SW / 2 + 20, 24, 12).stroke({ color: 0xffd166, width: 2, alpha: 1 - phase * 5 });
+        scrText.alpha = 0.6 + 0.4 * Math.abs(Math.sin(t * 2.2));
+      } else if (isPortal) {
         // Cheer Town, open for business: night sky, lit gym, no more tape
         scr.roundRect(-SW / 2, -SH / 2, SW, SH, 6).fill(0x0b0f1e);
         for (let i = 0; i < 7; i++) {
@@ -316,6 +348,13 @@ function makeInteractables({ rend, theme, getPlayer, emote, say, toast, flash, s
         if (!p) { toast('Observers ride along automatically — athletes start the trip!'); return; }
         sfx.travel();
         travel('town');
+        return;
+      }
+      if (isCounts) {
+        if (!p) { toast('Observers can watch the scores — athletes play!'); return; }
+        sfx.travel();
+        rend.fx.burst(base.x, base.y - 130, 'star', 12);
+        openGame?.('counts');
         return;
       }
       wobble = 1;

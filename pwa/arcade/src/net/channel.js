@@ -6,7 +6,7 @@
 // Offline / prototype mode gets the same interface driven by friendly bots,
 // so demo mode still feels alive.
 
-import { posMsg, emoteMsg, phraseMsg, parsePos, parseEmote, parsePhrase, PHRASES } from './protocol.js';
+import { posMsg, emoteMsg, phraseMsg, gameMsg, parsePos, parseEmote, parsePhrase, parseGame, PHRASES } from './protocol.js';
 import { gridToWorld } from '../world/tilemap.js';
 
 const POS_HZ = 9; // broadcast rate while moving
@@ -67,6 +67,10 @@ export function createNet({ supa, programId, me, observer = false, invisible = f
     ch.on('broadcast', { event: 'phrase' }, ({ payload }) => {
       const p = parsePhrase(payload?.d);
       if (p && payload?.id && payload.id !== me.id) handlers.onPhrase?.(payload.id, p.text);
+    });
+    ch.on('broadcast', { event: 'game' }, ({ payload }) => {
+      const g = parseGame(payload?.d);
+      if (g && payload?.id && payload.id !== me.id) handlers.onGame?.(payload.id, g);
     });
 
     ch.subscribe(async (status, err) => {
@@ -132,6 +136,10 @@ export function createNet({ supa, programId, me, observer = false, invisible = f
     sendPhrase(index) {
       if (!joined || observer || invisible) return;
       channel.send({ type: 'broadcast', event: 'phrase', payload: { id: me.id, d: phraseMsg(index) } });
+    },
+    sendGame(type, data) {
+      if (!joined || observer || invisible) return;
+      channel.send({ type: 'broadcast', event: 'game', payload: { id: me.id, d: gameMsg(type, data) } });
     },
     updatePresence(patch) {
       if (patch && typeof patch.s === 'string') me.scene = patch.s;
@@ -228,9 +236,45 @@ function createOfflineNet({ handlers }) {
   // start after a beat so the world exists first
   setTimeout(start, 250);
 
+  // ── offline Hit the Counts: two bots join every round and play along ──
+  // Their accuracy wobbles per-8-count so the pips feel alive, and their
+  // final results land just after the local player's chart ends.
+  let gameTimers = [];
+  function botRound({ rid, total8 }) {
+    gameTimers.forEach(clearTimeout);
+    gameTimers = [];
+    const bar = 8 * (60 / 140); // practice track is 140bpm
+    const players = [
+      { id: 'bot-riley', base: 68 + Math.random() * 14 },
+      { id: 'bot-harper', base: 78 + Math.random() * 16 },
+    ];
+    for (const [i, b] of players.entries()) {
+      gameTimers.push(setTimeout(() => handlers.onGame?.(b.id, { type: 'join', rid }), 900 + i * 700));
+      let score = 0;
+      for (let e8 = 1; e8 <= total8; e8++) {
+        gameTimers.push(setTimeout(() => {
+          const acc = Math.round(Math.max(30, Math.min(99, b.base + (Math.random() - 0.5) * 18)));
+          score += Math.round(240 * (acc / 100) * (1 + e8 / total8));
+          handlers.onGame?.(b.id, { type: 'prog', rid, e8, acc, score, combo: Math.round(acc / 12) * e8 % 40 });
+        }, 8000 + e8 * bar * 1000));
+      }
+      gameTimers.push(setTimeout(() => {
+        const acc = Math.round(Math.max(35, Math.min(99, b.base + (Math.random() - 0.5) * 8)));
+        handlers.onGame?.(b.id, {
+          type: 'result', rid, acc, score,
+          gradeIndex: acc >= 92 ? 0 : acc >= 80 ? 1 : acc >= 65 ? 2 : acc >= 45 ? 3 : 4,
+        });
+      }, 8000 + (total8 * bar + 1.2) * 1000));
+    }
+  }
+
   return {
     mode: 'offline',
     sendPos() {}, sendEmote() {}, sendPhrase() {}, updatePresence() {},
-    leave() { timers.forEach(clearTimeout); },
+    sendGame(type, data) {
+      if (type === 'invite') botRound({ rid: data.rid, total8: Math.max(1, Math.min(64, data.total8 || 16)) });
+      if (type === 'leave') { gameTimers.forEach(clearTimeout); gameTimers = []; }
+    },
+    leave() { timers.forEach(clearTimeout); gameTimers.forEach(clearTimeout); },
   };
 }

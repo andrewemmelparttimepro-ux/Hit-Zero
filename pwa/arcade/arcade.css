@@ -365,3 +365,173 @@ html, body {
 @media (max-width: 700px) {
   .arc-act-btn { width: 56px; height: 56px; font-size: 21px; }
 }
+
+/* ───────────────────────────────────────────────────────────────────────
+   HIT THE COUNTS — the left-cabinet rhythm game overlay
+   ─────────────────────────────────────────────────────────────────────── */
+.arc-game {
+  position: fixed; inset: 0; z-index: 84;
+  display: flex; flex-direction: column;
+  /* transparent: the game renders in the world app's canvas underneath
+     (single WebGL context — see hitTheCounts.js header comment) */
+  background: transparent;
+  animation: arc-game-in 240ms ease-out both;
+}
+@keyframes arc-game-in { 0% { opacity: 0; transform: scale(1.03); } 100% { opacity: 1; transform: none; } }
+
+.arc-game-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
+  background: rgba(10, 10, 18, 0.92);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.arc-game-title {
+  font-size: 17px; font-weight: 900; letter-spacing: 0.06em; color: var(--arc-text);
+}
+.arc-game-title b { color: var(--arc-accent); }
+.arc-game-sub {
+  display: block; font-size: 11.5px; font-weight: 700; letter-spacing: 0.02em;
+  color: var(--arc-dim); margin-top: 1px;
+}
+.arc-game-close {
+  width: 40px; height: 40px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06); color: var(--arc-text); font-size: 17px; font-weight: 800;
+}
+.arc-game-close:active { transform: scale(0.93); }
+
+.arc-game-stage { position: relative; flex: 1; min-height: 0; }
+.arc-game-stage canvas { position: absolute; inset: 0; }
+
+/* menu / lobby / results panel floats over the stage */
+.arc-game-panel {
+  position: absolute; inset: 0; top: 60px; z-index: 2;
+  display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px;
+  padding: 16px; pointer-events: none;
+}
+.arc-game-panel.clear { display: none; }
+.arc-game-panel > * { pointer-events: auto; }
+
+.arc-game-card {
+  width: min(430px, 92vw);
+  background: rgba(13, 13, 22, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  padding: 22px 20px;
+  text-align: center;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+}
+.arc-game-card h3 { margin: 0 0 6px; font-size: 20px; font-weight: 900; letter-spacing: 0.03em; color: var(--arc-text); }
+.arc-game-card h4 { margin: 12px 0 8px; font-size: 13px; font-weight: 900; letter-spacing: 0.1em; color: var(--arc-dim); }
+.arc-game-card p { margin: 6px 0 14px; font-size: 13.5px; line-height: 1.45; color: var(--arc-text); }
+.arc-game-card .dim { color: var(--arc-dim); }
+.arc-game-card .tiny { font-size: 11.5px; margin-bottom: 0; }
+.arc-game-logo { font-size: 40px; margin-bottom: 4px; }
+
+.arc-game-btn {
+  display: block; width: 100%; margin: 8px 0 0; padding: 14px;
+  border-radius: 14px; border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.07); color: var(--arc-text);
+  font-size: 15px; font-weight: 900; letter-spacing: 0.05em;
+}
+.arc-game-btn.primary {
+  background: linear-gradient(120deg, var(--arc-accent), var(--arc-accent-2));
+  border: none; color: #0b0b12;
+}
+.arc-game-btn.sm { width: auto; display: inline-block; padding: 9px 16px; font-size: 12.5px; margin-top: 12px; }
+.arc-game-btn:active { transform: scale(0.97); }
+
+.arc-game-spin {
+  width: 34px; height: 34px; margin: 6px auto 12px; border-radius: 50%;
+  border: 3px solid rgba(255,255,255,0.12); border-top-color: var(--arc-accent);
+  animation: arc-spin 0.9s linear infinite;
+}
+@keyframes arc-spin { to { transform: rotate(360deg); } }
+
+/* team round invite banner */
+.arc-game-invite {
+  width: min(430px, 92vw);
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: rgba(20, 16, 30, 0.97);
+  border: 1.5px solid var(--arc-accent);
+  border-radius: 14px; padding: 12px 14px;
+  font-size: 13.5px; font-weight: 700; color: var(--arc-text);
+  animation: arc-invite-pulse 1.6s ease-in-out infinite;
+}
+.arc-game-invite .arc-game-btn { margin: 0; width: auto; padding: 10px 18px; }
+@keyframes arc-invite-pulse { 50% { box-shadow: 0 0 22px rgba(249, 127, 172, 0.35); } }
+
+/* lobby */
+.arc-game-bigcd { font-size: 64px; font-weight: 900; color: var(--arc-accent); margin: 4px 0 8px; }
+.arc-game-roster { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 6px; }
+.arc-game-roster .chip {
+  padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 800;
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); color: var(--arc-text);
+}
+.arc-game-roster .chip.me { border-color: var(--arc-accent); color: var(--arc-accent); }
+
+/* 5-6-7-8 count-in */
+.arc-game-countin {
+  font-size: 120px; font-weight: 900; color: var(--arc-text);
+  text-shadow: 0 0 40px var(--arc-accent);
+  pointer-events: none;
+}
+.arc-game-panel:has(.arc-game-countin) { display: flex; }
+.arc-game-countin.pop { animation: arc-countpop 0.4s ease-out both; }
+@keyframes arc-countpop { 0% { transform: scale(1.5); opacity: 0.3; } 100% { transform: scale(1); opacity: 1; } }
+
+/* live teammate accuracy pips (right edge during play) */
+.arc-game-pips {
+  position: absolute; right: 10px; top: 70px; z-index: 2;
+  display: flex; flex-direction: column; gap: 7px; pointer-events: none;
+}
+.arc-game-pips .pip {
+  display: flex; align-items: center; gap: 7px;
+  background: rgba(10,10,18,0.82); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 999px; padding: 5px 10px; font-size: 11px; font-weight: 800; color: var(--arc-text);
+}
+.arc-game-pips .nm { max-width: 84px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arc-game-pips .bar { width: 54px; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.12); overflow: hidden; }
+.arc-game-pips .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--arc-accent), var(--arc-accent-2)); }
+.arc-game-pips .pct { color: var(--arc-dim); }
+
+/* results */
+.arc-game-card.results { padding-top: 18px; }
+.arc-game-grade {
+  font-size: 34px; font-weight: 900; letter-spacing: 0.04em; color: var(--arc-text);
+}
+.arc-game-grade.hz {
+  background: linear-gradient(120deg, var(--arc-accent), #ffd166, var(--arc-accent-2));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: arc-invite-pulse 1.4s ease-in-out infinite;
+}
+.arc-game-scorebig { font-size: 44px; font-weight: 900; color: var(--arc-text); margin: 2px 0 10px; }
+.arc-game-statrow {
+  display: flex; justify-content: center; gap: 14px; flex-wrap: wrap;
+  font-size: 12px; font-weight: 700; color: var(--arc-dim); margin-bottom: 6px;
+}
+.arc-game-teamboard { margin-top: 10px; }
+.arc-game-teamboard .row {
+  display: flex; justify-content: space-between; padding: 7px 10px; border-radius: 10px;
+  font-size: 13px; font-weight: 700; color: var(--arc-text);
+}
+.arc-game-teamboard .row.me { background: rgba(255,255,255,0.07); }
+.arc-game-teamboard .row .pl { font-weight: 900; }
+.arc-game-teamhit {
+  font-size: 19px; font-weight: 900; color: #ffd166; margin: 6px 0 10px;
+  animation: arc-countpop 0.5s ease-out both;
+}
+.arc-game-btnrow { display: flex; gap: 10px; margin-top: 14px; }
+.arc-game-btnrow .arc-game-btn { margin: 0; }
+
+/* hide world HUD while in the cabinet (banner + presence pill would bleed
+   through the translucent game header) */
+.arc-ingame .arc-actions, .arc-ingame .arc-joy, .arc-ingame .arc-minimap,
+.arc-ingame .arc-banner, .arc-ingame .arc-hud-tr { display: none !important; }
+
+@media (max-width: 700px) {
+  .arc-game-countin { font-size: 92px; }
+  .arc-game-grade { font-size: 28px; }
+  .arc-game-scorebig { font-size: 36px; }
+  .arc-game-pips { top: 60px; }
+  .arc-game-pips .nm { max-width: 60px; }
+}

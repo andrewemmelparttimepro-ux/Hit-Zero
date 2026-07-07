@@ -23,6 +23,7 @@ import { PHRASES } from './net/protocol.js';
 import { createJoystick } from './ui/joystick.js';
 import { createWheels } from './ui/emoteWheel.js';
 import { createHud } from './ui/hud.js';
+import { createHitTheCounts } from './games/hitTheCounts.js';
 
 const SUPA_URL = 'https://ldhzkdqznccfgpdvqyfk.supabase.co';
 const SUPA_ANON = 'sb_publishable_P2e2aHrrMYP85xBfncIilA_2435TVII';
@@ -114,6 +115,7 @@ async function boot() {
   let myAvatarCfg = sanitizeAvatar(null);
   let teamName = '';
   let athleteId = null;
+  let teamId = null;
   let unlockState = mode === 'offline' ? demoUnlockState() : deriveUnlockState([], [], false);
   let firstVisit = false; // first time ever in the Arcade → auto-open the builder
   if (mode === 'player' && supa) {
@@ -129,6 +131,7 @@ async function boot() {
     try {
       const { data: ath } = await supa.from('athletes').select('id, team_id, teams(name)').eq('profile_id', profile.id).maybeSingle();
       athleteId = ath?.id || null;
+      teamId = ath?.team_id || null;
       teamName = ath?.teams?.name || '';
     } catch { /* tag shows name only */ }
     if (athleteId) {
@@ -324,6 +327,25 @@ async function boot() {
           if (p.avatar.container.visible) audio.sfx.phrase();
         }
       },
+      onGame(id, msg) {
+        game?.handleGame(id, msg);
+      },
+    },
+  });
+
+  // ── 6.5 HIT THE COUNTS (left cabinet game) ──
+  // The instance outlives open/close so round invites received while the kid
+  // is wandering the world still land (as a toast pointing at the cabinet).
+  const game = createHitTheCounts({
+    mode, supa, profile, theme, rend,
+    sfx: audio.sfx, audio, net,
+    getAthlete: () => ({ athleteId, teamId, teamName }),
+    getAvatarCfg: () => myAvatarCfg,
+    getPeerName: (id) => peers.get(id)?.meta?.name || 'Teammate',
+    toast: (m) => hud.toast(m),
+    onOpenChange(open) {
+      document.body.classList.toggle('arc-ingame', open);
+      if (open && player) { player.moving = false; player.avatar.setMoving(false); }
     },
   });
 
@@ -346,6 +368,7 @@ async function boot() {
     flash: () => hud.flash(),
     sfx: audio.sfx,
     travel: (key) => switchScene(key),
+    openGame: () => game.open(),
     teleport(c, r) {
       if (!player) return;
       const w = gridToWorld(c + 0.5, r + 0.5);
@@ -449,7 +472,7 @@ async function boot() {
   let sparkleAcc = 0;
   let miniAcc = 0;
   rend.onTick((dt) => {
-    if (player && !traveling) {
+    if (player && !traveling && !game.isOpen) {
       const vx = joy.vector.x, vy = joy.vector.y;
       const mag = Math.hypot(vx, vy);
       const moving = mag > 0.01 && !player.avatar.isEmoting();
@@ -535,7 +558,7 @@ async function boot() {
     get scene() { return scene; },
     get npcs() { return npcDriver?.entities() || []; },
     travel: (k) => switchScene(k),
-    peers, rend, theme,
+    peers, rend, theme, game,
   };
 
   // ── 10. open the doors ──
