@@ -411,6 +411,68 @@ html, body {
 .arc-game-panel.clear { display: none; }
 .arc-game-panel > * { pointer-events: auto; }
 
+/* ── Spirit meter → HYPE mode ── */
+.arc-spirit {
+  position: absolute; top: 10px; left: 14px; right: 14px; z-index: 3;
+  display: flex; align-items: center; gap: 10px;
+  pointer-events: none; opacity: 0; transition: opacity 220ms;
+}
+.arc-game.playing .arc-spirit { opacity: 1; }
+.arc-spirit-track {
+  flex: 1; height: 12px; border-radius: 7px; overflow: hidden;
+  background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.arc-spirit-fill {
+  height: 100%; width: 0%; border-radius: 7px;
+  background: linear-gradient(90deg, var(--arc-accent-2), var(--arc-accent));
+  transition: width 120ms linear;
+}
+.arc-spirit-label {
+  font-size: 11px; font-weight: 900; letter-spacing: 0.12em;
+  color: var(--arc-dim); min-width: 54px; text-align: right;
+}
+.arc-game.hype .arc-spirit-fill {
+  background: linear-gradient(90deg, #ffd166, #ff6b81, #ffd166);
+  background-size: 200% 100%;
+  animation: arc-hype-slide 0.6s linear infinite;
+  box-shadow: 0 0 14px rgba(255, 209, 102, 0.85);
+}
+.arc-game.hype .arc-spirit-label { color: #ffd166; }
+.arc-game.hype .arc-game-stage::after {
+  content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  animation: arc-hype-pulse 0.7s ease-in-out infinite;
+}
+@keyframes arc-hype-slide { to { background-position: 200% 0; } }
+@keyframes arc-hype-pulse {
+  0%, 100% { box-shadow: inset 0 0 90px rgba(255, 209, 102, 0.16); }
+  50% { box-shadow: inset 0 0 150px rgba(255, 209, 102, 0.32); }
+}
+
+/* ── Signature-moment callout (the song's real hit line) ── */
+.arc-callout {
+  position: absolute; left: 50%; top: 38%; z-index: 5;
+  transform: translate(-50%, -50%);
+  font-size: clamp(30px, 9vw, 64px); font-weight: 900; letter-spacing: 0.02em;
+  color: #fff; text-align: center; white-space: nowrap; pointer-events: none;
+  text-shadow: 0 0 26px var(--arc-accent), 0 3px 0 rgba(0, 0, 0, 0.35);
+  animation: arc-callout 1.4s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+@keyframes arc-callout {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4) rotate(-6deg); }
+  18% { opacity: 1; transform: translate(-50%, -50%) scale(1.12) rotate(-2deg); }
+  32% { transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -56%) scale(1.05); }
+}
+.arc-game.shake .arc-game-stage { animation: arc-game-shake 0.4s ease; }
+@keyframes arc-game-shake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-5px, 3px); }
+  40% { transform: translate(5px, -3px); }
+  60% { transform: translate(-4px, -2px); }
+  80% { transform: translate(3px, 3px); }
+}
+
 .arc-game-card {
   width: min(430px, 92vw);
   background: rgba(13, 13, 22, 0.96);
@@ -426,6 +488,43 @@ html, body {
 .arc-game-card .dim { color: var(--arc-dim); }
 .arc-game-card .tiny { font-size: 11.5px; margin-bottom: 0; }
 .arc-game-logo { font-size: 40px; margin-bottom: 4px; }
+
+.arc-track-picker {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 12px;
+}
+.arc-track-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.055);
+  color: var(--arc-text);
+  text-align: left;
+}
+.arc-track-choice strong {
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 900;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+.arc-track-choice small {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: var(--arc-dim);
+}
+.arc-track-choice.sel {
+  border-color: var(--arc-accent);
+  background: rgba(249,127,172,0.16);
+}
 
 .arc-game-btn {
   display: block; width: 100%; margin: 8px 0 0; padding: 14px;

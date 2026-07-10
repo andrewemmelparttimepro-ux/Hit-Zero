@@ -23,25 +23,36 @@ export function setMuted(m) {
 }
 export function isMuted() { return muted; }
 
-// Soft two-voice pad with a slow sparkle arp — clubhouse vibe, very quiet.
+// Soft sine pad with a slow sparkle arp — clubhouse vibe, very quiet.
 function startAmbient() {
   if (!ctx) return;
   ambient = ctx.createGain();
   ambient.gain.value = 0.05;
   ambient.connect(master);
 
-  const pad = (freq, detune) => {
+  // ONE shared, slow, shallow "breath" so the whole pad rises and falls as a
+  // unit. The old build gave each voice its own tremolo; the two drifted in and
+  // out of phase, and that fight is the unpleasant "worse-then-better" drone.
+  const breath = ctx.createOscillator();
+  breath.type = 'sine';
+  breath.frequency.value = 0.05;      // ~20s, barely-there swell
+  const breathAmt = ctx.createGain();
+  breathAmt.gain.value = 0.006;
+  breath.connect(breathAmt); breathAmt.connect(ambient.gain);
+  breath.start();
+
+  // Pure sines at exact whole-number ratios (D3–A3–D4): no detune and no
+  // harmonics means there is nothing to beat against, so it stays smooth.
+  const voice = (freq, level) => {
     const o = ctx.createOscillator();
-    o.type = 'triangle'; o.frequency.value = freq; o.detune.value = detune;
-    const g = ctx.createGain(); g.gain.value = 0.5;
-    const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 0.07 + Math.abs(detune) * 0.001;
-    const lg = ctx.createGain(); lg.gain.value = 0.25;
-    lfo.connect(lg); lg.connect(g.gain);
+    o.type = 'sine'; o.frequency.value = freq;
+    const g = ctx.createGain(); g.gain.value = level;
     o.connect(g); g.connect(ambient);
-    o.start(); lfo.start();
+    o.start();
   };
-  pad(146.83, -4); // D3
-  pad(220.0, 5);   // A3
+  voice(146.83, 0.5);  // D3 root
+  voice(220.00, 0.32); // A3 fifth
+  voice(293.66, 0.22); // D4 octave
 
   // gentle pentatonic sparkle every few seconds
   const NOTES = [587.33, 659.25, 783.99, 880.0, 1046.5];

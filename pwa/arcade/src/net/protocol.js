@@ -68,6 +68,7 @@ export function gameMsg(type, data = {}) {
     m.si = clampInt(data.startIn, 1500, 20000); // ms until the round starts
     m.pt = data.practice ? 1 : 0;               // practice track vs routine music
     m.d8 = clampInt(data.total8, 1, 64);        // chart length in 8-counts
+    m.tid = String(data.trackId || '').slice(0, 64);
   } else if (type === 'prog') {
     m.e8 = clampInt(data.e8, 0, 64);
     m.a = clampInt(data.acc, 0, 100);
@@ -90,6 +91,7 @@ export function parseGame(payload) {
     out.startIn = clampInt(payload.si, 1500, 20000);
     out.practice = payload.pt === 1;
     out.total8 = clampInt(payload.d8, 1, 64);
+    out.trackId = String(payload.tid || '').slice(0, 64);
   } else if (payload.t === 'prog') {
     out.e8 = clampInt(payload.e8, 0, 64);
     out.acc = clampInt(payload.a, 0, 100);

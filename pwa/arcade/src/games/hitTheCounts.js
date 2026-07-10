@@ -46,6 +46,54 @@ const PRACTICE = {
   ],
 };
 
+const LOCAL_TRACKS = [
+  {
+    id: 'this-is-our-city-now',
+    title: 'This Is Our City Now',
+    src: 'assets/audio/this-is-our-city-now.m4a',
+    bpm: 147,
+    firstCountSeconds: 1.66,
+    durationSeconds: 194.56,
+    lengthCounts: 32,
+    markers: [
+      { kind: 'section_start', count: 1, label: 'Intro', energy: 0.62 },
+      { kind: 'section_start', count: 9, label: 'Build', energy: 0.74 },
+      { kind: 'section_start', count: 17, label: 'Chorus', energy: 0.86 },
+      { kind: 'major_hit', count: 29, label: 'City Hit', energy: 0.94 },
+    ],
+  },
+  {
+    id: 'magic-city-athletics',
+    title: 'Magic City Athletics',
+    src: 'assets/audio/magic-city-athletics.m4a',
+    bpm: 95.5,
+    firstCountSeconds: 0.33,
+    durationSeconds: 64.88,
+    lengthCounts: 12,
+    markers: [
+      { kind: 'section_start', count: 1, label: 'Entrance', energy: 0.68 },
+      { kind: 'section_start', count: 5, label: 'Athletics', energy: 0.8 },
+      { kind: 'section_start', count: 9, label: 'Push', energy: 0.9 },
+      { kind: 'major_hit', count: 12, label: 'Magic City', energy: 0.96 },
+    ],
+  },
+  {
+    id: 'we-here-my-not',
+    title: 'We Here My Not',
+    src: 'assets/audio/we-here-my-not.mp3',
+    bpm: 143.4,
+    firstCountSeconds: 0.02,
+    durationSeconds: 92.76,
+    lengthCounts: 24,
+    markers: [
+      { kind: 'section_start', count: 1, label: 'Walk In', energy: 0.66 },
+      { kind: 'section_start', count: 7, label: 'Build', energy: 0.78 },
+      { kind: 'section_start', count: 13, label: 'Push', energy: 0.88 },
+      { kind: 'major_hit', count: 21, label: 'We Here', energy: 0.97 },
+    ],
+  },
+];
+
 export function createHitTheCounts({
   mode, supa, profile, theme, sfx, audio, net, rend,
   getAthlete, getAvatarCfg, getPeerName, toast, onOpenChange,
@@ -61,11 +109,15 @@ export function createHitTheCounts({
   let tickFn = null;       // our ticker callback (added on open, removed on close)
   let stageParts = null;   // containers + HUD text refs
   let state = 'closed';    // closed | loading | menu | lobby | countdown | play | results
-  let music = null;        // { kind:'routine'|'practice', ... }
+  let music = null;        // { kind:'routine'|'local'|'practice', ... }
+  let musicOptions = [];
+  let selectedMusicId = null;
   let run = null;          // active play-through state
   let round = null;        // team round state (may exist through play+results)
   let pendingInvite = null; // last invite seen while closed / in menu
   let musicLoad = null;    // promise so we only fetch once per open
+  let hypeActive = false;  // mirrors scorer.hype for chrome transitions
+  let spiritUI = null;     // cached DOM refs { fill, label }
 
   const playable = mode === 'player' || mode === 'offline';
 
@@ -100,6 +152,7 @@ export function createHitTheCounts({
       const el = new window.Audio(url);
       el.preload = 'auto';
       return {
+        id: `routine:${routine.id}`,
         kind: 'routine',
         title: routine.name || 'Team Routine',
         audioEl: el,
@@ -140,8 +193,27 @@ export function createHitTheCounts({
     return null;
   }
 
+  function localTrackMusic(track) {
+    const el = new window.Audio(track.src);
+    el.preload = 'auto';
+    return {
+      id: track.id,
+      kind: 'local',
+      title: track.title,
+      audioEl: el,
+      chartInput: {
+        bpm: track.bpm,
+        firstCountSeconds: track.firstCountSeconds || 0,
+        durationSeconds: track.durationSeconds || null,
+        lengthCounts: track.lengthCounts || null,
+        markers: track.markers || [],
+      },
+    };
+  }
+
   function practiceMusic() {
     return {
+      id: 'practice',
       kind: 'practice',
       title: 'Practice Track',
       chartInput: {
@@ -154,17 +226,36 @@ export function createHitTheCounts({
     };
   }
 
+  function setMusic(next) {
+    music = next;
+    selectedMusicId = next?.id || null;
+    if (root && music) root.querySelector('.arc-game-sub').textContent = music.title;
+  }
+
+  function chooseMusicById(id) {
+    if (!id || !musicOptions.length) return false;
+    const found = musicOptions.find((m) => m.id === id);
+    if (!found) return false;
+    setMusic(found);
+    return true;
+  }
+
   async function ensureMusic() {
     if (!musicLoad) {
       musicLoad = (async () => {
+        const options = [];
         if (mode === 'player' && supa) {
           const routine = await loadRoutineMusic();
-          if (routine) return routine;
+          if (routine) options.push(routine);
         }
-        return practiceMusic();
+        options.push(...LOCAL_TRACKS.map(localTrackMusic));
+        options.push(practiceMusic());
+        musicOptions = options;
+        setMusic(options.find((m) => m.id === selectedMusicId) || options[0]);
+        return music;
       })();
     }
-    music = await musicLoad;
+    await musicLoad;
     return music;
   }
 
@@ -182,10 +273,16 @@ export function createHitTheCounts({
         <div class="arc-game-title">HIT THE <b>COUNTS</b><span class="arc-game-sub"></span></div>
         <button class="arc-game-close" type="button" aria-label="Exit game">✕</button>
       </div>
-      <div class="arc-game-stage"></div>
+      <div class="arc-game-stage">
+        <div class="arc-spirit" aria-hidden="true">
+          <div class="arc-spirit-track"><div class="arc-spirit-fill"></div></div>
+          <div class="arc-spirit-label">SPIRIT</div>
+        </div>
+      </div>
       <div class="arc-game-panel"></div>
     `;
     document.body.appendChild(root);
+    spiritUI = { fill: root.querySelector('.arc-spirit-fill'), label: root.querySelector('.arc-spirit-label') };
     root.querySelector('.arc-game-close').addEventListener('click', close);
     setState('loading');
     boot();
@@ -213,6 +310,8 @@ export function createHitTheCounts({
     if (gameRoot) { app.stage.removeChild(gameRoot); gameRoot.destroy({ children: true }); gameRoot = null; }
     rend.world.visible = true;
     stageParts = null;
+    spiritUI = null;
+    hypeActive = false;
     root.remove();
     root = null;
     musicLoad = null;
@@ -224,6 +323,9 @@ export function createHitTheCounts({
 
   function setState(next) {
     state = next;
+    const playing = next === 'play' || next === 'countdown';
+    root?.classList.toggle('playing', playing);
+    if (!playing) { root?.classList.remove('hype', 'shake'); hypeActive = false; if (spiritUI) spiritUI.fill.style.width = '0%'; }
     const p = panel();
     if (!p) return;
     p.innerHTML = '';
@@ -236,19 +338,38 @@ export function createHitTheCounts({
 
   function renderMenu(p) {
     const isRoutine = music.kind === 'routine';
+    const isLocal = music.kind === 'local';
     const { total8 } = chartPreview();
     const card = document.createElement('div');
     card.className = 'arc-game-card';
     card.innerHTML = `
       <div class="arc-game-logo">⭐</div>
-      <h3>${isRoutine ? escapeHtml(music.title) : 'Practice Track'}</h3>
+      <h3>${escapeHtml(music.title)}</h3>
       <p class="dim">${isRoutine
         ? `Your team's real routine — ${total8} eight-counts. Tap every count. Hit the star sections!`
-        : `No routine music loaded yet, so we made you a beat. ${total8} eight-counts — tap every count!`}</p>
+        : isLocal
+          ? `Arcade track — ${total8} eight-counts. Tap every count. Hit the star sections!`
+          : `No routine music loaded yet, so we made you a beat. ${total8} eight-counts — tap every count!`}</p>
+      <div class="arc-track-picker" data-track-picker></div>
       <button class="arc-game-btn primary" data-go="solo">▶ PLAY SOLO</button>
       ${playable ? `<button class="arc-game-btn" data-go="team">👯 START TEAM ROUND</button>` : ''}
       <p class="tiny dim">Teammates in the Arcade get invited the moment you start a team round.</p>
     `;
+    const picker = card.querySelector('[data-track-picker]');
+    if (musicOptions.length > 1) {
+      for (const option of musicOptions) {
+        const preview = buildChart(option.chartInput);
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = `arc-track-choice${option.id === music.id ? ' sel' : ''}`;
+        b.innerHTML = `<strong>${escapeHtml(option.title)}</strong><small>${preview.total8} eight-counts</small>`;
+        b.addEventListener('click', () => {
+          setMusic(option);
+          setState('menu');
+        });
+        picker.appendChild(b);
+      }
+    }
     card.querySelector('[data-go="solo"]').addEventListener('click', () => startSolo());
     card.querySelector('[data-go="team"]')?.addEventListener('click', () => startTeamRound());
     p.appendChild(card);
@@ -444,7 +565,7 @@ export function createHitTheCounts({
   // iOS: HTMLAudio must be unlocked inside a real tap. Team rounds start from
   // a timer, so both team entry points (start + join) unlock here, on the tap.
   function unlockRoutineAudio() {
-    if (music?.kind !== 'routine') return;
+    if (!music?.audioEl) return;
     try {
       const el = music.audioEl;
       el.play().then(() => { el.pause(); el.currentTime = 0; }).catch(() => { /* solo path retries */ });
@@ -461,12 +582,13 @@ export function createHitTheCounts({
       rid, mine: true, startAt: Date.now() + startIn,
       roster: new Map([['me', { name: profile?.display_name || 'You', me: true, acc: 100, score: 0, combo: 0, result: null }]]),
     };
-    netSend('invite', { rid, startIn, practice: music.kind === 'practice' ? 1 : 0, total8: chart.total8 });
+    netSend('invite', { rid, startIn, trackId: music.id, practice: music.kind === 'practice' ? 1 : 0, total8: chart.total8 });
     enterLobby();
   }
 
   function joinLobbyFromInvite(invite) {
     clearInterval(invite.bannerTimer);
+    chooseMusicById(invite.trackId);
     unlockRoutineAudio();
     pendingInvite = null;
     round = {
@@ -529,7 +651,7 @@ export function createHitTheCounts({
 
     // iOS audio unlock: this call stack began with a user tap (menu button or
     // the lobby timer that a tap armed), so unlock the element now.
-    if (music.kind === 'routine') {
+    if (music.audioEl) {
       try {
         music.audioEl.currentTime = 0;
         await music.audioEl.play();
@@ -558,11 +680,11 @@ export function createHitTheCounts({
 
   function beginPlay() {
     setState('play');
-    if (music.kind === 'routine') {
+    if (music.audioEl) {
       const el = music.audioEl;
       el.currentTime = 0;
       el.play().catch((err) => {
-        console.warn('[counts] routine audio failed to start, practice fallback', err);
+        console.warn('[counts] audio failed to start, practice fallback', err);
         music = practiceMusic();
         run.chart = buildChart(music.chartInput);
         run.notes = run.chart.notes.map((n) => ({ ...n, sprite: null, hit: false, missed: false }));
@@ -585,7 +707,7 @@ export function createHitTheCounts({
   function stopRun() {
     if (!run) return;
     if (run.practice) run.practice.stop();
-    if (music?.kind === 'routine' && music.audioEl) { try { music.audioEl.pause(); } catch { /* fine */ } }
+    if (music?.audioEl) { try { music.audioEl.pause(); } catch { /* fine */ } }
     for (const n of run.notes) n.sprite?.destroy({ children: true });
     if (stageParts) {
       stageParts.comboText.text = '';
@@ -594,6 +716,9 @@ export function createHitTheCounts({
       stageParts.countText.text = '';
       stageParts.progText.text = '';
     }
+    root?.classList.remove('hype', 'shake');
+    hypeActive = false;
+    if (spiritUI) spiritUI.fill.style.width = '0%';
     root?.querySelector('.arc-game-pips')?.remove();
     run = null;
   }
@@ -609,7 +734,7 @@ export function createHitTheCounts({
     const s = stageParts;
 
     // routine audio element mute follows the arcade mute button
-    if (music.kind === 'routine' && music.audioEl) music.audioEl.volume = audio.isMuted() ? 0 : 1;
+    if (music.audioEl) music.audioEl.volume = audio.isMuted() ? 0 : 1;
 
     // spawn
     while (run.nextSpawn < run.notes.length && run.notes[run.nextSpawn].t - t <= APPROACH) {
@@ -625,9 +750,10 @@ export function createHitTheCounts({
       n.sprite?.position.set(x, laneY);
       if (t - n.t > JUDGE.good) {
         n.missed = true;
-        run.scorer.miss();
+        const mres = run.scorer.miss();
         popJudge('miss');
         sfx.missNote();
+        if (mres.hypeEnded) exitHype();
         fadeNote(n, 0.25);
       }
     }
@@ -644,6 +770,12 @@ export function createHitTheCounts({
     s.comboLabel.alpha = run.scorer.combo >= 3 ? 1 : 0;
     s.scoreText.text = run.scorer.score.toLocaleString();
     s.progText.text = `8-count ${Math.min(e8, run.chart.total8)} / ${run.chart.total8}`;
+
+    // spirit meter (fill + HYPE label; ignite/extinguish fx fire from hit/miss)
+    if (spiritUI) {
+      spiritUI.fill.style.width = Math.round(run.scorer.spirit * 100) + '%';
+      spiritUI.label.textContent = run.scorer.hype ? 'HYPE!' : 'SPIRIT';
+    }
 
     // section label from gold notes as they cross
     if (e8 !== run.curE8) {
@@ -676,6 +808,10 @@ export function createHitTheCounts({
     const g = new Graphics();
     if (n.type === 'hitzero') {
       starShape(g, 0, 0, 5, 40, 17).fill(theme.accentNum).stroke({ color: 0xffffff, width: 3 });
+    } else if (n.type === 'freeze') {
+      // gold diamond — reads distinctly as "hit the pose on 8"
+      g.roundRect(-22, -22, 44, 44, 10).fill(0xffd166).stroke({ color: 0xffffff, width: 3 });
+      g.rotation = Math.PI / 4;
     } else if (n.type === 'gold') {
       starShape(g, 0, 0, 5, 30, 13).fill(0xffd166).stroke({ color: 0xffffff, width: 2.5 });
     } else {
@@ -735,22 +871,29 @@ export function createHitTheCounts({
     if (!best) return; // stray taps are free — kid-friendly
     best.hit = true;
     const j = judge(t - best.t);
-    const { combo } = run.scorer.hit(j, best.type);
+    const res = run.scorer.hit(j, best.type);
+    const combo = res.combo;
     popJudge(j);
     sfx[j === 'good' ? 'good' : j]();
     const { ringX, laneY } = geom();
     const s = stageParts;
     if (best.type === 'hitzero') {
       s.fx.burst(ringX, laneY, 'confetti', 26);
-      s.fx.text(ringX, laneY - 90, 'HIT ZERO!', 0xffffff);
       s.avatar?.playEmote('hit');
       sfx.hit();
+      showCallout(best.label ? best.label.toUpperCase() : 'HIT ZERO!'); // signature moment
+    } else if (best.type === 'freeze') {
+      s.fx.burst(ringX, laneY, 'star', 16);
+      s.fx.text(ringX, laneY - 84, 'HIT!', 0xffd166);
+      if (j === 'perfect') { s.avatar?.playEmote('toetouch'); sfx.hit(); }
     } else if (best.type === 'gold') {
       s.fx.burst(ringX, laneY, 'star', 14);
       if (j === 'perfect') s.avatar?.playEmote('toetouch');
     } else if (j === 'perfect') {
       s.fx.burst(ringX, laneY, 'spark', 7);
     }
+    if (res.hypeStarted) enterHype();
+    else if (res.hypeEnded) exitHype();
     if (combo > 0 && combo % 25 === 0) {
       s.fx.text(ringX + 130, laneY - 110, `${combo} COMBO!`, 0xffd166);
       s.avatar?.playEmote('spirit');
@@ -764,6 +907,38 @@ export function createHitTheCounts({
     stageParts.fx.text(ringX + 8, laneY - 64, c.txt, c.color);
   }
 
+  // ── HYPE mode + signature callouts ──
+  function enterHype() {
+    hypeActive = true;
+    root?.classList.add('hype');
+    const s = stageParts;
+    if (s) {
+      const { ringX, laneY, W, H } = geom();
+      s.fx.burst(ringX, laneY, 'confetti', 30);
+      s.fx.text(W / 2, HEAD_H + (H - HEAD_H) * 0.24, 'HYPE!', 0xffd166);
+      s.avatar?.playEmote('superjump');
+    }
+    sfx.fanfare();
+    if (navigator.vibrate) { try { navigator.vibrate([0, 25, 20, 25]); } catch { /* fine */ } }
+  }
+  function exitHype() {
+    hypeActive = false;
+    root?.classList.remove('hype');
+  }
+  // The song's real hit line ("Magic City", "We Here") flashes big on a nailed
+  // hitzero — the whole reason we tagged the tracks with labels.
+  function showCallout(text) {
+    if (!root) return;
+    const stage = root.querySelector('.arc-game-stage');
+    if (!stage) return;
+    const el = document.createElement('div');
+    el.className = 'arc-callout';
+    el.textContent = text;
+    stage.appendChild(el);
+    root.classList.remove('shake'); void root.offsetWidth; root.classList.add('shake');
+    setTimeout(() => el.remove(), 1400);
+  }
+
   // ────────────────────────────────────────────────────────────────────
   // Finish + results (+ team board)
   // ────────────────────────────────────────────────────────────────────
@@ -772,7 +947,7 @@ export function createHitTheCounts({
     run.finished = true;
     const results = run.scorer.results();
     if (run.practice) run.practice.stop();
-    if (music.kind === 'routine' && music.audioEl) { try { music.audioEl.pause(); } catch { /* fine */ } }
+    if (music.audioEl) { try { music.audioEl.pause(); } catch { /* fine */ } }
 
     if (run.team && round) {
       const mine = round.roster.get('me');
@@ -806,7 +981,7 @@ export function createHitTheCounts({
         <span>🤍 ${results.counts.good} ok</span>
         <span>💔 ${results.counts.miss} miss</span>
       </div>
-      <div class="arc-game-statrow"><span>Accuracy ${results.accuracyPct}%</span><span>Best combo ${results.maxCombo}</span></div>
+      <div class="arc-game-statrow"><span>Accuracy ${results.accuracyPct}%</span><span>Best combo ${results.maxCombo}</span>${results.hypeActivations ? `<span>🔥 ${results.hypeActivations}× hype</span>` : ''}</div>
       <div class="arc-game-teamboard" style="display:none"></div>
       <div class="arc-game-btnrow">
         <button class="arc-game-btn primary" data-go="again">↻ PLAY AGAIN</button>
@@ -890,6 +1065,7 @@ export function createHitTheCounts({
         rid: msg.rid, fromId,
         fromName: getPeerName(fromId),
         startAt: Date.now() + msg.startIn,
+        trackId: msg.trackId,
         practice: msg.practice, total8: msg.total8,
       };
       pendingInvite = invite;

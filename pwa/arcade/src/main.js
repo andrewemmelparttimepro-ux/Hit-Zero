@@ -33,6 +33,7 @@ const CART_BOOST = 1.75;
 const MAPS = { lobby: lobbyMap, town: cheertownMap };
 const SOLID_SKILL_STATUSES = new Set(['got_it', 'mastered']);
 const TUMBLING_CATEGORIES = new Set(['standing_tumbling', 'running_tumbling', 'tumbling']);
+const ARCADE_BUILDER_EMAILS = new Set(['andrew@ndai.pro', 'andrewemmelparttimepro@gmail.com']);
 
 const loaderSub = document.getElementById('loaderSub');
 const enterBtn = document.getElementById('enterBtn');
@@ -62,11 +63,12 @@ async function boot() {
   const realProfile = session?.actualProfile || profile;
   const programId = realProfile?.program_id || profile?.program_id || null;
   const role = profile?.role || null;
+  const builderAccess = hasArcadeBuilderAccess(session, profile, realProfile);
 
   let mode;
-  if (params.get('preview') === '1' || profile?.is_view_as) mode = 'preview';
+  if ((params.get('preview') === '1' || profile?.is_view_as) && !builderAccess) mode = 'preview';
   else if (!session || session.mode === 'prototype' || !programId) mode = 'offline';
-  else if (role === 'athlete') mode = 'player';
+  else if (role === 'athlete' || builderAccess) mode = 'player';
   else if (role === 'owner' || role === 'coach') mode = 'observer';
   else mode = 'preview';
 
@@ -116,7 +118,9 @@ async function boot() {
   let teamName = '';
   let athleteId = null;
   let teamId = null;
-  let unlockState = mode === 'offline' ? demoUnlockState() : deriveUnlockState([], [], false);
+  let unlockState = mode === 'offline' ? demoUnlockState()
+    : builderAccess ? builderUnlockState()
+    : deriveUnlockState([], [], false);
   let firstVisit = false; // first time ever in the Arcade → auto-open the builder
   if (mode === 'player' && supa) {
     try {
@@ -134,7 +138,7 @@ async function boot() {
       teamId = ath?.team_id || null;
       teamName = ath?.teams?.name || '';
     } catch { /* tag shows name only */ }
-    if (athleteId) {
+    if (athleteId && !builderAccess) {
       try {
         const [{ data: rows, error: rowsError }, { data: skills, error: skillsError }] = await Promise.all([
           supa.from('athlete_skills').select('skill_id, status').eq('athlete_id', athleteId),
@@ -600,6 +604,28 @@ const UNLOCK_REASONS = {
     4: 'Master 10 skills',
   },
 };
+
+function hasArcadeBuilderAccess(session, profile, realProfile) {
+  const emails = [
+    session?.user?.email,
+    profile?.email,
+    realProfile?.email,
+  ].map((email) => String(email || '').trim().toLowerCase()).filter(Boolean);
+  return emails.some((email) => ARCADE_BUILDER_EMAILS.has(email));
+}
+
+function builderUnlockState() {
+  return {
+    loaded: true,
+    stats: { solid: 99, mastered: 99, tumblingMastered: true, jumpMastered: true },
+    allowed: {
+      cape: [0, 1, 2, 3, 4, 5],
+      trail: [0, 1, 2, 3, 4],
+      nameplate: [0, 1, 2, 3, 4],
+    },
+    reasons: UNLOCK_REASONS,
+  };
+}
 
 function deriveUnlockState(skillRows = [], skills = [], loaded = true) {
   const categoryById = new Map((skills || []).map((s) => [s.id, String(s.category || '').toLowerCase()]));

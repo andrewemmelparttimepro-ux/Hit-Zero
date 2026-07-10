@@ -1,6 +1,7 @@
 # ARCADE - Agent Handoff
 
-Updated 2026-07-06 (second pass) for the HIT THE COUNTS buildout on `arcade-v1`.
+Updated 2026-07-10 after reconciling the deployed HIT THE COUNTS tracks, builder access, and
+fun-loop bundle on `arcade-v1`.
 
 Read this first before touching Arcade code. This is the canonical handoff path. Older audit and
 handoff artifacts may still exist in `docs/`; do not delete them as cleanup.
@@ -9,7 +10,9 @@ handoff artifacts may still exist in `docs/`; do not delete them as cleanup.
 
 - Live target: `https://thehitzero.net/arcade/` and the embedded ARCADE PWA tab.
 - Current working branch: `arcade-v1`.
-- Current service worker cache after this phase: `hz-v88-2026-07-06-hit-the-counts`.
+- Current deployed service worker cache: `hz-v93-2026-07-08-password-reset-recovery`. The last
+  Arcade-specific cache marker was `hz-v88-2026-07-06-hit-the-counts`; the later shared PWA release
+  now carries the reconciled Arcade assets.
 - Core shipped surface: lobby, Cheer Town, Super Squad NPCs, minimap, joystick movement, preset
   emotes and phrases, observer/preview/offline modes, and procedural chibi avatars.
 - Character Studio v2 replaces the old simple style modal. It is available on first run and from
@@ -22,6 +25,14 @@ handoff artifacts may still exist in `docs/`; do not delete them as cleanup.
   Solo play plus team rounds: invite/join/progress/result messages ride the existing gym Realtime
   channel as a new `game` broadcast event (see `net/protocol.js`), live teammate accuracy pips
   during play, and a TEAM HIT ZERO celebration when 2+ players all land ≥80% accuracy.
+- The game always offers three packaged Arcade tracks plus the procedural Practice Track. A live
+  athlete's team routine is added ahead of those choices when routine audio is available. Team
+  invitations include the selected track id so every player runs the same chart.
+- The deployed fun loop includes the Spirit Meter, Hype Mode with a 2x score multiplier,
+  section-ending freeze notes on count 8, and large signature callouts for authored major hits.
+- Andrew's own builder account is the only non-athlete override. Emails in
+  `ARCADE_BUILDER_EMAILS` in `pwa/arcade/src/main.js` enter as `player` with all cosmetic unlocks
+  so Andrew can build/test the whole surface. All other owners/coaches remain observer-only.
 
 ## Pixi discipline (learned the hard way)
 
@@ -45,6 +56,7 @@ pwa/arcade/
   src/main.js
   src/theme.js
   src/audio.js                  + createPracticeTrack + judgment/count-in sfx
+  assets/audio/                 three packaged Arcade music tracks
   src/games/chart.js            HIT THE COUNTS chart/scoring — PURE (node-testable, no PIXI/DOM)
   src/games/hitTheCounts.js     the game: overlay DOM + lane rendering + rounds
   src/world/avatar.js
@@ -65,6 +77,9 @@ App integration remains narrow:
 - `pwa/hit_zero_web/screens/ArcadeScreen.jsx` owns the full-bleed iframe.
 - `pwa/sw.js` must be bumped for any static Arcade deploy.
 - Arcade code must not import app code.
+
+The dated production/source reconciliation record is
+`docs/ARCADE_LIVE_RECONCILIATION_2026-07-10.md`.
 
 ## Character Studio v2
 
@@ -100,7 +115,8 @@ new change.
 2. No purchases, coins, currencies, DMs, or open chat.
 3. No persisted movement, position, or chat.
 4. No service-role client code and no weakened RLS.
-5. Observer and preview modes do not spawn a playable avatar.
+5. Observer and preview modes do not spawn a playable avatar, except Andrew's explicitly allowlisted
+   builder account for development/testing.
 6. Broadcast avatar metadata through the existing presence channel only.
 7. iPad Safari is the primary quality bar.
 
@@ -120,9 +136,12 @@ node quality/run-quality-monitor.mjs --mode=dry --prod-read --write-report --jso
 HIT THE COUNTS specifics (offline mode, `http://localhost:5600/arcade/`):
 
 - Left cabinet shows the count-cycling attract screen; tap → game overlay, menu says
-  Practice Track.
+  This Is Our City Now by default and also offers Magic City Athletics, We Here My Not, and the
+  procedural Practice Track.
 - PLAY SOLO → 5-6-7-8 count-in → notes travel right-to-left into the target ring; whole screen
   (or Space) is the drum; stray taps are free.
+- Clean hits fill the Spirit Meter. A full meter starts Hype Mode; misses end it. Freeze notes land
+  on selected count-8 section endings, and authored major-hit labels appear as signature callouts.
 - START TEAM ROUND → two demo bots join the lobby, play with live accuracy pips, and post
   results to the board.
 - Exiting mid-run or after results restores the world with zero console errors — any
