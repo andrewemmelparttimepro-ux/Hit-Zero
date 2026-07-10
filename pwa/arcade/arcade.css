@@ -235,7 +235,7 @@ html, body {
 }
 .arc-studio-edit { min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 .arc-studio-tabs {
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px;
   margin-bottom: 12px;
 }
 .arc-studio-tab {
@@ -301,6 +301,16 @@ html, body {
 .arc-special-copy small {
   font-size: 11px; line-height: 1.25; color: var(--arc-dim); overflow-wrap: anywhere;
 }
+/* Treasure Bag (Character Studio → Treasures tab) */
+.arc-loot-stats {
+  display: flex; flex-wrap: wrap; gap: 8px 14px;
+  padding: 11px 13px; border-radius: 14px;
+  border: 1px solid var(--arc-line); background: rgba(255,209,102,0.07);
+  font-size: 12px; color: var(--arc-dim);
+}
+.arc-loot-stats strong { color: var(--arc-text); font-size: 13px; }
+.arc-loot-card, .arc-loot-card.locked { cursor: default; }
+
 .arc-style-done {
   width: 100%; margin-top: 14px; padding: 13px;
   font-size: 14px; font-weight: 900; letter-spacing: 0.1em;
@@ -325,7 +335,7 @@ html, body {
   .arc-preview-stage canvas { width: 104px !important; height: 128px !important; }
   .arc-preview-title { margin-top: 0; text-align: left; align-self: end; }
   .arc-preview-progress { margin-top: 6px; max-width: none; min-height: 0; text-align: left; align-self: start; }
-  .arc-studio-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+  .arc-studio-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
   .arc-studio-tab { min-height: 36px; font-size: 10.5px; }
   .arc-studio-content { max-height: clamp(250px, calc(100dvh - 470px), 380px); overflow-y: auto; }
   .arc-special-grid { grid-template-columns: 1fr; }

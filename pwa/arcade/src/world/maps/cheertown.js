@@ -2,8 +2,12 @@
 // the kid's own gym (program-branded) on Main Street with five houses,
 // a golf cart, a park, and a gym interior "island" on the same grid
 // (teleport doors keep exterior/interior apart without a scene switch).
+// Rows 13-20 are the SOUTH DISTRICT expansion: Whisper Woods, Starlight
+// Pond with a fishing dock, a campfire circle, and a hedged Secret Garden.
+// Hidden treasures (world/loot.js) shimmer at daily-seeded spots all over.
 //
-// Grid 40×13:  cols 0-25 = town   cols 26-29 = void   cols 30-39 = gym interior
+// Grid 40×21:  cols 0-25 = town   cols 26-29 = void   cols 30-39 = gym interior
+//              (interior only spans rows 0-12; rows 13+ east of town = void)
 
 import {
   TILE_W, TILE_H, gridToWorld, makeCanStand, makeBlockedSet, boundsFor,
@@ -13,7 +17,8 @@ import {
 const { Container, Graphics, Text } = PIXI;
 
 const COLS = 40;
-const ROWS = 13;
+const ROWS = 21;
+const IN_ROWS = 13; // the gym-interior island keeps its original footprint
 const WALL_ANGLE = Math.atan2(TILE_H / 2, TILE_W / 2);
 
 // ─── Layout ───
@@ -33,6 +38,41 @@ const PARK        = { c0: 0, r0: 8, c1: 25, r1: 12 };
 const PRACTICE_MAT = { c0: 12, r0: 9, c1: 15, r1: 11 }; // outdoor tumbling patch
 const PORTAL      = { c0: 0, r0: 5, c1: 0, r1: 6 };     // back to the lobby
 const CART_PARK   = { c: 6, r: 6 };
+
+// ─── South district (rows 13-20) ───
+const POND     = { c0: 16, r0: 15, c1: 21, r1: 18 };    // Starlight Pond
+const DOCK     = [[16, 16], [17, 16]];                  // walkable planks over the water
+const CAMPFIRE = { c: 12, r: 17 };
+const GARDEN   = { c0: 22, r0: 16, c1: 25, r1: 19 };    // hedge ring, west entrance
+const HEDGES = [
+  [22, 16], [23, 16], [24, 16], [25, 16],
+  [22, 19], [23, 19], [24, 19], [25, 19],
+  [22, 18], [25, 17], [25, 18],                          // (22,17) stays open — the way in
+];
+// dirt trail from the park down to the dock
+const TRAIL_TILES = new Set(['13,13', '13,14', '14,14', '14,15', '15,15', '15,16']);
+const PICNIC = { c: 10, r: 16 };
+
+// ─── Hidden treasure hiding spots (world/loot.js picks a daily subset) ───
+const LOOT_SPOTS = [
+  { id: 'alley_w',   c: 4,  r: 0 },    // alley between the purple + blue houses
+  { id: 'alley_e',   c: 21, r: 0 },    // alley between the rose + green houses
+  { id: 'gym_side',  c: 8,  r: 1 },    // squeezed beside the gym
+  { id: 'stop_sign', c: 18, r: 4 },    // by the stop sign
+  { id: 'flowers',   c: 1,  r: 8 },    // in the sidewalk flowers
+  { id: 'park_t1',   c: 9,  r: 10 },   // behind a park tree
+  { id: 'park_t2',   c: 20, r: 11 },   // behind the far park tree
+  { id: 'woods_1',   c: 2,  r: 15 },   // Whisper Woods
+  { id: 'woods_2',   c: 7,  r: 16 },
+  { id: 'woods_3',   c: 8,  r: 20 },
+  { id: 'picnic',    c: 11, r: 16 },   // near the picnic blanket
+  { id: 'dock_end',  c: 17, r: 16 },   // end of the fishing dock
+  { id: 'garden',    c: 23, r: 18 },   // deep in the Secret Garden
+  { id: 'trail',     c: 14, r: 20 },   // off the trail, south edge
+  { id: 'podium',    c: 37, r: 10 },   // behind the podium (interior)
+  { id: 'judges',    c: 31, r: 2 },    // corner by the judges' table (interior)
+  { id: 'spring',    c: 34, r: 7 },    // on the spring floor (interior)
+];
 
 // interior island
 const IN = { c0: 30, r0: 0, c1: 39, r1: 12 };
@@ -54,9 +94,24 @@ collision.blockRect(HOUSE_S.c0, 10, HOUSE_S.c1, 11);
 collision.blockRect(26, 0, 29, ROWS - 1);               // void between town + interior
 collision.blockRect(JUDGES.c0, 0, JUDGES.c1, 1);        // judges' table
 collision.block(PODIUM.c, PODIUM.r);
-// park trees
-const TREES = [[7, 9], [9, 11], [18, 9], [21, 11], [24, 9], [0, 3], [8, 3], [17, 3], [25, 3]];
+// park trees + Whisper Woods (south district)
+const TREES = [
+  [7, 9], [9, 11], [18, 9], [21, 11], [24, 9], [0, 3], [8, 3], [17, 3], [25, 3],
+  // Whisper Woods + scattered south-district trees
+  [2, 14], [4, 16], [3, 19], [6, 15], [7, 18], [9, 14], [10, 19], [1, 17],
+  [5, 13], [19, 20], [24, 14], [15, 19], [11, 13],
+];
 for (const [c, r] of TREES) collision.block(c, r);
+// south district: void below the interior island, pond (minus dock planks),
+// campfire ring, garden hedges
+collision.blockRect(30, IN_ROWS, 39, ROWS - 1);
+for (let c = POND.c0; c <= POND.c1; c++) {
+  for (let r = POND.r0; r <= POND.r1; r++) {
+    if (!DOCK.some(([dc, dr]) => dc === c && dr === r)) collision.block(c, r);
+  }
+}
+collision.block(CAMPFIRE.c, CAMPFIRE.r);
+for (const [c, r] of HEDGES) collision.block(c, r);
 
 export const cheertownMap = {
   key: 'town',
@@ -92,7 +147,9 @@ export const cheertownMap = {
       ...HOUSES.map(h => ({ c0: h.c0, r0: 0, c1: h.c1, r1: 1, color: hex(h.color) })),
       { c0: HOUSE_S.c0, r0: 10, c1: HOUSE_S.c1, r1: 11, color: hex(HOUSE_S.color) },
       { ...PRACTICE_MAT, color: '#2a3150' },
-      { c0: IN.c0, r0: 0, c1: IN.c1, r1: ROWS - 1, color: '#1a1a24' },                   // gym interior
+      { ...POND, color: '#1d3a55' },                                                     // Starlight Pond
+      { ...GARDEN, color: '#233c2a' },                                                   // Secret Garden
+      { c0: IN.c0, r0: 0, c1: IN.c1, r1: IN_ROWS - 1, color: '#1a1a24' },                // gym interior
       { ...IN_SPRING, color: '#2a3150' },
     ],
     pois: [
@@ -100,6 +157,8 @@ export const cheertownMap = {
       { c: PERFORM.c + 0.5, r: PERFORM.r + 0.5, color: '#ffd166' },                      // comp star
       { c: PORTAL.c0 + 0.5, r: 6, color: '#b387ff' },                                    // lobby portal
       { c: CART_PARK.c + 0.5, r: CART_PARK.r + 0.5, color: '#f4f4f8' },                  // golf cart
+      { c: DOCK[1][0] + 1, r: DOCK[1][1] + 0.5, color: '#74d7db' },                      // fishing dock
+      { c: CAMPFIRE.c + 0.5, r: CAMPFIRE.r + 0.5, color: '#ff8a65' },                    // campfire
     ],
   },
 };
@@ -144,10 +203,12 @@ function build(layers, theme, addObject) {
 function buildGround(layer, theme) {
   const g = new Graphics();
 
+  const isDock = (c, r) => DOCK.some(([dc, dr]) => dc === c && dr === r);
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       if (c >= 26 && c <= 29) continue; // void
       if (c >= IN.c0) {
+        if (r >= IN_ROWS) continue; // void below the interior island
         // gym interior floor
         if (inRect(c, r, IN_SPRING)) {
           const strip = (c - IN_SPRING.c0) % 2 === 0;
@@ -161,6 +222,9 @@ function buildGround(layer, theme) {
       if (inRect(c, r, STREET)) tileDiamond(g, c, r, 0x22222c);
       else if (inRect(c, r, SIDEWALK_N) || inRect(c, r, SIDEWALK_S)) tileDiamond(g, c, r, (c % 2 === 0) ? 0x34343e : 0x30303a);
       else if (inRect(c, r, PRACTICE_MAT)) tileDiamond(g, c, r, (c + r) % 2 === 0 ? 0x2a3150 : 0x242a45);
+      else if (isDock(c, r)) tileDiamond(g, c, r, 0x6b4a2c);                              // dock planks
+      else if (inRect(c, r, POND)) tileDiamond(g, c, r, (c + r) % 2 === 0 ? 0x1d3a55 : 0x1a3450); // water
+      else if (TRAIL_TILES.has(c + ',' + r)) tileDiamond(g, c, r, (c + r) % 2 === 0 ? 0x4a3a26 : 0x453522); // dirt trail
       else tileDiamond(g, c, r, (c + r) % 2 === 0 ? 0x1b2a20 : 0x18261c); // grass
     }
   }
@@ -196,6 +260,55 @@ function buildGround(layer, theme) {
     g.moveTo(p.x, p.y - 2).lineTo(p.x, p.y + 4).stroke({ color: 0x3f6b4a, width: 1.6 });
   });
 
+  // ── south district decals ──
+  // pond shoreline
+  const pq = [gridToWorld(POND.c0, POND.r0), gridToWorld(POND.c1 + 1, POND.r0), gridToWorld(POND.c1 + 1, POND.r1 + 1), gridToWorld(POND.c0, POND.r1 + 1)];
+  g.moveTo(pq[0].x, pq[0].y).lineTo(pq[1].x, pq[1].y).lineTo(pq[2].x, pq[2].y).lineTo(pq[3].x, pq[3].y).closePath()
+    .stroke({ color: 0x74d7db, width: 3, alpha: 0.45 });
+  // lily pads + a couple of star glints on the water
+  for (const [lc, lr] of [[18.6, 17.3], [20.3, 15.7], [19.1, 18.2], [21.2, 17.6]]) {
+    const p = gridToWorld(lc, lr);
+    g.ellipse(p.x, p.y, 11, 6).fill({ color: 0x2e5d3a, alpha: 0.9 });
+    g.ellipse(p.x + 3, p.y - 1, 4, 2).fill({ color: 0x3d7a4c, alpha: 0.9 });
+  }
+  for (const [sc, sr] of [[17.4, 17.8], [20.8, 16.4]]) {
+    const p = gridToWorld(sc, sr);
+    starShape(g, p.x, p.y, 4, 4, 1.6).fill({ color: 0xffe9a8, alpha: 0.35 });
+  }
+  // dock plank seams + end posts
+  for (const [dc, dr] of DOCK) {
+    const a = gridToWorld(dc + 0.25, dr + 0.5), b = gridToWorld(dc + 0.75, dr + 0.5);
+    g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ color: 0x4a3826, width: 2.5, alpha: 0.8 });
+  }
+  const dp = gridToWorld(DOCK[1][0] + 0.95, DOCK[1][1] + 0.5);
+  g.circle(dp.x, dp.y - 14, 4).fill(0x4a3826);
+  g.rect(dp.x - 2.5, dp.y - 14, 5, 14).fill(0x4a3826);
+  // campfire stone ring
+  const cfp = gridToWorld(CAMPFIRE.c + 0.5, CAMPFIRE.r + 0.5);
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    g.circle(cfp.x + Math.cos(a) * 34, cfp.y + Math.sin(a) * 17, 4.5).fill(0x55555f);
+  }
+  // Secret Garden flowers (inside the hedge ring)
+  const GARDEN_FLOWERS = [[23.3, 17.4], [24.5, 17.6], [23.6, 18.5], [24.2, 18.2], [23.9, 17.1]];
+  GARDEN_FLOWERS.forEach(([c, r], i) => {
+    const p = gridToWorld(c, r);
+    g.circle(p.x, p.y - 3, 3.4).fill(petals[(i + 1) % petals.length]);
+    g.circle(p.x, p.y - 3, 1.3).fill(0xffe9a8);
+    g.moveTo(p.x, p.y - 2).lineTo(p.x, p.y + 4).stroke({ color: 0x3f6b4a, width: 1.6 });
+  });
+  // picnic blanket
+  {
+    const p0 = gridToWorld(PICNIC.c + 0.15, PICNIC.r + 0.15), p1 = gridToWorld(PICNIC.c + 0.85, PICNIC.r + 0.15);
+    const p2 = gridToWorld(PICNIC.c + 0.85, PICNIC.r + 0.85), p3 = gridToWorld(PICNIC.c + 0.15, PICNIC.r + 0.85);
+    g.moveTo(p0.x, p0.y).lineTo(p1.x, p1.y).lineTo(p2.x, p2.y).lineTo(p3.x, p3.y).closePath()
+      .fill({ color: 0x8f3f5c, alpha: 0.9 })
+      .stroke({ color: 0xf4f4f8, width: 2, alpha: 0.7 });
+    const pc = gridToWorld(PICNIC.c + 0.5, PICNIC.r + 0.5);
+    g.circle(pc.x - 8, pc.y, 4).fill(0xf4f4f8);
+    g.circle(pc.x + 8, pc.y - 2, 4).fill(0xf4f4f8);
+  }
+
   // teleport mats: gym front door + interior exit (glowing)
   matGlow(g, GYM_DOOR.c, GYM_DOOR.r, 2, theme.accentNum);
   matGlow(g, IN_DOOR.c, IN_DOOR.r, 1, theme.accent2Num);
@@ -223,7 +336,7 @@ function buildInteriorWalls(layer, theme) {
     wallQuad(g, A, B, 150, 0, c % 2 === 0 ? 0x1b1b25 : 0x191922);
     wallQuad(g, A, B, 12, 0, 0x101018);
   }
-  for (let r = 0; r < ROWS; r++) {
+  for (let r = 0; r < IN_ROWS; r++) {
     const A = gridToWorld(IN.c0, r), B = gridToWorld(IN.c0, r + 1);
     wallQuad(g, A, B, 150, 0, r % 2 === 0 ? 0x15151d : 0x13131a);
     wallQuad(g, A, B, 12, 0, 0x0d0d13);
@@ -334,6 +447,41 @@ function buildObjects(addObject, theme) {
     g.circle(p.x + 16, p.y - 42, 19).fill(0x28472f);
     g.circle(p.x - 4, p.y - 62, 15).fill(0x2b4c33);
     t.addChild(g);
+  }
+
+  // ── Secret Garden hedges ──
+  for (const [c, r] of HEDGES) {
+    const p = gridToWorld(c + 0.5, r + 0.5);
+    const b = obj(p.y + 8);
+    const g = new Graphics();
+    g.ellipse(p.x, p.y - 12, 34, 22).fill(0x24402c);
+    g.ellipse(p.x - 18, p.y - 8, 20, 14).fill(0x1f3826);
+    g.ellipse(p.x + 18, p.y - 8, 20, 14).fill(0x28472f);
+    g.circle(p.x - 10, p.y - 24, 2.6).fill(0xf27fb2);
+    g.circle(p.x + 12, p.y - 20, 2.6).fill(0xb387ff);
+    b.addChild(g);
+  }
+
+  // ── campfire (logs + flame; the stone ring is a ground decal) ──
+  {
+    const p = gridToWorld(CAMPFIRE.c + 0.5, CAMPFIRE.r + 0.5);
+    const c = obj(p.y + 6);
+    const g = new Graphics();
+    // crossed logs
+    g.moveTo(p.x - 22, p.y + 4).lineTo(p.x + 18, p.y - 10).lineTo(p.x + 22, p.y - 4).lineTo(p.x - 18, p.y + 10).closePath().fill(0x4a3826);
+    g.moveTo(p.x + 22, p.y + 4).lineTo(p.x - 18, p.y - 10).lineTo(p.x - 22, p.y - 4).lineTo(p.x + 18, p.y + 10).closePath().fill(0x54402c);
+    // flame
+    g.moveTo(p.x, p.y - 44).quadraticCurveTo(p.x + 14, p.y - 24, p.x, p.y - 6)
+      .quadraticCurveTo(p.x - 14, p.y - 24, p.x, p.y - 44).closePath().fill(0xff8a3d);
+    g.moveTo(p.x, p.y - 32).quadraticCurveTo(p.x + 8, p.y - 20, p.x, p.y - 8)
+      .quadraticCurveTo(p.x - 8, p.y - 20, p.x, p.y - 32).closePath().fill(0xffd166);
+    g.circle(p.x, p.y - 20, 30).fill({ color: 0xff8a3d, alpha: 0.12 });
+    c.addChild(g);
+    // log seats around the fire
+    const seats = new Graphics();
+    seats.roundRect(p.x - 78, p.y - 4, 36, 12, 6).fill(0x4a3826);
+    seats.roundRect(p.x + 44, p.y - 8, 36, 12, 6).fill(0x4a3826);
+    c.addChild(seats);
   }
 
   // ── streetlights ──
@@ -472,8 +620,71 @@ function starShape(g, x, y, points, outer, inner) {
 // Interactables + town rules
 // ─────────────────────────────────────────────────────────────────────────
 
-function makeInteractables({ rend, theme, getPlayer, emote, say, toast, sfx, travel, teleport, setCart }) {
+function makeInteractables({ rend, theme, getPlayer, emote, say, toast, sfx, travel, teleport, setCart, loot }) {
   const updaters = [];
+
+  // ── hidden treasures (daily-seeded spots; walk over one to scoop it up) ──
+  // Placement is deterministic per calendar day (world/loot.js) so every kid
+  // hunts the same hiding places — pickups themselves are personal.
+  if (loot) {
+    const spots = loot.dailySpots(LOOT_SPOTS, 7);
+    for (const spot of spots) {
+      if (loot.isFound(spot.id)) continue;
+      const p = gridToWorld(spot.c + 0.5, spot.r + 0.5);
+      const s = new Container();
+      s.position.set(p.x, p.y);
+      const sg = new Graphics();
+      starShape(sg, 0, -10, 4, 9, 3.5).fill({ color: 0xffe9a8, alpha: 0.9 });
+      sg.circle(0, -10, 15).fill({ color: 0xffd166, alpha: 0.12 });
+      s.addChild(sg);
+      s.alpha = 0.55;
+      rend.addObject(s);
+      let t = Math.random() * 6;
+      let done = false;
+      updaters.push((dt) => {
+        if (done) return;
+        t += dt;
+        s.alpha = 0.35 + (Math.sin(t * 2.4) + 1) * 0.2; // soft shimmer
+        const pl = getPlayer();
+        if (!pl) return;
+        if (nearGrid(pl.x, pl.y, spot.c, spot.r, 0.95)) {
+          const item = loot.collect(spot);
+          done = true;
+          s.visible = false;
+          if (!item) return;
+          sfx.score();
+          const rare = item.rarity === 'rare';
+          rend.fx.burst(p.x, p.y - 24, rare ? 'confetti' : 'star', rare ? 24 : 12);
+          rend.fx.text(p.x, p.y - 70, `${item.emoji} ${item.name}!`, 0xffd166);
+          toast(rare
+            ? `WOW — a ${item.name}! ${item.emoji} That's SUPER rare! Check STYLE → Treasures`
+            : `You found a ${item.name}! ${item.emoji} It's in your Treasure Bag (STYLE)`);
+        }
+      });
+    }
+  }
+
+  // ── campfire: crackling sparks + a cozy moment when you sit close ──
+  {
+    const p = gridToWorld(CAMPFIRE.c + 0.5, CAMPFIRE.r + 0.5);
+    let crackle = 0;
+    let cozy = 0;
+    updaters.push((dt) => {
+      crackle += dt;
+      if (crackle > 0.9) {
+        crackle = 0;
+        rend.fx.burst(p.x + (Math.random() - 0.5) * 10, p.y - 34, 'spark', 1);
+      }
+      cozy = Math.max(0, cozy - dt);
+      const pl = getPlayer();
+      if (!pl || cozy > 0) return;
+      if (nearGrid(pl.x, pl.y, CAMPFIRE.c, CAMPFIRE.r, 2.0)) {
+        cozy = 12;
+        rend.fx.burst(p.x, p.y - 40, 'heart', 6);
+        toast('So cozy by the campfire 🔥 Hang out to earn Spirit Stars!');
+      }
+    });
+  }
 
   // ── teleport doors (walk on) + lobby portal ──
   {

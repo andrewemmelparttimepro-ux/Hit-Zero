@@ -32,10 +32,11 @@ export const UNIFORMS = [
   [0x5b2145, 0x74d7db],
 ];
 // capes: index 0 = none. The first real cosmetic slot — Super Squad NPCs
-// wear them now; kids earn them later via skill mastery.
-export const CAPES = [null, 0xffd166, 0x74d7db, null /* program accent */, 0xffffff, 0xb387ff];
+// wear them now; kids earn them via skill mastery + Cheer Town treasures
+// (indices 6-7 are treasure-hunt rewards; see world/loot.js MILESTONES).
+export const CAPES = [null, 0xffd166, 0x74d7db, null /* program accent */, 0xffffff, 0xb387ff, 0xff8a65, 0x43e97b];
 export const TRAILS = [null, 'star', 'spark', 'confetti', 'heart'];
-export const NAMEPLATES = ['default', 'star', 'neon', 'varsity', 'captain'];
+export const NAMEPLATES = ['default', 'star', 'neon', 'varsity', 'captain', 'legend'];
 
 export const COSMETIC_LABELS = {
   skin: ['Glow 1', 'Glow 2', 'Glow 3', 'Glow 4', 'Glow 5'],
@@ -44,9 +45,9 @@ export const COSMETIC_LABELS = {
   bowShape: ['Classic', 'Big Bow', 'Star Bow', 'Sparkle Bow'],
   bow: ['Gym Colors', 'White', 'Hot Pink', 'Blue', 'Purple', 'Gold', 'Green', 'Black', 'Coral', 'Lavender'],
   uniform: ['Gym Colors', 'Midnight Pink', 'Navy Teal', 'Royal White', 'White Pink', 'Gold Night', 'Green Glow', 'Plum Teal'],
-  cape: ['No Cape', 'Gold Cape', 'Teal Cape', 'Gym Cape', 'White Cape', 'Purple Cape'],
+  cape: ['No Cape', 'Gold Cape', 'Teal Cape', 'Gym Cape', 'White Cape', 'Purple Cape', 'Sunset Cape', 'Emerald Cape'],
   trail: ['No Trail', 'Star Trail', 'Sparkle Trail', 'Confetti Trail', 'Heart Trail'],
-  nameplate: ['Classic Tag', 'Star Tag', 'Neon Tag', 'Varsity Tag', 'Captain Tag'],
+  nameplate: ['Classic Tag', 'Star Tag', 'Neon Tag', 'Varsity Tag', 'Captain Tag', 'Legend Tag'],
 };
 
 export const DEFAULT_AVATAR = {
@@ -190,6 +191,13 @@ export function createAvatar({ config, name, team, theme, isSelf = false, npc = 
       tagBg.roundRect(-tw / 2, -th / 2, tw, th, radius).fill({ color: theme.accentNum, alpha: 0.18 });
       tagBg.roundRect(-tw / 2, -th / 2, tw, th, radius).stroke({ color: theme.accentNum, width: 1.8, alpha: 0.95 });
       tagBg.moveTo(-tw / 2 + 5, 0).lineTo(-tw / 2 + 12, -5).lineTo(-tw / 2 + 19, 0).lineTo(-tw / 2 + 12, 5).closePath().fill(0xffd166);
+    } else if (style === 5) {
+      // Legend Tag — the treasure-hunter's gold crest (12 Spirit Stars)
+      tagBg.roundRect(-tw / 2, -th / 2, tw, th, radius).fill({ color: 0xffd166, alpha: 0.16 });
+      tagBg.roundRect(-tw / 2, -th / 2, tw, th, radius).stroke({ color: 0xffd166, width: 1.9, alpha: 0.95 });
+      tagBg.roundRect(-tw / 2 + 3, -th / 2 + 3, tw - 6, th - 6, radius).stroke({ color: 0xffffff, width: 1, alpha: 0.45 });
+      starShape(tagBg, -tw / 2 + 9, 0, 5, 5, 2.2).fill(0xffd166);
+      starShape(tagBg, tw / 2 - 9, 0, 5, 5, 2.2).fill(0xffd166);
     } else if (isSelf) {
       tagBg.roundRect(-tw / 2, -th / 2, tw, th, radius).stroke({ color: theme.accentNum, width: 1.4, alpha: 0.9 });
     }

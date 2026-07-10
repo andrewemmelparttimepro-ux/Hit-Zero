@@ -18,6 +18,10 @@ import { gridToWorld, worldToGrid } from './world/tilemap.js';
 import { lobbyMap } from './world/maps/lobby.js';
 import { cheertownMap } from './world/maps/cheertown.js';
 import { createNpcDriver } from './world/npc.js';
+import {
+  pickDailySpots, todayKey, sanitizeProgress, spiritStars,
+  applyProgressUnlocks, countUnlocked,
+} from './world/loot.js';
 import { createNet } from './net/channel.js';
 import { PHRASES } from './net/protocol.js';
 import { createJoystick } from './ui/joystick.js';
@@ -118,9 +122,13 @@ async function boot() {
   let teamName = '';
   let athleteId = null;
   let teamId = null;
-  let unlockState = mode === 'offline' ? demoUnlockState()
+  let baseUnlocks = mode === 'offline' ? demoUnlockState()
     : builderAccess ? builderUnlockState()
     : deriveUnlockState([], [], false);
+  let unlockState = baseUnlocks;
+  // durable progression: treasures found + play-time Spirit Stars
+  let progressState = sanitizeProgress(null);
+  try { progressState = sanitizeProgress(JSON.parse(localStorage.getItem('hz_arcade_progress') || 'null')); } catch { /* defaults */ }
   let firstVisit = false; // first time ever in the Arcade → auto-open the builder
   if (mode === 'player' && supa) {
     try {
@@ -132,6 +140,11 @@ async function boot() {
         if (!row) await supa.from('arcade_profiles').insert({ id: profile.id, program_id: programId, avatar: myAvatarCfg });
       }
     } catch (err) { console.warn('[arcade] arcade_profiles unavailable', err); }
+    try {
+      // own query so a not-yet-migrated column can never break avatar load
+      const { data: pr, error } = await supa.from('arcade_profiles').select('progress').eq('id', profile.id).maybeSingle();
+      if (!error && pr?.progress) progressState = sanitizeProgress(pr.progress);
+    } catch { /* local progress carries on */ }
     try {
       const { data: ath } = await supa.from('athletes').select('id, team_id, teams(name)').eq('profile_id', profile.id).maybeSingle();
       athleteId = ath?.id || null;
@@ -145,10 +158,10 @@ async function boot() {
           supa.from('skills').select('id, category'),
         ]);
         if (rowsError || skillsError) throw rowsError || skillsError;
-        unlockState = deriveUnlockState(rows || [], skills || [], true);
+        baseUnlocks = deriveUnlockState(rows || [], skills || [], true);
       } catch (err) {
         console.warn('[arcade] skill unlocks unavailable', err);
-        unlockState = deriveUnlockState([], [], false);
+        baseUnlocks = deriveUnlockState([], [], false);
       }
     }
   } else {
@@ -157,6 +170,8 @@ async function boot() {
     try { myAvatarCfg = sanitizeAvatar(JSON.parse(stored || 'null')); } catch { /* defaults */ }
     if (firstVisit) try { localStorage.setItem('hz_arcade_avatar', JSON.stringify(myAvatarCfg)); } catch { /* fine */ }
   }
+  unlockState = applyProgressUnlocks(baseUnlocks, progressState);
+  let lastStars = spiritStars(progressState);
   myAvatarCfg = filterAvatarForUnlocks(myAvatarCfg, unlockState);
 
   let muted = localStorage.getItem('hz_arcade_muted') === '1';
@@ -199,6 +214,30 @@ async function boot() {
       }, 700);
     } else {
       try { localStorage.setItem('hz_arcade_avatar', JSON.stringify(myAvatarCfg)); } catch { /* fine */ }
+    }
+  }
+
+  // ── durable progression (treasures + Spirit Stars) ──
+  let progressSaveTimer = null;
+  function saveProgress() {
+    try { localStorage.setItem('hz_arcade_progress', JSON.stringify(progressState)); } catch { /* fine */ }
+    if (mode === 'player' && supa) {
+      clearTimeout(progressSaveTimer);
+      progressSaveTimer = setTimeout(() => {
+        supa.from('arcade_profiles')
+          .update({ progress: progressState, updated_at: new Date().toISOString() })
+          .eq('id', profile.id)
+          .then(({ error }) => { if (error) console.warn('[arcade] progress save failed', error); });
+      }, 800);
+    }
+  }
+  function recomputeUnlocks(notify = false) {
+    const next = applyProgressUnlocks(baseUnlocks, progressState);
+    const gained = countUnlocked(next) > countUnlocked(unlockState);
+    unlockState = next;
+    if (gained && notify) {
+      hud.toast('New style unlocked! Tap STYLE 🎀');
+      audio.sfx.score();
     }
   }
 
@@ -386,6 +425,23 @@ async function boot() {
       player.avatar.setCart(player.cart);
       player.avatar.container.eventMode = player.cart ? 'static' : 'none';
     },
+    // hidden-treasure API for map modules (Cheer Town's loot spots)
+    loot: {
+      dailySpots: (candidates, n) => pickDailySpots(candidates, n),
+      isFound: (id) => (progressState.days?.[todayKey()] || []).includes(id),
+      collect(spot) {
+        if (!player || !wheelsEnabled) return null;
+        const day = todayKey();
+        const today = progressState.days[day] || [];
+        if (today.includes(spot.id)) return null;
+        progressState.days[day] = [...today, spot.id];
+        progressState.found[spot.item.id] = (progressState.found[spot.item.id] || 0) + 1;
+        progressState = sanitizeProgress(progressState); // prunes stale days
+        recomputeUnlocks(true);
+        saveProgress();
+        return spot.item;
+      },
+    },
   };
 
   function mountScene(key) {
@@ -468,14 +524,35 @@ async function boot() {
     if (!wheelsEnabled) { hud.toast('Observers can watch, not play — grab an iPad and log in as an athlete!'); return; }
     if (act === 'emote') wheels.openEmotes(e.target.closest('[data-act]'));
     if (act === 'phrase') wheels.openPhrases(e.target.closest('[data-act]'));
-    if (act === 'style') hud.openStylePanel(myAvatarCfg, { unlocks: unlockState });
+    if (act === 'style') hud.openStylePanel(myAvatarCfg, { unlocks: unlockState, progress: progressState });
   });
   if (!wheelsEnabled) hud.actions.style.display = 'none';
 
   // ── 9. game loop ──
   let sparkleAcc = 0;
   let miniAcc = 0;
+  let playAcc = 0;
   rend.onTick((dt) => {
+    // play-time reward: every visible-tab minute counts toward Spirit Stars
+    // (1 ⭐ per 10 minutes — see world/loot.js). Aggregate seconds only;
+    // never positions (hard rule #2).
+    if (player && !document.hidden) {
+      playAcc += dt;
+      if (playAcc >= 30) {
+        progressState.playSeconds += Math.round(playAcc);
+        playAcc = 0;
+        const stars = spiritStars(progressState);
+        if (stars > lastStars) {
+          lastStars = stars;
+          hud.toast(`+1 Spirit Star ⭐ (${stars} total) — thanks for playing!`);
+          rend.fx.burst(player.x, player.y - 60, 'star', 14);
+          audio.sfx.score();
+          recomputeUnlocks(true);
+        }
+        saveProgress();
+      }
+    }
+
     if (player && !traveling && !game.isOpen) {
       const vx = joy.vector.x, vy = joy.vector.y;
       const mag = Math.hypot(vx, vy);
@@ -561,6 +638,8 @@ async function boot() {
     get player() { return player; },
     get scene() { return scene; },
     get npcs() { return npcDriver?.entities() || []; },
+    get progress() { return progressState; },
+    get unlocks() { return unlockState; },
     travel: (k) => switchScene(k),
     peers, rend, theme, game,
   };
@@ -578,30 +657,35 @@ async function boot() {
     // First time ever in the Arcade → drop straight into the builder.
     // Every tap in it auto-saves, so it's sticky from then on.
     if (firstVisit && wheelsEnabled) {
-      setTimeout(() => hud.openStylePanel(myAvatarCfg, { firstRun: true, unlocks: unlockState }), 650);
+      setTimeout(() => hud.openStylePanel(myAvatarCfg, { firstRun: true, unlocks: unlockState, progress: progressState }), 650);
     }
   }, { once: true });
 }
 
 const UNLOCK_REASONS = {
+  // treasure/Spirit-Star reasons (cape 4-7, trail 2/4, nameplate 5) are
+  // overlaid by applyProgressUnlocks from world/loot.js MILESTONES
   cape: {
     1: 'Master 1 skill',
     2: 'Master 3 skills',
     3: 'Master a tumbling skill',
-    4: 'Future team reward',
-    5: 'Future team reward',
+    4: 'Find 5 hidden treasures',
+    5: 'Earn 3 Spirit Stars',
+    6: 'Find 20 hidden treasures',
+    7: 'Find the Spirit Crystal 🔮',
   },
   trail: {
     1: 'Master a jump skill',
-    2: 'Future team reward',
+    2: 'Find 10 hidden treasures',
     3: 'Get 10 solid skills',
-    4: 'Future team reward',
+    4: 'Earn 6 Spirit Stars',
   },
   nameplate: {
     1: 'Master 1 skill',
     2: 'Master 3 skills',
     3: 'Get 10 solid skills',
     4: 'Master 10 skills',
+    5: 'Earn 12 Spirit Stars',
   },
 };
 
@@ -619,9 +703,9 @@ function builderUnlockState() {
     loaded: true,
     stats: { solid: 99, mastered: 99, tumblingMastered: true, jumpMastered: true },
     allowed: {
-      cape: [0, 1, 2, 3, 4, 5],
+      cape: [0, 1, 2, 3, 4, 5, 6, 7],
       trail: [0, 1, 2, 3, 4],
-      nameplate: [0, 1, 2, 3, 4],
+      nameplate: [0, 1, 2, 3, 4, 5],
     },
     reasons: UNLOCK_REASONS,
   };

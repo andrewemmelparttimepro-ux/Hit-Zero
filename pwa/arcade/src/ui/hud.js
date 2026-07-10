@@ -5,6 +5,10 @@ import {
   SKINS, HAIR_COLORS, HAIR_STYLES, BOW_SHAPES, BOW_COLORS, UNIFORMS,
   CAPES, TRAILS, NAMEPLATES, COSMETIC_LABELS, createAvatar, sanitizeAvatar,
 } from '../world/avatar.js';
+import {
+  LOOT_ITEMS, MILESTONES, RARITY_LABEL, sanitizeProgress,
+  spiritStars, totalFound, SPIRIT_SECONDS_PER_STAR,
+} from '../world/loot.js';
 
 export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
   // ── top-right stack: presence pill, coach tag, mute ──
@@ -184,9 +188,10 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
     return studioAppPromise;
   }
 
-  function openStylePanel(current, { firstRun = false, unlocks = null } = {}) {
+  function openStylePanel(current, { firstRun = false, unlocks = null, progress = null } = {}) {
     closeStylePanel();
     let cfg = sanitizeAvatar(current);
+    const prog = sanitizeProgress(progress);
     let activeTab = 'base';
     let previewAvatar = null;
     let previewApp = null;
@@ -204,9 +209,10 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
     const lockReason = (slot, index) =>
       unlocks?.reasons?.[slot]?.[index] || 'Unlock from skill progress';
     const progressCopy = (() => {
-      if (!unlocks?.loaded) return 'Skill unlocks are unavailable right now. Free looks still save.';
+      const treasure = `${totalFound(prog)} 💎 · ${spiritStars(prog)} ⭐`;
+      if (!unlocks?.loaded) return `Skill unlocks are unavailable right now. Free looks still save. ${treasure}`;
       const s = unlocks.stats || {};
-      return `${s.mastered || 0} mastered · ${s.solid || 0} solid skills`;
+      return `${s.mastered || 0} mastered · ${s.solid || 0} solid skills · ${treasure}`;
     })();
 
     panel.innerHTML = `
@@ -348,6 +354,7 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
       { id: 'bow', label: 'Bows' },
       { id: 'uniform', label: 'Uniforms' },
       { id: 'special', label: 'Unlocks' },
+      { id: 'loot', label: 'Treasures' },
     ];
     tabDefs.forEach((tab) => {
       const b = document.createElement('button');
@@ -375,14 +382,84 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
           (u) => u === null
             ? `linear-gradient(120deg, #14141c 50%, ${theme.accent} 50%)`
             : `linear-gradient(120deg, ${cssHex(u[0])} 50%, ${cssHex(u[1])} 50%)`));
-      } else {
+      } else if (id === 'special') {
         content.appendChild(specialGrid('Capes', 'cape', CAPES,
           (c, i) => i === 0 ? 'rgba(255,255,255,0.06)' : cssHex(c ?? theme.accentNum)));
         content.appendChild(specialGrid('Trails', 'trail', TRAILS,
           (_, i) => ['rgba(255,255,255,0.06)', '#ffd166', theme.accent2, '#b387ff', '#ff4f79'][i]));
         content.appendChild(specialGrid('Nameplates', 'nameplate', NAMEPLATES,
-          (_, i) => ['rgba(255,255,255,0.06)', '#ffd166', theme.accent2, '#ffffff', theme.accent][i]));
+          (_, i) => ['rgba(255,255,255,0.06)', '#ffd166', theme.accent2, '#ffffff', theme.accent, '#ffd166'][i]));
+      } else {
+        renderTreasures();
       }
+    }
+
+    // ── Treasure Bag: everything found in Cheer Town + Spirit Star time ──
+    function renderTreasures() {
+      const stars = spiritStars(prog);
+      const found = totalFound(prog);
+      const mins = Math.floor((prog.playSeconds || 0) / 60);
+      const toNext = Math.ceil((SPIRIT_SECONDS_PER_STAR - ((prog.playSeconds || 0) % SPIRIT_SECONDS_PER_STAR)) / 60);
+
+      const stats = document.createElement('div');
+      stats.className = 'arc-style-row';
+      stats.innerHTML = `
+        <label>Treasure Bag</label>
+        <div class="arc-loot-stats">
+          <span>💎 <strong>${found}</strong> treasures found</span>
+          <span>⭐ <strong>${stars}</strong> Spirit Stars</span>
+          <span>⏱️ <strong>${mins}</strong> min played · next ⭐ in ~${toNext} min</span>
+        </div>
+      `;
+      content.appendChild(stats);
+
+      const itemsRow = document.createElement('div');
+      itemsRow.className = 'arc-style-row';
+      itemsRow.innerHTML = '<label>Collection</label>';
+      const grid = document.createElement('div');
+      grid.className = 'arc-special-grid';
+      for (const it of LOOT_ITEMS) {
+        const count = prog.found?.[it.id] || 0;
+        const card = document.createElement('div');
+        card.className = 'arc-special-card arc-loot-card' + (count === 0 ? ' locked' : '');
+        card.innerHTML = count > 0
+          ? `
+            <span class="arc-special-swatch">${it.emoji}</span>
+            <span class="arc-special-copy">
+              <strong>${escapeHtml(it.name)} ×${count}</strong>
+              <small>${escapeHtml(RARITY_LABEL[it.rarity] || '')}</small>
+            </span>`
+          : `
+            <span class="arc-special-swatch">❓</span>
+            <span class="arc-special-copy">
+              <strong>???</strong>
+              <small>Hidden somewhere in Cheer Town…</small>
+            </span>`;
+        grid.appendChild(card);
+      }
+      itemsRow.appendChild(grid);
+      content.appendChild(itemsRow);
+
+      const msRow = document.createElement('div');
+      msRow.className = 'arc-style-row';
+      msRow.innerHTML = '<label>Treasure Rewards</label>';
+      const msGrid = document.createElement('div');
+      msGrid.className = 'arc-special-grid';
+      for (const m of MILESTONES) {
+        const met = m.met(prog);
+        const rewardName = COSMETIC_LABELS[m.slot]?.[m.index] || 'Reward';
+        const card = document.createElement('div');
+        card.className = 'arc-special-card arc-loot-card' + (met ? '' : ' locked');
+        card.innerHTML = `
+          <span class="arc-special-swatch">${met ? '🏅' : '🔒'}</span>
+          <span class="arc-special-copy">
+            <strong>${escapeHtml(rewardName)}</strong>
+            <small>${met ? 'Unlocked! Grab it in the Unlocks tab' : escapeHtml(m.label)}</small>
+          </span>`;
+        msGrid.appendChild(card);
+      }
+      msRow.appendChild(msGrid);
+      content.appendChild(msRow);
     }
     renderTab(activeTab);
   }

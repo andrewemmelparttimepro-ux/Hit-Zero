@@ -166,3 +166,31 @@ Manual checks:
 - `docs/ARCADE_CUSTOMIZATION_HANDOFF.md`
 - `docs/ARCADE_BUILD_PLAN.md`
 - `docs/ARCADE_BUILD_REPORT.md`
+
+## Cheer Town Expansion — Hidden Treasures, Spirit Stars & Treasure Bag (2026-07-10)
+
+Commit scope: `pwa/arcade/src/world/{loot.js,maps/cheertown.js,avatar.js}`, `src/{main.js,ui/hud.js}`,
+`arcade.css`, `sw.js` (CACHE_VERSION → hz-v94), migration `20260710153000_arcade_loot_progress.sql` (applied to prod).
+
+- **Map**: Cheer Town grid grew 40×13 → 40×21. Rows 13-20 are the south district: Whisper
+  Woods (13 new trees), Starlight Pond with a walkable 2-plank fishing dock, a campfire circle
+  (crackles, cozy toast), a hedge-ringed Secret Garden (west entrance), a dirt trail and picnic
+  blanket. The interior island keeps its 13-row footprint (`IN_ROWS`); everything below it is void.
+- **Hidden treasures** (`world/loot.js`): 17 hiding spots across town + interior; 7 shimmer per
+  day, chosen by a date-seeded PRNG (xmur3/mulberry32) so every kid hunts the same spots with
+  zero realtime changes. Walk over a shimmer to collect. 8 item types with rarity weights
+  (Spirit Crystal is the 1-weight chase item). Pickups are personal, client-local.
+- **Spirit Stars**: 10 visible-tab minutes of play = 1 ⭐ (aggregate seconds only — movement is
+  still never persisted). Toast + burst on each new star.
+- **Persistence**: new `arcade_profiles.progress` jsonb (own-row RLS unchanged):
+  `{ found, playSeconds, days }` (`days` pruned to 3 keys). Saved debounced from `main.js`
+  (`saveProgress`), mirrored to `localStorage.hz_arcade_progress` for offline mode.
+- **Unlocks**: `applyProgressUnlocks()` overlays treasure/star milestones on the skill-derived
+  state — fills the old 'Future team reward' slots (cape 4/5, trail 2/4) and adds Sunset Cape (6),
+  Emerald Cape (7) and Legend Tag (nameplate 5).
+- **Character Studio**: new **Treasures** tab (Treasure Bag stats, ❓ collection cards, milestone
+  reward cards); progress line now shows 💎/⭐; tabs grid is 5-up (3-up mobile).
+- **Map contract addition**: `makeInteractables(ctx)` now receives `ctx.loot`
+  (`dailySpots/isFound/collect`) — optional, lobby unaffected.
+- Guardrails held: no purchases/currency spend, no free text, no new realtime events, one Pixi
+  Application, procedural art only.
