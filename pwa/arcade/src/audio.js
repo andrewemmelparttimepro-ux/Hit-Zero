@@ -3,7 +3,6 @@
 
 let ctx = null;
 let master = null;
-let ambient = null;
 let muted = false;
 
 export function unlock() {
@@ -13,7 +12,6 @@ export function unlock() {
     master = ctx.createGain();
     master.gain.value = muted ? 0 : 0.8;
     master.connect(ctx.destination);
-    startAmbient();
   } catch { /* no audio — fine */ }
 }
 
@@ -22,50 +20,6 @@ export function setMuted(m) {
   if (master) master.gain.linearRampToValueAtTime(muted ? 0 : 0.8, (ctx?.currentTime || 0) + 0.15);
 }
 export function isMuted() { return muted; }
-
-// Soft sine pad with a slow sparkle arp — clubhouse vibe, very quiet.
-function startAmbient() {
-  if (!ctx) return;
-  ambient = ctx.createGain();
-  ambient.gain.value = 0.05;
-  ambient.connect(master);
-
-  // ONE shared, slow, shallow "breath" so the whole pad rises and falls as a
-  // unit. The old build gave each voice its own tremolo; the two drifted in and
-  // out of phase, and that fight is the unpleasant "worse-then-better" drone.
-  const breath = ctx.createOscillator();
-  breath.type = 'sine';
-  breath.frequency.value = 0.05;      // ~20s, barely-there swell
-  const breathAmt = ctx.createGain();
-  breathAmt.gain.value = 0.006;
-  breath.connect(breathAmt); breathAmt.connect(ambient.gain);
-  breath.start();
-
-  // Pure sines at exact whole-number ratios (D3–A3–D4): no detune and no
-  // harmonics means there is nothing to beat against, so it stays smooth.
-  const voice = (freq, level) => {
-    const o = ctx.createOscillator();
-    o.type = 'sine'; o.frequency.value = freq;
-    const g = ctx.createGain(); g.gain.value = level;
-    o.connect(g); g.connect(ambient);
-    o.start();
-  };
-  voice(146.83, 0.5);  // D3 root
-  voice(220.00, 0.32); // A3 fifth
-  voice(293.66, 0.22); // D4 octave
-
-  // gentle pentatonic sparkle every few seconds
-  const NOTES = [587.33, 659.25, 783.99, 880.0, 1046.5];
-  const tick = () => {
-    if (!ctx || ctx.state !== 'running') { setTimeout(tick, 4000); return; }
-    if (!muted && Math.random() < 0.75) {
-      const f = NOTES[(Math.random() * NOTES.length) | 0];
-      tone(f, 0.9, 0.018, 'sine');
-    }
-    setTimeout(tick, 2800 + Math.random() * 3200);
-  };
-  setTimeout(tick, 2500);
-}
 
 function tone(freq, dur = 0.15, vol = 0.12, type = 'square', slide = 0) {
   if (!ctx || muted) return;

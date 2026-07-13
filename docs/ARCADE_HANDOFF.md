@@ -1,7 +1,8 @@
 # ARCADE - Agent Handoff
 
-Updated 2026-07-13 after the POM-POM right-cabinet production launch on `arcade-v1`.
-POM-POM is deployed at `https://thehitzero.net/arcade/` and locally gameplay-verified.
+Updated 2026-07-13 after the POM-POM right-cabinet production launch and removal of the Arcade's
+automatic ambient pad on `arcade-v1`. POM-POM is deployed at `https://thehitzero.net/arcade/` and
+locally gameplay-verified.
 
 Read this first before touching Arcade code. This is the canonical handoff path. Older audit and
 handoff artifacts may still exist in `docs/`; do not delete them as cleanup.
@@ -10,9 +11,9 @@ handoff artifacts may still exist in `docs/`; do not delete them as cleanup.
 
 - Live target: `https://thehitzero.net/arcade/` and the embedded ARCADE PWA tab.
 - Current working branch: `arcade-v1`.
-- Production deployment: `dpl_3mMFBMhSHk6vva267m3Efd61gM9r`
-  (`https://hit-zero-ljrjsk5tl-nd-ai.vercel.app`), Ready and aliased to `thehitzero.net` on
-  2026-07-13. Production service worker marker: `hz-v95-2026-07-13-pom-pom`.
+- Production deployment: `dpl_AC7XJxoHQ3mphAFezQwhjHiLjDQX`
+  (`https://hit-zero-lbnn7zah4-nd-ai.vercel.app`), Ready and aliased to `thehitzero.net` on
+  2026-07-13. Production service worker marker: `hz-v96-2026-07-13-arcade-no-ambient-hum`.
 - Core shipped surface: lobby, Cheer Town, Super Squad NPCs, minimap, joystick movement, preset
   emotes and phrases, observer/preview/offline modes, and procedural chibi avatars.
 - Character Studio v2 replaces the old simple style modal. It is available on first run and from
@@ -32,6 +33,9 @@ handoff artifacts may still exist in `docs/`; do not delete them as cleanup.
   `arcade_profiles.progress.games.pomPom` stores `{best, plays}` under the athlete's existing
   own-row RLS; offline mode uses the same local progress fallback. There is no currency, purchase,
   free text, or new Realtime topic.
+- Entering the Arcade is intentionally silent. `audio.js` no longer starts the former continuous
+  D/A/D sine pad, gain-breath oscillator, or periodic sparkle loop. Short action cues, explicit
+  game music, and the HIT THE COUNTS practice track remain available when triggered.
 - The game always offers three packaged Arcade tracks plus the procedural Practice Track. A live
   athlete's team routine is added ahead of those choices when routine audio is available. Team
   invitations include the selected track id so every player runs the same chart.
