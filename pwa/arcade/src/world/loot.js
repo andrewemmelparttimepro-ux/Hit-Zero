@@ -10,7 +10,8 @@
 // treasures are keepsakes that unlock looks, in line with the guardrails.
 //
 // progress shape: { found: {itemId: count}, playSeconds: n,
-//                   days: {'YYYY-MM-DD': [spotIds]} }  (days pruned to 3)
+//                   days: {'YYYY-MM-DD': [spotIds]},
+//                   games: {pomPom: {best, plays}} }  (days pruned to 3)
 
 export const LOOT_ITEMS = [
   { id: 'gem',     name: 'Sparkle Gem',    emoji: '💎', rarity: 'common',   weight: 22 },
@@ -71,7 +72,9 @@ export function pickDailySpots(candidates, n, key = todayKey()) {
   return pool.slice(0, Math.min(n, pool.length)).map((spot) => ({ ...spot, item: weightedPick(LOOT_ITEMS, rng) }));
 }
 
-export function emptyProgress() { return { found: {}, playSeconds: 0, days: {} }; }
+export function emptyProgress() {
+  return { found: {}, playSeconds: 0, days: {}, games: { pomPom: { best: 0, plays: 0 } } };
+}
 
 export function sanitizeProgress(p) {
   const out = emptyProgress();
@@ -87,6 +90,13 @@ export function sanitizeProgress(p) {
     if (p.days && typeof p.days === 'object') {
       const keep = Object.keys(p.days).sort().slice(-3); // jsonb stays tiny
       for (const k of keep) if (Array.isArray(p.days[k])) out.days[k] = p.days[k].map(String).slice(0, 40);
+    }
+    const pomPom = p.games?.pomPom;
+    if (pomPom && typeof pomPom === 'object') {
+      const best = Math.round(Number(pomPom.best));
+      const plays = Math.round(Number(pomPom.plays));
+      if (Number.isFinite(best) && best > 0) out.games.pomPom.best = Math.min(best, 9999);
+      if (Number.isFinite(plays) && plays > 0) out.games.pomPom.plays = Math.min(plays, 999999);
     }
   }
   return out;

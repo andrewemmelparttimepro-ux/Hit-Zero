@@ -1,7 +1,7 @@
 # ARCADE - Agent Handoff
 
-Updated 2026-07-10 after reconciling the deployed HIT THE COUNTS tracks, builder access, and
-fun-loop bundle on `arcade-v1`.
+Updated 2026-07-13 after the POM-POM right-cabinet production launch on `arcade-v1`.
+POM-POM is deployed at `https://thehitzero.net/arcade/` and locally gameplay-verified.
 
 Read this first before touching Arcade code. This is the canonical handoff path. Older audit and
 handoff artifacts may still exist in `docs/`; do not delete them as cleanup.
@@ -10,14 +10,14 @@ handoff artifacts may still exist in `docs/`; do not delete them as cleanup.
 
 - Live target: `https://thehitzero.net/arcade/` and the embedded ARCADE PWA tab.
 - Current working branch: `arcade-v1`.
-- Current deployed service worker cache: `hz-v93-2026-07-08-password-reset-recovery`. The last
-  Arcade-specific cache marker was `hz-v88-2026-07-06-hit-the-counts`; the later shared PWA release
-  now carries the reconciled Arcade assets.
+- Production deployment: `dpl_3mMFBMhSHk6vva267m3Efd61gM9r`
+  (`https://hit-zero-ljrjsk5tl-nd-ai.vercel.app`), Ready and aliased to `thehitzero.net` on
+  2026-07-13. Production service worker marker: `hz-v95-2026-07-13-pom-pom`.
 - Core shipped surface: lobby, Cheer Town, Super Squad NPCs, minimap, joystick movement, preset
   emotes and phrases, observer/preview/offline modes, and procedural chibi avatars.
 - Character Studio v2 replaces the old simple style modal. It is available on first run and from
   the STYLE button.
-- HIT THE COUNTS is live on the LEFT arcade cabinet (the right cabinet stays COMING SOON). It is
+- HIT THE COUNTS is on the LEFT arcade cabinet. It is
   a count-based rhythm game driven by the routine backend: live athletes play the counts of their
   own team's routine music (`routines` + `routine_count_maps` + `routine_audio_assets`, all read
   under the athlete's existing RLS; audio via the `routine-audio-playback` broker with a storage
@@ -25,6 +25,13 @@ handoff artifacts may still exist in `docs/`; do not delete them as cleanup.
   Solo play plus team rounds: invite/join/progress/result messages ride the existing gym Realtime
   channel as a new `game` broadcast event (see `net/protocol.js`), live teammate accuracy pips
   during play, and a TEAM HIT ZERO celebration when 2+ players all land ≥80% accuracy.
+- POM-POM now occupies the RIGHT arcade cabinet. It is a complete touch-first Flappy-style solo
+  game starring Andrew's supplied crown-and-pom-pom cheerleader: tap/Space/Up to fly through
+  Spirit Gates, progressive speed and gap difficulty, forgiving character hitbox, pause/resume,
+  crash and instant restart loop, five in-game medal tiers, personal best, and flight count.
+  `arcade_profiles.progress.games.pomPom` stores `{best, plays}` under the athlete's existing
+  own-row RLS; offline mode uses the same local progress fallback. There is no currency, purchase,
+  free text, or new Realtime topic.
 - The game always offers three packaged Arcade tracks plus the procedural Practice Track. A live
   athlete's team routine is added ahead of those choices when routine audio is available. Team
   invitations include the selected track id so every player runs the same chart.
@@ -43,6 +50,8 @@ Pixi 8.19's shared batcher pool and the world app starts throwing
 - HIT THE COUNTS renders inside `rend.app` in its own container; the world container is hidden
   (`rend.world.visible = false`) while playing and restored on close. Never give a game its own
   Application.
+- POM-POM uses one lightweight DOM 2D canvas overlay. It does not create or destroy a Pixi
+  Application or WebGL context.
 - The Character Studio preview app is created ONCE and parked between opens (ticker stopped,
   canvas detached) — `getStudioApp()` in `ui/hud.js`. Never destroy it. (v87 destroyed it per
   close, which corrupted the world renderer on every studio close — fixed in this pass.)
@@ -57,13 +66,15 @@ pwa/arcade/
   src/theme.js
   src/audio.js                  + createPracticeTrack + judgment/count-in sfx
   assets/audio/                 three packaged Arcade music tracks
+  assets/pom-pom-flyer.png      transparent cheerleader flight sprite
   src/games/chart.js            HIT THE COUNTS chart/scoring — PURE (node-testable, no PIXI/DOM)
   src/games/hitTheCounts.js     the game: overlay DOM + lane rendering + rounds
+  src/games/pomPom.js            POM-POM: 2D flight loop + medals + personal record
   src/world/avatar.js
   src/world/renderer.js
   src/world/tilemap.js
   src/world/npc.js
-  src/world/maps/lobby.js       left cabinet = HIT THE COUNTS portal + attract mode
+  src/world/maps/lobby.js       left = HIT THE COUNTS; right = POM-POM; both have attract modes
   src/world/maps/cheertown.js
   src/net/protocol.js           + gameMsg/parseGame ('game' broadcast event)
   src/net/channel.js            + sendGame/onGame; offline bots play team rounds
@@ -130,6 +141,7 @@ node --check pwa/arcade/src/ui/hud.js
 node --check pwa/arcade/src/world/avatar.js
 node --check pwa/arcade/src/games/chart.js
 node --check pwa/arcade/src/games/hitTheCounts.js
+node --check pwa/arcade/src/games/pomPom.js
 node quality/run-quality-monitor.mjs --mode=dry --prod-read --write-report --json
 ```
 
@@ -148,6 +160,24 @@ HIT THE COUNTS specifics (offline mode, `http://localhost:5600/arcade/`):
   "reading 'clear'" error means someone destroyed a Pixi Application (see Pixi discipline).
 - Live mode with a rostered athlete: menu shows the team routine name; count-map section labels
   (Standing Tumbling, Pyramid…) appear as gold/HIT-ZERO star notes on their real counts.
+
+POM-POM specifics (offline mode, `http://localhost:5600/arcade/`):
+
+- Right cabinet marquee says POM-POM and its miniature attract screen shows a flyer moving through
+  a Spirit Gate; the old COMING SOON state is gone.
+- Open the cabinet → TAP TO PLAY → TAP TO FLY. Touch anywhere in the stage, Space, or Up flaps.
+- Gates enter from the right, score exactly once after clearing the character, speed increases and
+  the opening tightens gradually. Pink and teal gate palettes alternate.
+- P or the header pause button freezes a live run. Switching tabs also pauses rather than causing
+  an off-screen crash.
+- A collision produces a result card, saved best, flight count, current medal, next-medal target,
+  FLY AGAIN, and EXIT. Scores never become spendable currency.
+- Verified locally at the default desktop viewport and `390x844`; sprite, gates, crash/results,
+  restart, and pause state rendered with no browser console errors.
+- Verified in production on 2026-07-13: the live POM-POM module, sprite, Arcade integration files,
+  CSS, and service worker matched the tested local bytes exactly. The unauthenticated live lobby
+  loaded in the correct observer-only state with the right cabinet art present and zero browser
+  warnings or errors. Evidence: `docs/audits/evidence/2026-07-13-pom-pom-production-lobby.png`.
 
 Manual checks:
 
@@ -183,7 +213,8 @@ Commit scope: `pwa/arcade/src/world/{loot.js,maps/cheertown.js,avatar.js}`, `src
 - **Spirit Stars**: 10 visible-tab minutes of play = 1 ⭐ (aggregate seconds only — movement is
   still never persisted). Toast + burst on each new star.
 - **Persistence**: new `arcade_profiles.progress` jsonb (own-row RLS unchanged):
-  `{ found, playSeconds, days }` (`days` pruned to 3 keys). Saved debounced from `main.js`
+  `{ found, playSeconds, days, games: {pomPom: {best, plays}} }` (`days` pruned to 3 keys).
+  Saved debounced from `main.js`
   (`saveProgress`), mirrored to `localStorage.hz_arcade_progress` for offline mode.
 - **Unlocks**: `applyProgressUnlocks()` overlays treasure/star milestones on the skill-derived
   state — fills the old 'Future team reward' slots (cape 4/5, trail 2/4) and adds Sunset Cape (6),

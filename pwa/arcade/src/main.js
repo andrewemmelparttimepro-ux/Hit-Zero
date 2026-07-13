@@ -28,6 +28,7 @@ import { createJoystick } from './ui/joystick.js';
 import { createWheels } from './ui/emoteWheel.js';
 import { createHud } from './ui/hud.js';
 import { createHitTheCounts } from './games/hitTheCounts.js';
+import { createPomPom } from './games/pomPom.js';
 
 const SUPA_URL = 'https://ldhzkdqznccfgpdvqyfk.supabase.co';
 const SUPA_ANON = 'sb_publishable_P2e2aHrrMYP85xBfncIilA_2435TVII';
@@ -371,7 +372,7 @@ async function boot() {
         }
       },
       onGame(id, msg) {
-        game?.handleGame(id, msg);
+        countsGame?.handleGame(id, msg);
       },
     },
   });
@@ -379,13 +380,41 @@ async function boot() {
   // ── 6.5 HIT THE COUNTS (left cabinet game) ──
   // The instance outlives open/close so round invites received while the kid
   // is wandering the world still land (as a toast pointing at the cabinet).
-  const game = createHitTheCounts({
+  const countsGame = createHitTheCounts({
     mode, supa, profile, theme, rend,
     sfx: audio.sfx, audio, net,
     getAthlete: () => ({ athleteId, teamId, teamName }),
     getAvatarCfg: () => myAvatarCfg,
     getPeerName: (id) => peers.get(id)?.meta?.name || 'Teammate',
     toast: (m) => hud.toast(m),
+    onOpenChange(open) {
+      document.body.classList.toggle('arc-ingame', open);
+      if (open && player) { player.moving = false; player.avatar.setMoving(false); }
+    },
+  });
+
+  // ── 6.6 POM-POM (right cabinet game) ──
+  // A complete solo flight game with a durable personal best. The record
+  // shares arcade_profiles.progress with Cheer Town keepsakes and remains
+  // available offline through the existing local progress fallback.
+  const pomPomGame = createPomPom({
+    mode, theme, sfx: audio.sfx, audio,
+    getRecord: () => progressState.games?.pomPom || { best: 0, plays: 0 },
+    recordRun(score) {
+      const previous = progressState.games?.pomPom || { best: 0, plays: 0 };
+      progressState = sanitizeProgress({
+        ...progressState,
+        games: {
+          ...progressState.games,
+          pomPom: {
+            best: Math.max(previous.best || 0, Math.round(Number(score) || 0)),
+            plays: (previous.plays || 0) + 1,
+          },
+        },
+      });
+      saveProgress();
+      return progressState.games.pomPom;
+    },
     onOpenChange(open) {
       document.body.classList.toggle('arc-ingame', open);
       if (open && player) { player.moving = false; player.avatar.setMoving(false); }
@@ -411,7 +440,10 @@ async function boot() {
     flash: () => hud.flash(),
     sfx: audio.sfx,
     travel: (key) => switchScene(key),
-    openGame: () => game.open(),
+    openGame(key = 'counts') {
+      if (key === 'pom-pom') pomPomGame.open();
+      else countsGame.open();
+    },
     teleport(c, r) {
       if (!player) return;
       const w = gridToWorld(c + 0.5, r + 0.5);
@@ -553,7 +585,7 @@ async function boot() {
       }
     }
 
-    if (player && !traveling && !game.isOpen) {
+    if (player && !traveling && !countsGame.isOpen && !pomPomGame.isOpen) {
       const vx = joy.vector.x, vy = joy.vector.y;
       const mag = Math.hypot(vx, vy);
       const moving = mag > 0.01 && !player.avatar.isEmoting();
@@ -641,7 +673,9 @@ async function boot() {
     get progress() { return progressState; },
     get unlocks() { return unlockState; },
     travel: (k) => switchScene(k),
-    peers, rend, theme, game,
+    peers, rend, theme,
+    game: countsGame, // backwards-compatible debug handle
+    games: { counts: countsGame, pomPom: pomPomGame },
   };
 
   // ── 10. open the doors ──

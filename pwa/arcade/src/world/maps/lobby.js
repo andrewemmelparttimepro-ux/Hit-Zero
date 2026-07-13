@@ -228,6 +228,7 @@ function makeInteractables({ rend, theme, getPlayer, emote, say, toast, flash, s
     c.rotation = WALL_ANGLE;
     const isPortal = cab.key === 'center';
     const isCounts = cab.key === 'left'; // HIT THE COUNTS — first real game
+    const isPomPom = cab.key === 'right'; // POM-POM — cheer flight game
 
     const W = 150, H = 190;
     const body = new Graphics();
@@ -247,10 +248,11 @@ function makeInteractables({ rend, theme, getPlayer, emote, say, toast, flash, s
     c.addChild(neon);
 
     const marquee = new Text({
-      text: isPortal ? 'CHEER TOWN' : isCounts ? 'HIT THE COUNTS' : 'ARCADE',
+      text: isPortal ? 'CHEER TOWN' : isCounts ? 'HIT THE COUNTS' : 'POM-POM',
       style: {
         fontFamily: 'system-ui, -apple-system, sans-serif', fontSize: isCounts ? 13 : 16, fontWeight: '900',
-        fill: isPortal ? theme.accentNum : isCounts ? 0xffd166 : 0xd8d8e2, letterSpacing: isCounts ? 1 : 2,
+        fill: isPortal ? theme.accentNum : isCounts ? 0xffd166 : isPomPom ? 0xff8fc4 : 0xd8d8e2,
+        letterSpacing: isCounts ? 1 : 2,
       },
       resolution: 2,
     });
@@ -264,15 +266,15 @@ function makeInteractables({ rend, theme, getPlayer, emote, say, toast, flash, s
     const scr = new Graphics();
     screen.addChild(scr);
     const scrText = new Text({
-      text: (isPortal || isCounts) ? 'TAP TO PLAY!' : 'COMING\nSOON',
+      text: (isPortal || isCounts || isPomPom) ? 'TAP TO PLAY!' : 'COMING\nSOON',
       style: {
-        fontFamily: 'system-ui, -apple-system, sans-serif', fontSize: (isPortal || isCounts) ? 14 : 16,
+        fontFamily: 'system-ui, -apple-system, sans-serif', fontSize: (isPortal || isCounts || isPomPom) ? 14 : 16,
         fontWeight: '900', fill: 0xffffff, align: 'center', letterSpacing: 1.5, lineHeight: 19,
       },
       resolution: 2,
     });
     scrText.anchor.set(0.5);
-    scrText.position.y = (isPortal || isCounts) ? 30 : 6;
+    scrText.position.y = (isPortal || isCounts || isPomPom) ? 30 : 6;
     screen.addChild(scrText);
 
     // attract-mode count numbers for the rhythm cabinet
@@ -324,6 +326,22 @@ function makeInteractables({ rend, theme, getPlayer, emote, say, toast, flash, s
         scr.moveTo(-38, -12).lineTo(0, -28).lineTo(38, -12).closePath().fill(0x232c4a);
         scr.roundRect(-7, 2, 14, 16, 2).fill({ color: 0xffd166, alpha: 0.75 + 0.25 * Math.sin(t * 2.4) });
         scrText.alpha = 0.6 + 0.4 * Math.abs(Math.sin(t * 2.2));
+      } else if (isPomPom) {
+        // tiny flight loop: a pom-pom flyer bobs between two spirit gates
+        scr.roundRect(-SW / 2, -SH / 2, SW, SH, 6).fill(0x17112b);
+        for (let i = 0; i < 6; i++) {
+          const sx = -SW / 2 + 10 + ((i * 29) % (SW - 20));
+          const sy = -SH / 2 + 7 + ((i * 17) % 39);
+          scr.circle(sx, sy, 1.2).fill({ color: 0xffffff, alpha: 0.35 + 0.5 * Math.abs(Math.sin(t * 1.7 + i)) });
+        }
+        const gateX = 31 - ((t * 26) % 82);
+        scr.roundRect(gateX, -SH / 2, 17, 27, 4).fill(theme.accent2Num);
+        scr.roundRect(gateX, 12, 17, SH / 2 - 12, 4).fill(theme.accentNum);
+        const flyerY = -3 + Math.sin(t * 3.2) * 8;
+        scr.circle(-27, flyerY, 8).fill(0xff8fc4).stroke({ color: 0xffffff, width: 1.5 });
+        scr.circle(-34, flyerY + 1, 4).fill(0xffffff);
+        scr.circle(-19, flyerY - 1, 4).fill(0xffffff);
+        scrText.alpha = 0.65 + 0.35 * Math.abs(Math.sin(t * 2.4));
       } else {
         scr.roundRect(-SW / 2, -SH / 2, SW, SH, 6).fill(0x0a0a14);
         const sweep = ((t * 60) % (SW + 80)) - SW / 2 - 40;
@@ -355,6 +373,13 @@ function makeInteractables({ rend, theme, getPlayer, emote, say, toast, flash, s
         sfx.travel();
         rend.fx.burst(base.x, base.y - 130, 'star', 12);
         openGame?.('counts');
+        return;
+      }
+      if (isPomPom) {
+        if (!p) { toast('Observers can watch the scores — athletes play!'); return; }
+        sfx.travel();
+        rend.fx.burst(base.x, base.y - 130, 'heart', 12);
+        openGame?.('pom-pom');
         return;
       }
       wobble = 1;
