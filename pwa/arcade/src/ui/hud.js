@@ -6,7 +6,7 @@ import {
   CAPES, TRAILS, NAMEPLATES, COSMETIC_LABELS, createAvatar, sanitizeAvatar,
 } from '../world/avatar.js';
 import {
-  LOOT_ITEMS, MILESTONES, POM_POM_PRIZES, RARITY_LABEL, sanitizeProgress,
+  LOOT_ITEMS, MILESTONES, POM_POM_PRIZES, POM_POM_GOODIES, RARITY_LABEL, sanitizeProgress,
   spiritStars, totalFound, SPIRIT_SECONDS_PER_STAR,
 } from '../world/loot.js';
 
@@ -188,16 +188,22 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
     return studioAppPromise;
   }
 
-  function openStylePanel(current, { firstRun = false, unlocks = null, progress = null } = {}) {
+  function openStylePanel(current, {
+    firstRun = false, unlocks = null, progress = null, initialTab = 'base', spotlight = [],
+  } = {}) {
     closeStylePanel();
     let cfg = sanitizeAvatar(current);
     const prog = sanitizeProgress(progress);
-    let activeTab = 'base';
+    const validTabs = new Set(['base', 'bow', 'uniform', 'special', 'loot']);
+    let activeTab = validTabs.has(initialTab) ? initialTab : 'base';
+    const freshGear = Array.isArray(spotlight)
+      ? spotlight.filter((item) => item?.slot && Number.isFinite(Number(item?.index))).slice(0, 6)
+      : [];
     let previewAvatar = null;
     let previewApp = null;
 
     panel = document.createElement('div');
-    panel.className = 'arc-style-panel';
+    panel.className = 'arc-style-panel' + (freshGear.length ? ' has-spotlight' : '');
 
     const cssHex = (n) => '#' + n.toString(16).padStart(6, '0');
     const canUse = (slot, index) => {
@@ -223,6 +229,12 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
         </div>
         <button class="arc-studio-close" type="button" aria-label="Close Character Studio">&times;</button>
       </div>
+      ${freshGear.length ? `
+        <div class="arc-studio-spotlight">
+          <span>NEW GEAR FOUND</span>
+          <strong>${freshGear.map((item) => escapeHtml(`${item.emoji || '✦'} ${item.label}`)).join(' · ')}</strong>
+          <small>It is already yours. Use Equip Now below to wear it immediately.</small>
+        </div>` : ''}
       <div class="arc-studio-body">
         <div class="arc-studio-preview">
           <div class="arc-preview-stage"></div>
@@ -359,6 +371,31 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
       return row;
     }
 
+    function renderFreshGear() {
+      if (!freshGear.length) return;
+      const row = document.createElement('div');
+      row.className = 'arc-style-row arc-fresh-gear';
+      row.innerHTML = '<label>Ready to wear</label>';
+      const grid = document.createElement('div');
+      grid.className = 'arc-special-grid';
+      for (const item of freshGear) {
+        const equipped = cfg[item.slot] === item.index;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'arc-special-card arc-new-gear-card' + (equipped ? ' sel' : '');
+        button.innerHTML = `
+          <span class="arc-special-swatch">${escapeHtml(item.emoji || '✦')}</span>
+          <span class="arc-special-copy">
+            <strong>${escapeHtml(item.label)}</strong>
+            <small>${equipped ? 'Equipped now' : 'EQUIP NOW'}</small>
+          </span>`;
+        button.addEventListener('click', () => choose(item.slot, item.index));
+        grid.appendChild(button);
+      }
+      row.appendChild(grid);
+      content.appendChild(row);
+    }
+
     const tabDefs = [
       { id: 'base', label: 'Base' },
       { id: 'bow', label: 'Bows' },
@@ -379,6 +416,7 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
       activeTab = id;
       tabs.querySelectorAll('.arc-studio-tab').forEach((b) => b.classList.toggle('sel', b.textContent === tabDefs.find(t => t.id === id)?.label));
       content.innerHTML = '';
+      renderFreshGear();
       if (id === 'base') {
         content.appendChild(colorRow('Skin tone', SKINS, 'skin'));
         content.appendChild(chipRow('Hair style', HAIR_STYLES, 'hair', COSMETIC_LABELS.hair));
@@ -397,9 +435,9 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
         content.appendChild(specialGrid('Capes', 'cape', CAPES,
           (c, i) => i === 0 ? 'rgba(255,255,255,0.06)' : cssHex(c ?? theme.accentNum)));
         content.appendChild(specialGrid('Trails', 'trail', TRAILS,
-          (_, i) => ['rgba(255,255,255,0.06)', '#ffd166', theme.accent2, '#b387ff', '#ff4f79'][i]));
+          (_, i) => ['rgba(255,255,255,0.06)', '#ffd166', theme.accent2, '#b387ff', '#ff4f79', theme.accent, '#ffd166', '#74d7db'][i]));
         content.appendChild(specialGrid('Nameplates', 'nameplate', NAMEPLATES,
-          (_, i) => ['rgba(255,255,255,0.06)', '#ffd166', theme.accent2, '#ffffff', theme.accent, '#ffd166'][i]));
+          (_, i) => ['rgba(255,255,255,0.06)', '#ffd166', theme.accent2, '#ffffff', theme.accent, '#ffd166', '#f97fac', '#ffd166', '#43e97b'][i]));
       } else {
         renderTreasures();
       }
@@ -492,6 +530,27 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
       }
       pomRow.appendChild(pomGrid);
       content.appendChild(pomRow);
+
+      const findsRow = document.createElement('div');
+      findsRow.className = 'arc-style-row';
+      findsRow.innerHTML = '<label>Pom-Pom Flight Finds</label>';
+      const findsGrid = document.createElement('div');
+      findsGrid.className = 'arc-special-grid';
+      const ownedFinds = new Set(prog.games.pomPom.goodies || []);
+      for (const item of POM_POM_GOODIES) {
+        const met = ownedFinds.has(item.id);
+        const card = document.createElement('div');
+        card.className = 'arc-special-card arc-loot-card' + (met ? '' : ' locked');
+        card.innerHTML = `
+          <span class="arc-special-swatch">${met ? escapeHtml(item.emoji) : '?'}</span>
+          <span class="arc-special-copy">
+            <strong>${met ? escapeHtml(item.label) : 'Mystery Flight Find'}</strong>
+            <small>${met ? 'Caught in flight · available to equip' : 'Watch the Spirit Gates for a floating goodie'}</small>
+          </span>`;
+        findsGrid.appendChild(card);
+      }
+      findsRow.appendChild(findsGrid);
+      content.appendChild(findsRow);
     }
     renderTab(activeTab);
   }

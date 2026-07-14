@@ -11,7 +11,8 @@
 //
 // progress shape: { found: {itemId: count}, playSeconds: n,
 //                   days: {'YYYY-MM-DD': [spotIds]},
-//                   games: {pomPom: {best, plays}} }  (days pruned to 3)
+//                   games: {pomPom: {best, plays, goodies: [itemId]}} }
+// (days pruned to 3)
 
 export const LOOT_ITEMS = [
   { id: 'gem',     name: 'Sparkle Gem',    emoji: '💎', rarity: 'common',   weight: 22 },
@@ -22,6 +23,17 @@ export const LOOT_ITEMS = [
   { id: 'pom',     name: 'Crystal Pom',    emoji: '❄️', rarity: 'uncommon', weight: 8 },
   { id: 'trophy',  name: 'Mini Trophy',    emoji: '🏆', rarity: 'rare',     weight: 4 },
   { id: 'crystal', name: 'Spirit Crystal', emoji: '🔮', rarity: 'rare',     weight: 1 },
+];
+
+// One-time gear finds that float through Pom-Pom's Spirit Gates. These are
+// not currency and never need to be purchased: touching one grants the exact
+// Closet item immediately through arcade_profiles.progress.
+export const POM_POM_GOODIES = [
+  { id: 'lucky_loop_bow',       label: 'Lucky Loop Bow',       emoji: '🍀', slot: 'bowShape', index: 5 },
+  { id: 'starlight_uniform',    label: 'Starlight Uniform',    emoji: '✨', slot: 'uniform',  index: 9 },
+  { id: 'crystal_wings',        label: 'Crystal Wings',        emoji: '💎', slot: 'cape',     index: 10 },
+  { id: 'victory_comet_trail',  label: 'Victory Comet Trail', emoji: '🏆', slot: 'trail',    index: 7 },
+  { id: 'treasure_flyer_tag',   label: 'Treasure Flyer Tag',  emoji: '🎁', slot: 'nameplate', index: 8 },
 ];
 
 export const RARITY_LABEL = { common: 'Common', uncommon: 'Rare find', rare: 'SUPER RARE!' };
@@ -73,7 +85,7 @@ export function pickDailySpots(candidates, n, key = todayKey()) {
 }
 
 export function emptyProgress() {
-  return { found: {}, playSeconds: 0, days: {}, games: { pomPom: { best: 0, plays: 0 } } };
+  return { found: {}, playSeconds: 0, days: {}, games: { pomPom: { best: 0, plays: 0, goodies: [] } } };
 }
 
 export function sanitizeProgress(p) {
@@ -97,6 +109,10 @@ export function sanitizeProgress(p) {
       const plays = Math.round(Number(pomPom.plays));
       if (Number.isFinite(best) && best > 0) out.games.pomPom.best = Math.min(best, 9999);
       if (Number.isFinite(plays) && plays > 0) out.games.pomPom.plays = Math.min(plays, 999999);
+      const knownGoodies = new Set(POM_POM_GOODIES.map((item) => item.id));
+      if (Array.isArray(pomPom.goodies)) {
+        out.games.pomPom.goodies = [...new Set(pomPom.goodies.map(String).filter((id) => knownGoodies.has(id)))];
+      }
     }
   }
   return out;
@@ -156,6 +172,16 @@ export function applyProgressUnlocks(unlocks, progress) {
     if (pomBest < prize.minScore) continue;
     allowed[prize.slot] = allowed[prize.slot] || [0];
     if (!allowed[prize.slot].includes(prize.index)) allowed[prize.slot].push(prize.index);
+  }
+  const pomGoodies = new Set(progress?.games?.pomPom?.goodies || []);
+  for (const goodie of POM_POM_GOODIES) {
+    reasons[goodie.slot] = {
+      ...(reasons[goodie.slot] || {}),
+      [goodie.index]: `Catch the ${goodie.label} goodie in Pom-Pom`,
+    };
+    if (!pomGoodies.has(goodie.id)) continue;
+    allowed[goodie.slot] = allowed[goodie.slot] || [0];
+    if (!allowed[goodie.slot].includes(goodie.index)) allowed[goodie.slot].push(goodie.index);
   }
   return { ...base, allowed, reasons };
 }

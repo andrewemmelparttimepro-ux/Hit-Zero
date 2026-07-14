@@ -7,7 +7,7 @@
 // cheerleader reference. No extra WebGL context: this cabinet uses a small 2D
 // canvas overlay and leaves the shared Pixi world untouched underneath.
 
-import { POM_POM_PRIZES } from '../world/loot.js';
+import { POM_POM_PRIZES, POM_POM_GOODIES } from '../world/loot.js';
 
 const ASSET_URL = new URL('../../assets/pom-pom-flyer.png', import.meta.url).href;
 const FALLBACK_KEY = 'hz_arcade_pom_pom_record';
@@ -98,7 +98,7 @@ export function rewardMomentFor(value) {
 
 export function createPomPom({
   mode, theme, sfx, audio, supa, profileId, programId, leaderboardEligible,
-  getRecord, checkpointRun, recordRun, openCloset, onOpenChange,
+  getRecord, checkpointRun, recordRun, collectGoodie, openCloset, onOpenChange,
 }) {
   const playable = mode === 'player' || mode === 'offline';
   const sprite = new Image();
@@ -108,6 +108,7 @@ export function createPomPom({
   let root = null;
   let stage = null;
   let celebrationEl = null;
+  let goodieToastEl = null;
   let canvas = null;
   let ctx = null;
   let raf = 0;
@@ -120,13 +121,16 @@ export function createPomPom({
   let score = 0;
   let record = readRecord();
   let gates = [];
+  let goodies = [];
   let particles = [];
   let spawnIn = 0;
   let spawnedGates = 0;
+  let nextGoodieGate = 4;
   let worldT = 0;
   let newBest = false;
   let resultTimer = null;
   let celebrationTimer = null;
+  let goodieToastTimer = null;
   let leaderboardTimer = null;
   let autoPaused = false;
   let leaderboard = [];
@@ -134,6 +138,7 @@ export function createPomPom({
   let postingState = 'idle';
   let runStartBest = record.best;
   let earnedRewards = [];
+  let ownedGoodieIds = new Set(record.goodies || []);
   let flyer = { x: 0, y: 0, vy: 0, rotation: 0 };
 
   const clouds = [
@@ -171,12 +176,14 @@ export function createPomPom({
           <div class="pom-phase" data-testid="pom-pom-phase">${phaseCopy(0)}</div>
         </div>
         <div class="pom-celebration" data-pom-celebration aria-live="polite" aria-atomic="true"></div>
+        <div class="pom-goodie-toast" data-pom-goodie-toast aria-live="assertive" aria-atomic="true"></div>
         <div class="pom-screen"></div>
       </div>
     `;
     document.body.appendChild(root);
     stage = root.querySelector('.pom-stage');
     celebrationEl = root.querySelector('[data-pom-celebration]');
+    goodieToastEl = root.querySelector('[data-pom-goodie-toast]');
     canvas = root.querySelector('.pom-canvas');
     ctx = canvas.getContext('2d', { alpha: false });
 
@@ -199,6 +206,7 @@ export function createPomPom({
     if (!root) return;
     clearTimeout(resultTimer);
     clearTimeout(celebrationTimer);
+    clearTimeout(goodieToastTimer);
     clearTimeout(leaderboardTimer);
     cancelAnimationFrame(raf);
     window.removeEventListener('keydown', onKey);
@@ -208,6 +216,7 @@ export function createPomPom({
     root = null;
     stage = null;
     celebrationEl = null;
+    goodieToastEl = null;
     canvas = null;
     ctx = null;
     state = 'closed';
@@ -233,8 +242,10 @@ export function createPomPom({
     setState('menu');
     resetFlyer();
     gates = [];
+    goodies = [];
     particles = [];
     dismissCelebration();
+    dismissGoodieToast();
     score = 0;
     newBest = false;
     updateHud();
@@ -255,7 +266,7 @@ export function createPomPom({
           <div class="pom-hero-wrap"><img src="${ASSET_URL}" alt="Pom-Pom, the flying cheerleader" /></div>
           <div class="pom-kicker">SPIRIT FLIGHT</div>
           <h3>POM-POM</h3>
-          <p>Learn the rhythm through three roomy warm-up gates. Cheer streaks and Closet prizes begin at gate 3.</p>
+          <p>Learn the rhythm through three roomy warm-up gates. Then watch for floating gear—some goodies dare you toward a gate's risky edge.</p>
           <div class="pom-menu-stats">
             <span><b>${record.best}</b> BEST</span>
             <span><b>${record.plays}</b> FLIGHTS</span>
@@ -274,12 +285,16 @@ export function createPomPom({
     newBest = false;
     runStartBest = record.best;
     earnedRewards = [];
+    ownedGoodieIds = new Set(record.goodies || []);
     gates = [];
+    goodies = [];
     particles = [];
     spawnedGates = 0;
+    nextGoodieGate = 4 + Math.floor(Math.random() * 3);
     spawnIn = 0.78;
     postingState = 'idle';
     dismissCelebration();
+    dismissGoodieToast();
     resetFlyer();
     updateHud();
     setState('ready');
@@ -333,7 +348,13 @@ export function createPomPom({
 
   function showResults() {
     if (!root || state !== 'gameover') return;
+    dismissGoodieToast();
     const medal = medalFor(score);
+    const gearActions = earnedRewards.length && openCloset
+      ? `
+          <button class="arc-game-btn primary pom-equip-btn" data-pom="closet" data-testid="pom-pom-equip">VIEW &amp; EQUIP NEW GEAR</button>
+          <button class="arc-game-btn" data-pom="again" data-testid="pom-pom-again">FLY AGAIN</button>`
+      : '<button class="arc-game-btn primary" data-pom="again" data-testid="pom-pom-again">FLY AGAIN</button>';
     screenEl().innerHTML = `
       <div class="pom-results-shell">
         <div class="pom-card pom-results" data-testid="pom-pom-results">
@@ -349,8 +370,7 @@ export function createPomPom({
           ${runPrizeMarkup()}
           <div class="pom-post-status ${postingState}" data-pom-post-status>${postingCopy()}</div>
           <div class="arc-game-btnrow">
-            <button class="arc-game-btn primary" data-pom="again" data-testid="pom-pom-again">FLY AGAIN</button>
-            ${earnedRewards.length && openCloset ? '<button class="arc-game-btn" data-pom="closet">OPEN CLOSET</button>' : ''}
+            ${gearActions}
             <button class="arc-game-btn" data-pom="exit">EXIT</button>
           </div>
         </div>
@@ -401,11 +421,15 @@ export function createPomPom({
     audio?.unlock?.();
     if (action === 'start' || action === 'again') startRound();
     else if (action === 'resume') togglePause();
-    else if (action === 'closet') {
-      close();
-      openCloset?.();
-    }
+    else if (action === 'closet') openPrizeCloset();
     else if (action === 'exit') close();
+  }
+
+  function openPrizeCloset() {
+    if (!openCloset) return;
+    const rewards = earnedRewards.map((item) => ({ ...item }));
+    close();
+    openCloset(rewards);
   }
 
   function onStagePointer(event) {
@@ -423,7 +447,8 @@ export function createPomPom({
     if (![' ', 'ArrowUp'].includes(event.key)) return;
     event.preventDefault();
     audio?.unlock?.();
-    if (state === 'menu' || state === 'gameover') startRound();
+    if (state === 'gameover' && earnedRewards.length && openCloset) openPrizeCloset();
+    else if (state === 'menu' || state === 'gameover') startRound();
     else if (state === 'ready') beginFlight();
     else if (state === 'playing') flap();
   }
@@ -475,7 +500,12 @@ export function createPomPom({
         if (moment) celebrateStreak(moment);
       }
     }
+    for (const goodie of goodies) {
+      goodie.x -= speed * dt;
+      if (!goodie.collected && didCollectGoodie(goodie)) collectFlightGoodie(goodie);
+    }
     gates = gates.filter((gate) => gate.x + gate.w > -24);
+    goodies = goodies.filter((goodie) => !goodie.collected && goodie.x + goodie.radius > -24);
     updateParticles(dt);
     if (didCollide()) crash();
   }
@@ -515,14 +545,67 @@ export function createPomPom({
       minY,
       Math.min(maxY, proceduralY * (1 - warmupBlend) + flyer.y * warmupBlend),
     );
-    gates.push({
+    const gate = {
       x: W + Math.max(36, W * 0.06),
       y: gapY,
       gap,
       w: Math.max(72, Math.min(106, W * 0.13)),
       scored: false,
       palette: (score + gates.length) % 2,
+    };
+    gates.push(gate);
+    maybeSpawnGoodie(gate, gateNumber);
+  }
+
+  function maybeSpawnGoodie(gate, gateNumber) {
+    if (gateNumber < nextGoodieGate || ownedGoodieIds.size >= POM_POM_GOODIES.length) return;
+    const activeIds = new Set(goodies.map((goodie) => goodie.item.id));
+    const available = POM_POM_GOODIES.filter((item) => !ownedGoodieIds.has(item.id) && !activeIds.has(item.id));
+    if (!available.length) return;
+    const item = available[Math.floor(Math.random() * available.length)];
+    const risky = Math.random() < 0.62;
+    const edgeSign = Math.random() < 0.5 ? -1 : 1;
+    const safeEdgeOffset = Math.max(24, gate.gap / 2 - characterSize() * 0.28 - 8);
+    const baseY = risky
+      ? gate.y + edgeSign * safeEdgeOffset
+      : gate.y + (Math.random() - 0.5) * gate.gap * 0.16;
+    goodies.push({
+      item,
+      x: gate.x + gate.w / 2,
+      baseY,
+      radius: Math.max(16, Math.min(21, W * 0.026)),
+      risky,
+      edgeSign,
+      phase: Math.random() * Math.PI * 2,
+      collected: false,
     });
+    nextGoodieGate = gateNumber + 4 + Math.floor(Math.random() * 4);
+  }
+
+  function goodieY(goodie) {
+    return goodie.baseY + Math.sin(worldT * 4.2 + goodie.phase) * 4;
+  }
+
+  function didCollectGoodie(goodie) {
+    const dx = flyer.x - goodie.x;
+    const dy = flyer.y - goodieY(goodie);
+    const reach = goodie.radius + characterSize() * 0.1;
+    return dx * dx + dy * dy <= reach * reach;
+  }
+
+  function collectFlightGoodie(goodie) {
+    goodie.collected = true;
+    ownedGoodieIds.add(goodie.item.id);
+    if (!earnedRewards.some((reward) => reward.id === goodie.item.id)) earnedRewards.push(goodie.item);
+    const saved = collectGoodie?.(goodie.item);
+    if (saved) record = sanitizeRecord(saved);
+    const y = goodieY(goodie);
+    spray(goodie.x, y, 34, true);
+    sfx?.score?.();
+    if (navigator.vibrate) {
+      try { navigator.vibrate([12, 24, 12]); } catch { /* optional */ }
+    }
+    showGoodieToast(goodie.item);
   }
 
   function didCollide() {
@@ -551,6 +634,7 @@ export function createPomPom({
     drawClouds();
     drawCity();
     for (const gate of gates) drawGate(gate);
+    for (const goodie of goodies) drawGoodie(goodie);
     drawParticles();
 
     if (state === 'menu') {
@@ -650,6 +734,43 @@ export function createPomPom({
     const dark = gate.palette ? '#2aa7b0' : '#c63f7d';
     drawGateTower(gate.x, 0, gate.w, topEnd, primary, dark, true);
     drawGateTower(gate.x, bottomStart, gate.w, ground - bottomStart, primary, dark, false);
+  }
+
+  function drawGoodie(goodie) {
+    const y = goodieY(goodie);
+    const pulse = 1 + Math.sin(worldT * 5 + goodie.phase) * 0.08;
+    ctx.save();
+    ctx.translate(goodie.x, y);
+    ctx.scale(pulse, pulse);
+    ctx.shadowColor = goodie.risky ? '#ff8fc4' : '#74d7db';
+    ctx.shadowBlur = goodie.risky ? 24 : 17;
+    const glow = ctx.createRadialGradient(0, 0, 3, 0, 0, goodie.radius + 9);
+    glow.addColorStop(0, 'rgba(255,255,255,0.96)');
+    glow.addColorStop(0.48, goodie.risky ? 'rgba(249,127,172,0.88)' : 'rgba(116,215,219,0.86)');
+    glow.addColorStop(1, 'rgba(24,12,42,0.16)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(0, 0, goodie.radius + 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#ffffff';
+    ctx.globalAlpha = 0.82;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, goodie.radius + 3, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.font = `${Math.round(goodie.radius * 1.42)}px "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(goodie.item.emoji, 0, 1);
+    if (goodie.risky) {
+      ctx.fillStyle = '#ffd166';
+      ctx.font = '900 8px ui-monospace, SFMono-Regular, Menlo, monospace';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText('DARE', 0, -goodie.radius - 13);
+    }
+    ctx.restore();
   }
 
   function drawGateTower(x, y, w, h, primary, dark, upsideDown) {
@@ -821,6 +942,23 @@ export function createPomPom({
     delete celebrationEl.dataset.show;
     celebrationEl.className = 'pom-celebration';
     celebrationEl.innerHTML = '';
+  }
+
+  function showGoodieToast(item) {
+    if (!goodieToastEl) return;
+    clearTimeout(goodieToastTimer);
+    goodieToastEl.innerHTML = `
+      <span>${escapeHtml(item.emoji || '✦')}</span>
+      <div><b>GOODIE FOUND!</b><strong>${escapeHtml(item.label)}</strong><small>YOURS NOW · VIEW &amp; EQUIP AFTER THIS FLIGHT</small></div>`;
+    goodieToastEl.dataset.show = 'true';
+    goodieToastTimer = setTimeout(dismissGoodieToast, 1900);
+  }
+
+  function dismissGoodieToast() {
+    clearTimeout(goodieToastTimer);
+    if (!goodieToastEl) return;
+    delete goodieToastEl.dataset.show;
+    goodieToastEl.innerHTML = '';
   }
 
   function resetFlyer() {
@@ -995,8 +1133,8 @@ export function createPomPom({
 
   function runPrizeMarkup() {
     if (!earnedRewards.length) return '';
-    const names = earnedRewards.map((prize) => escapeHtml(prize.label)).join(' · ');
-    return `<div class="pom-run-prizes"><b>CLOSET PRIZE${earnedRewards.length === 1 ? '' : 'S'} WON</b><span>${names}</span></div>`;
+    const names = earnedRewards.map((prize) => escapeHtml(`${prize.emoji || '✦'} ${prize.label}`)).join(' · ');
+    return `<div class="pom-run-prizes"><b>NEW GEAR READY TO EQUIP</b><span>${names}</span><small>Already saved to your Closet</small></div>`;
   }
 
   function readRecord() {
@@ -1005,7 +1143,7 @@ export function createPomPom({
       if (live && typeof live === 'object') return sanitizeRecord(live);
       return sanitizeRecord(JSON.parse(localStorage.getItem(FALLBACK_KEY) || 'null'));
     } catch {
-      return { best: 0, plays: 0 };
+      return { best: 0, plays: 0, goodies: [] };
     }
   }
 
@@ -1017,7 +1155,11 @@ export function createPomPom({
     } catch (err) {
       console.warn('[pom-pom] profile record unavailable', err);
     }
-    const fallback = { best: Math.max(record.best, cleanScore), plays: record.plays + 1 };
+    const fallback = {
+      best: Math.max(record.best, cleanScore),
+      plays: record.plays + 1,
+      goodies: [...(record.goodies || [])],
+    };
     try { localStorage.setItem(FALLBACK_KEY, JSON.stringify(fallback)); } catch { /* storage optional */ }
     return fallback;
   }
@@ -1025,7 +1167,11 @@ export function createPomPom({
   function sanitizeRecord(value) {
     const best = Math.max(0, Math.min(9999, Math.round(Number(value?.best) || 0)));
     const plays = Math.max(0, Math.min(999999, Math.round(Number(value?.plays) || 0)));
-    return { best, plays };
+    const knownGoodies = new Set(POM_POM_GOODIES.map((item) => item.id));
+    const goodies = Array.isArray(value?.goodies)
+      ? [...new Set(value.goodies.map(String).filter((id) => knownGoodies.has(id)))]
+      : [];
+    return { best, plays, goodies };
   }
 
   function nextMedalCopy(value) {

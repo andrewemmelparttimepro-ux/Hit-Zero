@@ -14,7 +14,7 @@ export const HAIR_COLORS = [
   0x74d7db, 0xb387ff, 0xf5f0e8, 0xc45b3c, 0x4a3227,
 ];
 export const HAIR_STYLES = ['ponytail', 'bun', 'long', 'short', 'braids', 'pigtails', 'curly', 'bob'];
-export const BOW_SHAPES = ['classic', 'big', 'star', 'sparkle', 'pom_crown'];
+export const BOW_SHAPES = ['classic', 'big', 'star', 'sparkle', 'pom_crown', 'lucky_loop'];
 // bow index 0 = program accent (resolved at draw time)
 export const BOW_COLORS = [
   null, 0xffffff, 0xff4f79, 0x35c2ff, 0xb387ff,
@@ -31,30 +31,31 @@ export const UNIFORMS = [
   [0x1f2937, 0x43e97b],
   [0x5b2145, 0x74d7db],
   [0xf97fac, 0xffd166],
+  [0x25143d, 0xffffff],
 ];
 // capes: index 0 = none. The first real cosmetic slot — Super Squad NPCs
 // wear them now; kids earn them via skill mastery + Cheer Town treasures
 // (indices 6-7 are treasure-hunt rewards; see world/loot.js MILESTONES).
 export const CAPES = [
   null, 0xffd166, 0x74d7db, null /* program accent */, 0xffffff,
-  0xb387ff, 0xff8a65, 0x43e97b, 0xf97fac, 0xffd166,
+  0xb387ff, 0xff8a65, 0x43e97b, 0xf97fac, 0xffd166, 0x9bf1ff,
 ];
-export const TRAILS = [null, 'star', 'spark', 'confetti', 'heart', 'pom', 'fullout'];
-export const NAMEPLATES = ['default', 'star', 'neon', 'varsity', 'captain', 'legend', 'rally', 'top_flyer'];
+export const TRAILS = [null, 'star', 'spark', 'confetti', 'heart', 'pom', 'fullout', 'comet'];
+export const NAMEPLATES = ['default', 'star', 'neon', 'varsity', 'captain', 'legend', 'rally', 'top_flyer', 'treasure_flyer'];
 
 export const COSMETIC_LABELS = {
   skin: ['Glow 1', 'Glow 2', 'Glow 3', 'Glow 4', 'Glow 5'],
   hair: ['Ponytail', 'Bun', 'Long', 'Short', 'Braids', 'Pigtails', 'Curly', 'Bob'],
   hairColor: ['Brunette', 'Black', 'Blonde', 'Auburn', 'Pink', 'Teal', 'Purple', 'Platinum', 'Copper', 'Mocha'],
-  bowShape: ['Classic', 'Big Bow', 'Star Bow', 'Sparkle Bow', 'Pom Crown Bow'],
+  bowShape: ['Classic', 'Big Bow', 'Star Bow', 'Sparkle Bow', 'Pom Crown Bow', 'Lucky Loop Bow'],
   bow: ['Gym Colors', 'White', 'Hot Pink', 'Blue', 'Purple', 'Gold', 'Green', 'Black', 'Coral', 'Lavender'],
-  uniform: ['Gym Colors', 'Midnight Pink', 'Navy Teal', 'Royal White', 'White Pink', 'Gold Night', 'Green Glow', 'Plum Teal', 'Full-Out Pink Gold'],
+  uniform: ['Gym Colors', 'Midnight Pink', 'Navy Teal', 'Royal White', 'White Pink', 'Gold Night', 'Green Glow', 'Plum Teal', 'Full-Out Pink Gold', 'Starlight Uniform'],
   cape: [
     'No Cape', 'Gold Cape', 'Teal Cape', 'Gym Cape', 'White Cape',
-    'Purple Cape', 'Sunset Cape', 'Emerald Cape', 'Spirit Flight Cape', 'Champion Flight Cape',
+    'Purple Cape', 'Sunset Cape', 'Emerald Cape', 'Spirit Flight Cape', 'Champion Flight Cape', 'Crystal Wings',
   ],
-  trail: ['No Trail', 'Star Trail', 'Sparkle Trail', 'Confetti Trail', 'Heart Trail', 'Pom Burst Trail', 'Full-Out Trail'],
-  nameplate: ['Classic Tag', 'Star Tag', 'Neon Tag', 'Varsity Tag', 'Captain Tag', 'Legend Tag', 'Rally Tag', 'Top Flyer Tag'],
+  trail: ['No Trail', 'Star Trail', 'Sparkle Trail', 'Confetti Trail', 'Heart Trail', 'Pom Burst Trail', 'Full-Out Trail', 'Victory Comet Trail'],
+  nameplate: ['Classic Tag', 'Star Tag', 'Neon Tag', 'Varsity Tag', 'Captain Tag', 'Legend Tag', 'Rally Tag', 'Top Flyer Tag', 'Treasure Flyer Tag'],
 };
 
 export const DEFAULT_AVATAR = {
@@ -217,6 +218,13 @@ export function createAvatar({ config, name, team, theme, isSelf = false, npc = 
       tagBg.roundRect(-tw / 2, -th / 2, tw, th, 5).stroke({ color: 0xffd166, width: 2.2, alpha: 1 });
       starShape(tagBg, -tw / 2 + 9, 0, 5, 5.2, 2.3).fill(0xf97fac);
       starShape(tagBg, tw / 2 - 9, 0, 5, 5.2, 2.3).fill(0x74d7db);
+    } else if (style === 8) {
+      // Treasure Flyer Tag — caught as an in-flight Pom-Pom goodie.
+      tagBg.roundRect(-tw / 2, -th / 2, tw, th, 9).fill({ color: 0x173f37, alpha: 0.94 });
+      tagBg.roundRect(-tw / 2, -th / 2, tw, th, 9).stroke({ color: 0x43e97b, width: 2, alpha: 1 });
+      tagBg.circle(-tw / 2 + 9, 0, 3.2).fill(0xffd166);
+      tagBg.circle(tw / 2 - 9, 0, 3.2).fill(0xffd166);
+      starShape(tagBg, 0, 0, 5, 4.5, 2).fill(0xffffff);
     } else if (isSelf) {
       tagBg.roundRect(-tw / 2, -th / 2, tw, th, radius).stroke({ color: theme.accentNum, width: 1.4, alpha: 0.9 });
     }
@@ -230,7 +238,18 @@ export function createAvatar({ config, name, team, theme, isSelf = false, npc = 
 
     // cape (cosmetic slot; index 3 resolves to program accent)
     cape.clear();
-    if (cfg.cape > 0) {
+    if (cfg.cape === 10) {
+      // Crystal Wings — brighter and more accessory-like than a standard cape.
+      for (const sx of [-1, 1]) {
+        cape.moveTo(sx * 9, -49).quadraticCurveTo(sx * 36, -49, sx * 31, -23)
+          .quadraticCurveTo(sx * 27, -8, sx * 6, -5).quadraticCurveTo(sx * 17, -27, sx * 9, -49)
+          .closePath().fill({ color: 0x9bf1ff, alpha: 0.76 })
+          .stroke({ color: 0xffffff, width: 1.5, alpha: 0.72 });
+        cape.moveTo(sx * 12, -41).lineTo(sx * 27, -25).lineTo(sx * 11, -14)
+          .stroke({ color: 0x74d7db, width: 1.2, alpha: 0.8 });
+      }
+      starShape(cape, 0, -48, 5, 5, 2.2).fill(0xffd166);
+    } else if (cfg.cape > 0) {
       const capeColor = resolvedColor(CAPES[cfg.cape], theme.accentNum);
       cape.moveTo(-13, -52).quadraticCurveTo(-30, -30, -24, -4)
         .quadraticCurveTo(-8, 2, 0, -2).quadraticCurveTo(8, 2, 24, -4)
@@ -376,6 +395,14 @@ export function createAvatar({ config, name, team, theme, isSelf = false, npc = 
       bow.moveTo(-6, by + 2).lineTo(-5, by - 7).lineTo(0, by - 3)
         .lineTo(5, by - 7).lineTo(6, by + 2).closePath().fill(0xffd166);
       bow.circle(0, by + 2, 4.5).fill(0xffd166);
+    } else if (cfg.bowShape === 5) {
+      // Lucky Loop Bow — four clover-like loops with a gold center.
+      bow.ellipse(-10, by - 5, 9, 6).fill(B);
+      bow.ellipse(10, by - 5, 9, 6).fill(B);
+      bow.ellipse(-7, by + 3, 7, 5).fill(B);
+      bow.ellipse(7, by + 3, 7, 5).fill(B);
+      bow.circle(0, by, 4.8).fill(0xffd166);
+      bow.circle(0, by, 2).fill({ color: 0xffffff, alpha: 0.72 });
     } else {
       bow.moveTo(-3, by).quadraticCurveTo(-16, by - 10, -13, by + 3).quadraticCurveTo(-8, by + 7, -3, by).closePath().fill(B);
       bow.moveTo(3, by).quadraticCurveTo(16, by - 10, 13, by + 3).quadraticCurveTo(8, by + 7, 3, by).closePath().fill(B);
@@ -580,6 +607,9 @@ export function createAvatar({ config, name, team, theme, isSelf = false, npc = 
         } else if (kind === 'fullout') {
           fx?.burst(x, y, 'star', 3);
           fx?.burst(x, y, 'heart', 2);
+        } else if (kind === 'comet') {
+          fx?.burst(x, y, 'star', 3);
+          fx?.burst(x - 7, y + 4, 'spark', 3);
         } else {
           fx?.burst(x, y, kind, kind === 'confetti' ? 4 : 3);
         }

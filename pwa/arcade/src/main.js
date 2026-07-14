@@ -402,15 +402,15 @@ async function boot() {
     profileId: profile?.id || null,
     programId,
     leaderboardEligible: mode === 'player' && role === 'athlete' && Boolean(supa),
-    getRecord: () => progressState.games?.pomPom || { best: 0, plays: 0 },
+    getRecord: () => progressState.games?.pomPom || { best: 0, plays: 0, goodies: [] },
     checkpointRun(score) {
-      const previous = progressState.games?.pomPom || { best: 0, plays: 0 };
+      const previous = progressState.games?.pomPom || { best: 0, plays: 0, goodies: [] };
       if (score <= (previous.best || 0)) return previous;
       progressState = sanitizeProgress({
         ...progressState,
         games: {
           ...progressState.games,
-          pomPom: { best: Math.round(Number(score) || 0), plays: previous.plays || 0 },
+          pomPom: { ...previous, best: Math.round(Number(score) || 0), plays: previous.plays || 0 },
         },
       });
       recomputeUnlocks(false);
@@ -418,12 +418,13 @@ async function boot() {
       return progressState.games.pomPom;
     },
     recordRun(score) {
-      const previous = progressState.games?.pomPom || { best: 0, plays: 0 };
+      const previous = progressState.games?.pomPom || { best: 0, plays: 0, goodies: [] };
       progressState = sanitizeProgress({
         ...progressState,
         games: {
           ...progressState.games,
           pomPom: {
+            ...previous,
             best: Math.max(previous.best || 0, Math.round(Number(score) || 0)),
             plays: (previous.plays || 0) + 1,
           },
@@ -433,8 +434,31 @@ async function boot() {
       saveProgress();
       return progressState.games.pomPom;
     },
-    openCloset() {
-      setTimeout(() => hud.openStylePanel(myAvatarCfg, { unlocks: unlockState, progress: progressState }), 100);
+    collectGoodie(item) {
+      const previous = progressState.games?.pomPom || { best: 0, plays: 0, goodies: [] };
+      const goodies = [...new Set([...(previous.goodies || []), String(item?.id || '')].filter(Boolean))];
+      progressState = sanitizeProgress({
+        ...progressState,
+        games: {
+          ...progressState.games,
+          pomPom: { ...previous, goodies },
+        },
+      });
+      recomputeUnlocks(false);
+      saveProgress();
+      return progressState.games.pomPom;
+    },
+    openCloset(rewards = []) {
+      const first = Array.isArray(rewards) ? rewards[0] : null;
+      const initialTab = first?.slot === 'bowShape' ? 'bow'
+        : first?.slot === 'uniform' ? 'uniform'
+          : first ? 'special' : 'base';
+      setTimeout(() => hud.openStylePanel(myAvatarCfg, {
+        unlocks: unlockState,
+        progress: progressState,
+        initialTab,
+        spotlight: rewards,
+      }), 100);
     },
     onOpenChange(open) {
       document.body.classList.toggle('arc-ingame', open);
@@ -760,11 +784,11 @@ function builderUnlockState() {
     loaded: true,
     stats: { solid: 99, mastered: 99, tumblingMastered: true, jumpMastered: true },
     allowed: {
-      bowShape: [0, 1, 2, 3, 4],
-      uniform: [0, 1, 2, 3, 4, 5, 6, 7, 8],
-      cape: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-      trail: [0, 1, 2, 3, 4, 5, 6],
-      nameplate: [0, 1, 2, 3, 4, 5, 6, 7],
+      bowShape: [0, 1, 2, 3, 4, 5],
+      uniform: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+      cape: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      trail: [0, 1, 2, 3, 4, 5, 6, 7],
+      nameplate: [0, 1, 2, 3, 4, 5, 6, 7, 8],
     },
     reasons: UNLOCK_REASONS,
   };
