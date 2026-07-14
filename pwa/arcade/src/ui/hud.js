@@ -6,7 +6,7 @@ import {
   CAPES, TRAILS, NAMEPLATES, COSMETIC_LABELS, createAvatar, sanitizeAvatar,
 } from '../world/avatar.js';
 import {
-  LOOT_ITEMS, MILESTONES, RARITY_LABEL, sanitizeProgress,
+  LOOT_ITEMS, MILESTONES, POM_POM_PRIZES, RARITY_LABEL, sanitizeProgress,
   spiritStars, totalFound, SPIRIT_SECONDS_PER_STAR,
 } from '../world/loot.js';
 
@@ -119,7 +119,7 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
   const actions = document.createElement('div');
   actions.className = 'arc-actions';
   actions.innerHTML = `
-    <button class="arc-act-btn style-btn" data-act="style" aria-label="Customize avatar">🎀<small>STYLE</small></button>
+    <button class="arc-act-btn style-btn" data-act="style" aria-label="Open avatar closet">🎀<small>CLOSET</small></button>
     <button class="arc-act-btn" data-act="phrase" aria-label="Say a phrase">💬<small>SAY</small></button>
     <button class="arc-act-btn" data-act="emote" aria-label="Emote">⭐<small>EMOTE</small></button>
   `;
@@ -212,14 +212,14 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
       const treasure = `${totalFound(prog)} 💎 · ${spiritStars(prog)} ⭐`;
       if (!unlocks?.loaded) return `Skill unlocks are unavailable right now. Free looks still save. ${treasure}`;
       const s = unlocks.stats || {};
-      return `${s.mastered || 0} mastered · ${s.solid || 0} solid skills · ${treasure}`;
+      return `${s.mastered || 0} mastered · ${s.solid || 0} solid skills · Pom-Pom best ${prog.games.pomPom.best || 0} · ${treasure}`;
     })();
 
     panel.innerHTML = `
       <div class="arc-studio-head">
         <div>
           <h3>${firstRun ? 'Build your cheerleader!' : 'Character Studio'}</h3>
-          <div class="sub">${firstRun ? 'Pick a look, then come back anytime from STYLE.' : 'Changes save automatically and teammates see them live.'}</div>
+          <div class="sub">${firstRun ? 'Pick a look, then come back anytime from CLOSET.' : 'Changes save automatically and teammates see them live.'}</div>
         </div>
         <button class="arc-studio-close" type="button" aria-label="Close Character Studio">&times;</button>
       </div>
@@ -353,7 +353,7 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
       { id: 'base', label: 'Base' },
       { id: 'bow', label: 'Bows' },
       { id: 'uniform', label: 'Uniforms' },
-      { id: 'special', label: 'Unlocks' },
+      { id: 'special', label: 'Closet' },
       { id: 'loot', label: 'Treasures' },
     ];
     tabDefs.forEach((tab) => {
@@ -460,6 +460,27 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
       }
       msRow.appendChild(msGrid);
       content.appendChild(msRow);
+
+      const pomRow = document.createElement('div');
+      pomRow.className = 'arc-style-row';
+      pomRow.innerHTML = '<label>Pom-Pom Flight Prizes</label>';
+      const pomGrid = document.createElement('div');
+      pomGrid.className = 'arc-special-grid';
+      const pomBest = prog.games.pomPom.best || 0;
+      for (const prize of POM_POM_PRIZES) {
+        const met = pomBest >= prize.minScore;
+        const card = document.createElement('div');
+        card.className = 'arc-special-card arc-loot-card' + (met ? '' : ' locked');
+        card.innerHTML = `
+          <span class="arc-special-swatch">${met ? 'PP' : prize.minScore}</span>
+          <span class="arc-special-copy">
+            <strong>${escapeHtml(prize.label)}</strong>
+            <small>${met ? 'Won! Equip it in the Closet tab' : `Pass ${prize.minScore} consecutive gates`}</small>
+          </span>`;
+        pomGrid.appendChild(card);
+      }
+      pomRow.appendChild(pomGrid);
+      content.appendChild(pomRow);
     }
     renderTab(activeTab);
   }

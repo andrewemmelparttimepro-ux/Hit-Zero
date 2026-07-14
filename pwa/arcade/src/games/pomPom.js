@@ -7,8 +7,18 @@
 // cheerleader reference. No extra WebGL context: this cabinet uses a small 2D
 // canvas overlay and leaves the shared Pixi world untouched underneath.
 
+import { POM_POM_PRIZES } from '../world/loot.js';
+
 const ASSET_URL = new URL('../../assets/pom-pom-flyer.png', import.meta.url).href;
 const FALLBACK_KEY = 'hz_arcade_pom_pom_record';
+const GAME_KEY = 'pom_pom';
+
+const DIFFICULTY_PHASES = [
+  { min: 20, name: 'CHAMPION FLIGHT' },
+  { min: 10, name: 'SPIRIT RUSH' },
+  { min: 3, name: 'RALLY MODE' },
+  { min: 0, name: 'WARM-UP' },
+];
 
 const MEDALS = [
   { min: 40, name: 'ROYAL CROWN', mark: '♛', tier: 'royal' },
@@ -18,13 +28,48 @@ const MEDALS = [
   { min: 0, name: 'ROOKIE RIBBON', mark: '🎀', tier: 'rookie' },
 ];
 
+const STREAK_MOMENTS = [
+  { score: 3,  title: 'SPIRIT STREAK',   call: 'THREE CLEAN GATES' },
+  { score: 5,  title: 'RALLY ON',        call: 'THE TEAM IS WITH YOU' },
+  { score: 8,  title: 'CROWD ROAR',      call: 'HIT IT · HOLD IT' },
+  { score: 12, title: 'FULL-OUT ENERGY', call: 'OWN THE FLOOR' },
+  { score: 20, title: 'CHAMPION FLIGHT', call: 'ZERO DEDUCTIONS' },
+  { score: 30, title: 'TOP FLYER',       call: 'THE GYM GOES WILD' },
+].map((moment) => ({
+  ...moment,
+  prize: POM_POM_PRIZES.find((prize) => prize.minScore === moment.score) || null,
+}));
+
 export function medalFor(score) {
   const n = Math.max(0, Math.round(Number(score) || 0));
   return MEDALS.find((medal) => n >= medal.min) || MEDALS[MEDALS.length - 1];
 }
 
+// Exported for deterministic tuning checks. The first three points deliberately
+// leave room to learn the tap rhythm; speed, gravity and gap pressure then ramp
+// continuously instead of jumping to a punishing second mode.
+export function difficultyFor(score, width, height) {
+  const n = Math.max(0, Math.min(35, Math.round(Number(score) || 0)));
+  const progress = n / 35;
+  const W = Math.max(320, Number(width) || 320);
+  const H = Math.max(420, Number(height) || 420);
+  const phase = DIFFICULTY_PHASES.find((item) => n >= item.min) || DIFFICULTY_PHASES.at(-1);
+  const baseGap = Math.max(178, Math.min(244, H * 0.35));
+  const baseSpeed = Math.max(160, Math.min(238, W * 0.215));
+
+  return {
+    phase: phase.name,
+    gravity: Math.max(940, H * 1.58) * (1 + progress * 0.22),
+    flap: Math.max(322, H * (0.51 + progress * 0.07)),
+    gap: Math.max(158, baseGap - progress * 58),
+    speed: baseSpeed * (0.9 + progress * 0.34),
+    spawnEvery: Math.max(1.3, 1.78 - n * 0.014),
+  };
+}
+
 export function createPomPom({
-  mode, theme, sfx, audio, getRecord, recordRun, onOpenChange,
+  mode, theme, sfx, audio, supa, profileId, programId, leaderboardEligible,
+  getRecord, checkpointRun, recordRun, openCloset, onOpenChange,
 }) {
   const playable = mode === 'player' || mode === 'offline';
   const sprite = new Image();
@@ -33,6 +78,7 @@ export function createPomPom({
 
   let root = null;
   let stage = null;
+  let celebrationEl = null;
   let canvas = null;
   let ctx = null;
   let raf = 0;
@@ -47,10 +93,18 @@ export function createPomPom({
   let gates = [];
   let particles = [];
   let spawnIn = 0;
+  let spawnedGates = 0;
   let worldT = 0;
   let newBest = false;
   let resultTimer = null;
+  let celebrationTimer = null;
+  let leaderboardTimer = null;
   let autoPaused = false;
+  let leaderboard = [];
+  let leaderboardState = supa && programId ? 'loading' : 'offline';
+  let postingState = 'idle';
+  let runStartBest = record.best;
+  let earnedRewards = [];
   let flyer = { x: 0, y: 0, vy: 0, rotation: 0 };
 
   const clouds = [
@@ -85,12 +139,15 @@ export function createPomPom({
         <div class="pom-hud" aria-live="polite">
           <div class="pom-score" data-testid="pom-pom-score">0</div>
           <div class="pom-best">BEST <b>${record.best}</b></div>
+          <div class="pom-phase" data-testid="pom-pom-phase">${phaseCopy(0)}</div>
         </div>
+        <div class="pom-celebration" data-pom-celebration aria-live="polite" aria-atomic="true"></div>
         <div class="pom-screen"></div>
       </div>
     `;
     document.body.appendChild(root);
     stage = root.querySelector('.pom-stage');
+    celebrationEl = root.querySelector('[data-pom-celebration]');
     canvas = root.querySelector('.pom-canvas');
     ctx = canvas.getContext('2d', { alpha: false });
 
@@ -104,6 +161,7 @@ export function createPomPom({
 
     resize();
     showMenu();
+    loadLeaderboard();
     lastAt = performance.now();
     raf = requestAnimationFrame(frame);
   }
@@ -111,6 +169,8 @@ export function createPomPom({
   function close() {
     if (!root) return;
     clearTimeout(resultTimer);
+    clearTimeout(celebrationTimer);
+    clearTimeout(leaderboardTimer);
     cancelAnimationFrame(raf);
     window.removeEventListener('keydown', onKey);
     window.removeEventListener('resize', resize);
@@ -118,6 +178,7 @@ export function createPomPom({
     root.remove();
     root = null;
     stage = null;
+    celebrationEl = null;
     canvas = null;
     ctx = null;
     state = 'closed';
@@ -144,6 +205,7 @@ export function createPomPom({
     resetFlyer();
     gates = [];
     particles = [];
+    dismissCelebration();
     score = 0;
     newBest = false;
     updateHud();
@@ -159,17 +221,20 @@ export function createPomPom({
       return;
     }
     screen.innerHTML = `
-      <div class="pom-card pom-menu-card">
-        <div class="pom-hero-wrap"><img src="${ASSET_URL}" alt="Pom-Pom, the flying cheerleader" /></div>
-        <div class="pom-kicker">THE FINAL CABINET IS OPEN</div>
-        <h3>POM-POM</h3>
-        <p>Tap to fly through the Spirit Gates. One miss ends the run.</p>
-        <div class="pom-menu-stats">
-          <span><b>${record.best}</b> BEST</span>
-          <span><b>${record.plays}</b> FLIGHTS</span>
+      <div class="pom-menu-shell">
+        <div class="pom-card pom-menu-card">
+          <div class="pom-hero-wrap"><img src="${ASSET_URL}" alt="Pom-Pom, the flying cheerleader" /></div>
+          <div class="pom-kicker">SPIRIT FLIGHT</div>
+          <h3>POM-POM</h3>
+          <p>Learn the rhythm through three roomy warm-up gates. Cheer streaks and Closet prizes begin at gate 3.</p>
+          <div class="pom-menu-stats">
+            <span><b>${record.best}</b> BEST</span>
+            <span><b>${record.plays}</b> FLIGHTS</span>
+          </div>
+          <button class="arc-game-btn primary" data-pom="start" data-testid="pom-pom-start">TAP TO PLAY</button>
+          <p class="pom-help">Touch, Space, or ↑ to fly · P to pause</p>
         </div>
-        <button class="arc-game-btn primary" data-pom="start" data-testid="pom-pom-start">TAP TO PLAY</button>
-        <p class="pom-help">Touch, Space, or ↑ to fly · P to pause</p>
+        ${leaderboardMarkup()}
       </div>`;
   }
 
@@ -178,16 +243,21 @@ export function createPomPom({
     clearTimeout(resultTimer);
     score = 0;
     newBest = false;
+    runStartBest = record.best;
+    earnedRewards = [];
     gates = [];
     particles = [];
-    spawnIn = 0.92;
+    spawnedGates = 0;
+    spawnIn = 0.78;
+    postingState = 'idle';
+    dismissCelebration();
     resetFlyer();
     updateHud();
     setState('ready');
     screenEl().innerHTML = `
       <div class="pom-ready" data-testid="pom-pom-ready">
         <strong>TAP TO FLY</strong>
-        <span>Thread the Spirit Gates</span>
+        <span>First 3 gates are your warm-up</span>
       </div>`;
     sfx?.tap?.();
   }
@@ -201,7 +271,7 @@ export function createPomPom({
 
   function flap() {
     if (state !== 'playing') return;
-    flyer.vy = -Math.max(350, H * 0.58);
+    flyer.vy = -difficultyFor(score, W, H).flap;
     flyer.rotation = -0.28;
     spray(flyer.x - characterSize() * 0.25, flyer.y + 4, 5, false);
     sfx?.flip?.();
@@ -213,6 +283,7 @@ export function createPomPom({
   function crash() {
     if (state !== 'playing') return;
     setState('gameover');
+    dismissCelebration();
     flyer.vy = Math.max(120, flyer.vy);
     flyer.rotation = 0.65;
     spray(flyer.x, flyer.y, 24, true);
@@ -220,9 +291,13 @@ export function createPomPom({
     if (navigator.vibrate) {
       try { navigator.vibrate([35, 45, 70]); } catch { /* optional */ }
     }
-    const before = record.best;
+    const before = runStartBest;
     record = writeRecord(score);
     newBest = score > before;
+    postingState = newBest
+      ? (leaderboardEligible ? 'saving' : (supa ? 'practice' : 'offline'))
+      : 'idle';
+    if (newBest && leaderboardEligible) scheduleLeaderboardSync(score);
     updateHud();
     resultTimer = setTimeout(showResults, 430);
   }
@@ -231,20 +306,26 @@ export function createPomPom({
     if (!root || state !== 'gameover') return;
     const medal = medalFor(score);
     screenEl().innerHTML = `
-      <div class="pom-card pom-results" data-testid="pom-pom-results">
-        <div class="pom-result-kicker">${newBest ? 'NEW PERSONAL BEST!' : 'FLIGHT COMPLETE'}</div>
-        <div class="pom-medal ${medal.tier}" aria-label="${medal.name}">
-          <span>${medal.mark}</span><small>${medal.name}</small>
+      <div class="pom-results-shell">
+        <div class="pom-card pom-results" data-testid="pom-pom-results">
+          <div class="pom-result-kicker">${newBest ? 'NEW PERSONAL BEST!' : 'FLIGHT COMPLETE'}</div>
+          <div class="pom-medal ${medal.tier}" aria-label="${medal.name}">
+            <span>${medal.mark}</span><small>${medal.name}</small>
+          </div>
+          <div class="pom-result-grid">
+            <div><span>SCORE</span><b>${score}</b></div>
+            <div><span>BEST</span><b>${record.best}</b></div>
+          </div>
+          <div class="pom-next-medal">${nextMedalCopy(score)}</div>
+          ${runPrizeMarkup()}
+          <div class="pom-post-status ${postingState}" data-pom-post-status>${postingCopy()}</div>
+          <div class="arc-game-btnrow">
+            <button class="arc-game-btn primary" data-pom="again" data-testid="pom-pom-again">FLY AGAIN</button>
+            ${earnedRewards.length && openCloset ? '<button class="arc-game-btn" data-pom="closet">OPEN CLOSET</button>' : ''}
+            <button class="arc-game-btn" data-pom="exit">EXIT</button>
+          </div>
         </div>
-        <div class="pom-result-grid">
-          <div><span>SCORE</span><b>${score}</b></div>
-          <div><span>BEST</span><b>${record.best}</b></div>
-        </div>
-        <div class="pom-next-medal">${nextMedalCopy(score)}</div>
-        <div class="arc-game-btnrow">
-          <button class="arc-game-btn primary" data-pom="again" data-testid="pom-pom-again">FLY AGAIN</button>
-          <button class="arc-game-btn" data-pom="exit">EXIT</button>
-        </div>
+        ${leaderboardMarkup()}
       </div>`;
   }
 
@@ -291,6 +372,10 @@ export function createPomPom({
     audio?.unlock?.();
     if (action === 'start' || action === 'again') startRound();
     else if (action === 'resume') togglePause();
+    else if (action === 'closet') {
+      close();
+      openCloset?.();
+    }
     else if (action === 'exit') close();
   }
 
@@ -327,16 +412,26 @@ export function createPomPom({
   }
 
   function updatePlaying(dt) {
-    const gravity = Math.max(1040, H * 1.9);
-    flyer.vy += gravity * dt;
+    const difficulty = difficultyFor(score, W, H);
+    flyer.vy += difficulty.gravity * dt;
     flyer.y += flyer.vy * dt;
     flyer.rotation = Math.min(0.78, flyer.rotation + dt * 1.7);
 
-    const speed = gateSpeed();
+    // The warm-up teaches cadence without punishing an eager extra tap against
+    // the ceiling. Ground and gate collisions remain live from the first frame.
+    if (score < 3) {
+      const warmupCeiling = characterSize() * 0.24 + 5;
+      if (flyer.y < warmupCeiling) {
+        flyer.y = warmupCeiling;
+        flyer.vy = Math.max(36, flyer.vy);
+      }
+    }
+
+    const speed = difficulty.speed;
     spawnIn -= dt;
     if (spawnIn <= 0) {
       spawnGate();
-      spawnIn = Math.max(1.34, 1.66 - score * 0.006);
+      spawnIn = difficulty.spawnEvery;
     }
     for (const gate of gates) {
       gate.x -= speed * dt;
@@ -347,6 +442,8 @@ export function createPomPom({
         spray(flyer.x - 10, flyer.y, 10, true);
         pulseScore();
         sfx?.perfect?.();
+        const moment = streakMomentFor(score);
+        if (moment) celebrateStreak(moment);
       }
     }
     gates = gates.filter((gate) => gate.x + gate.w > -24);
@@ -375,12 +472,20 @@ export function createPomPom({
 
   function spawnGate() {
     const ground = groundY();
-    const gap = gateGap();
+    const gateNumber = spawnedGates++;
+    const gateLevel = gateNumber < 3 ? 0 : Math.max(score, gateNumber - 2);
+    const gap = difficultyFor(gateLevel, W, H).gap;
     const minY = gap / 2 + 48;
     const maxY = ground - gap / 2 - 52;
     const wave = 0.5 + Math.sin(worldT * 1.37 + score * 0.71) * 0.24;
-    const jitter = (Math.random() - 0.5) * Math.min(90, H * 0.12);
-    const gapY = Math.max(minY, Math.min(maxY, minY + (maxY - minY) * wave + jitter));
+    const warmupBlend = gateNumber === 0 ? 0.84 : gateNumber === 1 ? 0.58 : gateNumber === 2 ? 0.32 : 0;
+    const jitterRange = [8, 28, 50][gateNumber] ?? Math.min(90, H * 0.12);
+    const jitter = (Math.random() - 0.5) * jitterRange;
+    const proceduralY = minY + (maxY - minY) * wave + jitter;
+    const gapY = Math.max(
+      minY,
+      Math.min(maxY, proceduralY * (1 - warmupBlend) + flyer.y * warmupBlend),
+    );
     gates.push({
       x: W + Math.max(36, W * 0.06),
       y: gapY,
@@ -399,7 +504,8 @@ export function createPomPom({
       top: flyer.y - size * 0.23,
       bottom: flyer.y + size * 0.25,
     };
-    if (hit.top <= 0 || hit.bottom >= groundY()) return true;
+    if (hit.bottom >= groundY()) return true;
+    if (hit.top <= 0) return score >= 3;
     for (const gate of gates) {
       if (hit.right <= gate.x + 5 || hit.left >= gate.x + gate.w - 5) continue;
       const gapTop = gate.y - gate.gap / 2;
@@ -627,6 +733,62 @@ export function createPomPom({
     }
   }
 
+  function streakMomentFor(value) {
+    const planned = STREAK_MOMENTS.find((moment) => moment.score === value);
+    if (planned) return planned;
+    if (value > 30 && value % 10 === 0) {
+      return { score: value, title: 'CROWD ROAR', call: 'KEEP THE RALLY ALIVE', prize: null };
+    }
+    return null;
+  }
+
+  function celebrateStreak(moment) {
+    if (!celebrationEl || !root) return;
+    const newlyUnlocked = Boolean(moment.prize && runStartBest < moment.prize.minScore);
+    if (newlyUnlocked) {
+      const checkpoint = checkpointRun?.(score);
+      if (checkpoint) record = sanitizeRecord(checkpoint);
+      earnedRewards.push(moment.prize);
+      updateHud();
+    }
+
+    clearTimeout(celebrationTimer);
+    const rewardCopy = newlyUnlocked
+      ? `${moment.prize.label} WON · NOW IN YOUR CLOSET`
+      : moment.prize
+        ? `${moment.prize.label} CHEER REWARD`
+        : 'THE CROWD IS ON ITS FEET';
+    celebrationEl.innerHTML = `
+      <div class="pom-celebration-glow"></div>
+      <div class="pom-celebration-rally">
+        <img class="pom-celebration-flyer left" src="${ASSET_URL}" alt="" aria-hidden="true" />
+        <div class="pom-celebration-copy">
+          <span>${moment.score} GATE STREAK · ${moment.call}</span>
+          <strong>${moment.title}</strong>
+          <small>${rewardCopy}</small>
+        </div>
+        <img class="pom-celebration-flyer right" src="${ASSET_URL}" alt="" aria-hidden="true" />
+      </div>`;
+    celebrationEl.dataset.show = 'true';
+
+    // Sideline bursts make this read like a cheer rally without touching the
+    // flyer, gate geometry, hitbox, speed, or input cadence.
+    spray(W * 0.12, H * 0.72, 28, true);
+    spray(W * 0.88, H * 0.72, 28, true);
+    sfx?.score?.();
+    if (navigator.vibrate) {
+      try { navigator.vibrate([18, 35, 18]); } catch { /* optional */ }
+    }
+    celebrationTimer = setTimeout(dismissCelebration, 1800);
+  }
+
+  function dismissCelebration() {
+    clearTimeout(celebrationTimer);
+    if (!celebrationEl) return;
+    delete celebrationEl.dataset.show;
+    celebrationEl.innerHTML = '';
+  }
+
   function resetFlyer() {
     flyer = { x: W * 0.27, y: H * 0.43, vy: 0, rotation: 0 };
   }
@@ -651,8 +813,10 @@ export function createPomPom({
     if (!root) return;
     const scoreEl = root.querySelector('.pom-score');
     const bestEl = root.querySelector('.pom-best b');
+    const phaseEl = root.querySelector('.pom-phase');
     if (scoreEl) scoreEl.textContent = String(score);
     if (bestEl) bestEl.textContent = String(record.best);
+    if (phaseEl) phaseEl.textContent = phaseCopy(score);
   }
 
   function pulseScore() {
@@ -661,6 +825,144 @@ export function createPomPom({
     el.classList.remove('pop');
     void el.offsetWidth;
     el.classList.add('pop');
+  }
+
+  function phaseCopy(value) {
+    if (value < 3) return `WARM-UP · ${3 - value} TO GO`;
+    return difficultyFor(value, W, H).phase;
+  }
+
+  function leaderboardMarkup() {
+    return `<section class="pom-board" data-pom-leaderboard aria-label="Pom-Pom gym leaderboard">
+      ${leaderboardInnerMarkup()}
+    </section>`;
+  }
+
+  function leaderboardInnerMarkup() {
+    return `
+      <div class="pom-board-top">
+        <span>TOP FLYERS</span>
+        <b>GYM TOP 10</b>
+      </div>
+      <div class="pom-board-columns"><span>RANK</span><span>PLAYER</span><span>GATES</span></div>
+      <div class="pom-board-body">${leaderboardRowsMarkup()}</div>
+      <div class="pom-board-foot">AUTO-POSTED PERSONAL BESTS</div>`;
+  }
+
+  function leaderboardRowsMarkup() {
+    if (leaderboardState === 'loading') {
+      return '<div class="pom-board-empty">READING THE GYM BOARD…</div>';
+    }
+    if (leaderboardState === 'offline') {
+      return '<div class="pom-board-empty">SIGN IN AS AN ATHLETE<br>TO JOIN THE GYM BOARD</div>';
+    }
+    if (leaderboardState === 'error') {
+      return '<div class="pom-board-empty">BOARD UNAVAILABLE<br>YOUR PERSONAL BEST STILL SAVES</div>';
+    }
+    if (!leaderboard.length) {
+      return '<div class="pom-board-empty">NO ATHLETE SCORES YET<br>FIRST HIGH SCORE TAKES #1</div>';
+    }
+    return leaderboard.map((entry, index) => {
+      const mine = entry.profile_id === profileId ? ' mine' : '';
+      const rank = String(index + 1).padStart(2, '0');
+      const gatesPassed = String(entry.score).padStart(3, '0');
+      return `<div class="pom-board-row${mine}">
+        <span class="pom-board-rank">${rank}</span>
+        <span class="pom-board-name">${escapeHtml(entry.display_name)}</span>
+        <b>${gatesPassed}</b>
+      </div>`;
+    }).join('');
+  }
+
+  function renderLeaderboard() {
+    const board = root?.querySelector('[data-pom-leaderboard]');
+    if (board) board.innerHTML = leaderboardInnerMarkup();
+  }
+
+  async function loadLeaderboard(expectedScore = null, attempt = 0) {
+    if (!supa || !programId) {
+      leaderboardState = 'offline';
+      renderLeaderboard();
+      return;
+    }
+    if (!leaderboard.length) leaderboardState = 'loading';
+    renderLeaderboard();
+    try {
+      const { data, error } = await supa
+        .from('arcade_high_scores')
+        .select('profile_id, display_name, score, achieved_at')
+        .eq('game_key', GAME_KEY)
+        .eq('program_id', programId)
+        .order('score', { ascending: false })
+        .order('achieved_at', { ascending: true })
+        .limit(10);
+      if (error) throw error;
+      leaderboard = (data || []).map((entry) => ({
+        profile_id: String(entry.profile_id || ''),
+        display_name: String(entry.display_name || 'PLAYER').slice(0, 80),
+        score: Math.max(0, Math.min(9999, Math.round(Number(entry.score) || 0))),
+      }));
+      leaderboardState = 'ready';
+      renderLeaderboard();
+
+      if (expectedScore !== null && leaderboardEligible && profileId) {
+        const { data: own, error: ownError } = await supa
+          .from('arcade_high_scores')
+          .select('score')
+          .eq('game_key', GAME_KEY)
+          .eq('profile_id', profileId)
+          .maybeSingle();
+        if (ownError) throw ownError;
+        if (Number(own?.score) >= expectedScore) {
+          postingState = 'posted';
+          updatePostStatus();
+        } else if (attempt < 2) {
+          clearTimeout(leaderboardTimer);
+          leaderboardTimer = setTimeout(
+            () => loadLeaderboard(expectedScore, attempt + 1),
+            900 + attempt * 800,
+          );
+        } else {
+          postingState = 'queued';
+          updatePostStatus();
+        }
+      }
+    } catch (err) {
+      console.warn('[pom-pom] leaderboard unavailable', err);
+      leaderboardState = 'error';
+      renderLeaderboard();
+      if (expectedScore !== null) {
+        postingState = 'queued';
+        updatePostStatus();
+      }
+    }
+  }
+
+  function scheduleLeaderboardSync(expectedScore) {
+    clearTimeout(leaderboardTimer);
+    leaderboardTimer = setTimeout(() => loadLeaderboard(expectedScore, 0), 1250);
+  }
+
+  function updatePostStatus() {
+    const status = root?.querySelector('[data-pom-post-status]');
+    if (!status) return;
+    status.className = `pom-post-status ${postingState}`;
+    status.textContent = postingCopy();
+  }
+
+  function postingCopy() {
+    if (postingState === 'saving') return 'SAVING TO THE GYM BOARD…';
+    if (postingState === 'posted') return 'HIGH SCORE POSTED TO THE GYM BOARD';
+    if (postingState === 'queued') return 'PERSONAL BEST SAVED · BOARD WILL RETRY';
+    if (postingState === 'offline') return 'LOCAL PRACTICE · SIGN IN TO POST';
+    if (postingState === 'practice') return 'PRACTICE RUN · ATHLETE HIGHS POST AUTOMATICALLY';
+    return 'ATHLETE PERSONAL BESTS POST AUTOMATICALLY';
+  }
+
+  function runPrizeMarkup() {
+    if (!earnedRewards.length) return '';
+    const names = earnedRewards.map((prize) => escapeHtml(prize.label)).join(' · ');
+    return `<div class="pom-run-prizes"><b>CLOSET PRIZE${earnedRewards.length === 1 ? '' : 'S'} WON</b><span>${names}</span></div>`;
   }
 
   function readRecord() {
@@ -700,8 +1002,7 @@ export function createPomPom({
 
   function groundY() { return H - Math.max(58, Math.min(82, H * 0.105)); }
   function characterSize() { return Math.max(92, Math.min(132, W * 0.12, H * 0.19)); }
-  function gateGap() { return Math.max(148, Math.min(226, H * 0.29 - Math.min(score, 30) * 0.7)); }
-  function gateSpeed() { return Math.max(168, Math.min(258, W * 0.235)) * (1 + Math.min(score, 35) * 0.008); }
+  function gateSpeed() { return difficultyFor(score, W, H).speed; }
 
   return {
     open,
@@ -709,6 +1010,15 @@ export function createPomPom({
     get isOpen() { return state !== 'closed'; },
     get state() { return state; },
   };
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
 }
 
 function roundRect(ctx, x, y, w, h, r) {

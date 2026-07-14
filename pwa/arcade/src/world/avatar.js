@@ -34,9 +34,12 @@ export const UNIFORMS = [
 // capes: index 0 = none. The first real cosmetic slot — Super Squad NPCs
 // wear them now; kids earn them via skill mastery + Cheer Town treasures
 // (indices 6-7 are treasure-hunt rewards; see world/loot.js MILESTONES).
-export const CAPES = [null, 0xffd166, 0x74d7db, null /* program accent */, 0xffffff, 0xb387ff, 0xff8a65, 0x43e97b];
-export const TRAILS = [null, 'star', 'spark', 'confetti', 'heart'];
-export const NAMEPLATES = ['default', 'star', 'neon', 'varsity', 'captain', 'legend'];
+export const CAPES = [
+  null, 0xffd166, 0x74d7db, null /* program accent */, 0xffffff,
+  0xb387ff, 0xff8a65, 0x43e97b, 0xf97fac, 0xffd166,
+];
+export const TRAILS = [null, 'star', 'spark', 'confetti', 'heart', 'pom', 'fullout'];
+export const NAMEPLATES = ['default', 'star', 'neon', 'varsity', 'captain', 'legend', 'rally', 'top_flyer'];
 
 export const COSMETIC_LABELS = {
   skin: ['Glow 1', 'Glow 2', 'Glow 3', 'Glow 4', 'Glow 5'],
@@ -45,9 +48,12 @@ export const COSMETIC_LABELS = {
   bowShape: ['Classic', 'Big Bow', 'Star Bow', 'Sparkle Bow'],
   bow: ['Gym Colors', 'White', 'Hot Pink', 'Blue', 'Purple', 'Gold', 'Green', 'Black', 'Coral', 'Lavender'],
   uniform: ['Gym Colors', 'Midnight Pink', 'Navy Teal', 'Royal White', 'White Pink', 'Gold Night', 'Green Glow', 'Plum Teal'],
-  cape: ['No Cape', 'Gold Cape', 'Teal Cape', 'Gym Cape', 'White Cape', 'Purple Cape', 'Sunset Cape', 'Emerald Cape'],
-  trail: ['No Trail', 'Star Trail', 'Sparkle Trail', 'Confetti Trail', 'Heart Trail'],
-  nameplate: ['Classic Tag', 'Star Tag', 'Neon Tag', 'Varsity Tag', 'Captain Tag', 'Legend Tag'],
+  cape: [
+    'No Cape', 'Gold Cape', 'Teal Cape', 'Gym Cape', 'White Cape',
+    'Purple Cape', 'Sunset Cape', 'Emerald Cape', 'Spirit Flight Cape', 'Champion Flight Cape',
+  ],
+  trail: ['No Trail', 'Star Trail', 'Sparkle Trail', 'Confetti Trail', 'Heart Trail', 'Pom Burst Trail', 'Full-Out Trail'],
+  nameplate: ['Classic Tag', 'Star Tag', 'Neon Tag', 'Varsity Tag', 'Captain Tag', 'Legend Tag', 'Rally Tag', 'Top Flyer Tag'],
 };
 
 export const DEFAULT_AVATAR = {
@@ -198,6 +204,18 @@ export function createAvatar({ config, name, team, theme, isSelf = false, npc = 
       tagBg.roundRect(-tw / 2 + 3, -th / 2 + 3, tw - 6, th - 6, radius).stroke({ color: 0xffffff, width: 1, alpha: 0.45 });
       starShape(tagBg, -tw / 2 + 9, 0, 5, 5, 2.2).fill(0xffd166);
       starShape(tagBg, tw / 2 - 9, 0, 5, 5, 2.2).fill(0xffd166);
+    } else if (style === 6) {
+      // Rally Tag — earned at eight consecutive Pom-Pom gates.
+      tagBg.roundRect(-tw / 2, -th / 2, tw, th, radius).fill({ color: 0xf97fac, alpha: 0.2 });
+      tagBg.roundRect(-tw / 2, -th / 2, tw, th, radius).stroke({ color: 0xf97fac, width: 2, alpha: 1 });
+      tagBg.moveTo(-tw / 2 + 5, th / 2 - 4).lineTo(tw / 2 - 5, th / 2 - 4)
+        .stroke({ color: 0x74d7db, width: 2.2, alpha: 0.95 });
+    } else if (style === 7) {
+      // Top Flyer Tag — the final Pom-Pom Closet prize.
+      tagBg.roundRect(-tw / 2, -th / 2, tw, th, 5).fill({ color: 0x29152a, alpha: 0.94 });
+      tagBg.roundRect(-tw / 2, -th / 2, tw, th, 5).stroke({ color: 0xffd166, width: 2.2, alpha: 1 });
+      starShape(tagBg, -tw / 2 + 9, 0, 5, 5.2, 2.3).fill(0xf97fac);
+      starShape(tagBg, tw / 2 - 9, 0, 5, 5.2, 2.3).fill(0x74d7db);
     } else if (isSelf) {
       tagBg.roundRect(-tw / 2, -th / 2, tw, th, radius).stroke({ color: theme.accentNum, width: 1.4, alpha: 0.9 });
     }
@@ -541,7 +559,17 @@ export function createAvatar({ config, name, team, theme, isSelf = false, npc = 
       if (trailAcc > 0.14) {
         trailAcc = 0;
         const kind = TRAILS[cfg.trail] || 'spark';
-        fx?.burst(root.x + (Math.random() - 0.5) * 12, root.y - 36 + (Math.random() - 0.5) * 10, kind, kind === 'confetti' ? 4 : 3);
+        const x = root.x + (Math.random() - 0.5) * 12;
+        const y = root.y - 36 + (Math.random() - 0.5) * 10;
+        if (kind === 'pom') {
+          fx?.burst(x, y, 'confetti', 4);
+          fx?.burst(x, y, 'spark', 2);
+        } else if (kind === 'fullout') {
+          fx?.burst(x, y, 'star', 3);
+          fx?.burst(x, y, 'heart', 2);
+        } else {
+          fx?.burst(x, y, kind, kind === 'confetti' ? 4 : 3);
+        }
       }
     }
     if (bubble.visible) {

@@ -237,7 +237,7 @@ async function boot() {
     const gained = countUnlocked(next) > countUnlocked(unlockState);
     unlockState = next;
     if (gained && notify) {
-      hud.toast('New style unlocked! Tap STYLE 🎀');
+      hud.toast('New style unlocked! Tap CLOSET 🎀');
       audio.sfx.score();
     }
   }
@@ -398,8 +398,25 @@ async function boot() {
   // shares arcade_profiles.progress with Cheer Town keepsakes and remains
   // available offline through the existing local progress fallback.
   const pomPomGame = createPomPom({
-    mode, theme, sfx: audio.sfx, audio,
+    mode, theme, sfx: audio.sfx, audio, supa,
+    profileId: profile?.id || null,
+    programId,
+    leaderboardEligible: mode === 'player' && role === 'athlete' && Boolean(supa),
     getRecord: () => progressState.games?.pomPom || { best: 0, plays: 0 },
+    checkpointRun(score) {
+      const previous = progressState.games?.pomPom || { best: 0, plays: 0 };
+      if (score <= (previous.best || 0)) return previous;
+      progressState = sanitizeProgress({
+        ...progressState,
+        games: {
+          ...progressState.games,
+          pomPom: { best: Math.round(Number(score) || 0), plays: previous.plays || 0 },
+        },
+      });
+      recomputeUnlocks(false);
+      saveProgress();
+      return progressState.games.pomPom;
+    },
     recordRun(score) {
       const previous = progressState.games?.pomPom || { best: 0, plays: 0 };
       progressState = sanitizeProgress({
@@ -412,8 +429,12 @@ async function boot() {
           },
         },
       });
+      recomputeUnlocks(false);
       saveProgress();
       return progressState.games.pomPom;
+    },
+    openCloset() {
+      setTimeout(() => hud.openStylePanel(myAvatarCfg, { unlocks: unlockState, progress: progressState }), 100);
     },
     onOpenChange(open) {
       document.body.classList.toggle('arc-ingame', open);
@@ -737,9 +758,9 @@ function builderUnlockState() {
     loaded: true,
     stats: { solid: 99, mastered: 99, tumblingMastered: true, jumpMastered: true },
     allowed: {
-      cape: [0, 1, 2, 3, 4, 5, 6, 7],
-      trail: [0, 1, 2, 3, 4],
-      nameplate: [0, 1, 2, 3, 4, 5],
+      cape: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+      trail: [0, 1, 2, 3, 4, 5, 6],
+      nameplate: [0, 1, 2, 3, 4, 5, 6, 7],
     },
     reasons: UNLOCK_REASONS,
   };

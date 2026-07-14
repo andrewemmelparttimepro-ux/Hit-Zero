@@ -122,6 +122,18 @@ export const MILESTONES = [
   { slot: 'nameplate', index: 5, label: 'Earn 12 Spirit Stars',       met: (p) => spiritStars(p) >= 12 },
 ];
 
+// Pom-Pom flights feed the same Closet used by skill and treasure rewards.
+// These are deterministic from the durable personal best, so an athlete can
+// equip a prize on any device as soon as that score has synced.
+export const POM_POM_PRIZES = [
+  { minScore: 3,  key: 'pom_burst_trail',     slot: 'trail',     index: 5, label: 'Pom Burst Trail' },
+  { minScore: 5,  key: 'spirit_flight_cape',  slot: 'cape',      index: 8, label: 'Spirit Flight Cape' },
+  { minScore: 8,  key: 'rally_tag',           slot: 'nameplate', index: 6, label: 'Rally Tag' },
+  { minScore: 12, key: 'full_out_trail',      slot: 'trail',     index: 6, label: 'Full-Out Trail' },
+  { minScore: 20, key: 'champion_flight_cape', slot: 'cape',     index: 9, label: 'Champion Flight Cape' },
+  { minScore: 30, key: 'top_flyer_tag',       slot: 'nameplate', index: 7, label: 'Top Flyer Tag' },
+];
+
 // Merge progress-based unlocks on top of the skill-derived unlock state.
 export function applyProgressUnlocks(unlocks, progress) {
   const base = unlocks || { loaded: false, stats: {}, allowed: {}, reasons: {} };
@@ -134,6 +146,16 @@ export function applyProgressUnlocks(unlocks, progress) {
     if (!m.met(progress)) continue;
     allowed[m.slot] = allowed[m.slot] || [0];
     if (!allowed[m.slot].includes(m.index)) allowed[m.slot].push(m.index);
+  }
+  const pomBest = Math.max(0, Math.round(Number(progress?.games?.pomPom?.best) || 0));
+  for (const prize of POM_POM_PRIZES) {
+    reasons[prize.slot] = {
+      ...(reasons[prize.slot] || {}),
+      [prize.index]: `Pass ${prize.minScore} consecutive Pom-Pom gates`,
+    };
+    if (pomBest < prize.minScore) continue;
+    allowed[prize.slot] = allowed[prize.slot] || [0];
+    if (!allowed[prize.slot].includes(prize.index)) allowed[prize.slot].push(prize.index);
   }
   return { ...base, allowed, reasons };
 }
