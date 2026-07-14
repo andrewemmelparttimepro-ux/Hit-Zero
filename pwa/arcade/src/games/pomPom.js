@@ -29,12 +29,12 @@ const MEDALS = [
 ];
 
 const STREAK_MOMENTS = [
-  { score: 3,  title: 'SPIRIT STREAK',   call: 'THREE CLEAN GATES' },
-  { score: 5,  title: 'RALLY ON',        call: 'THE TEAM IS WITH YOU' },
-  { score: 8,  title: 'CROWD ROAR',      call: 'HIT IT · HOLD IT' },
-  { score: 12, title: 'FULL-OUT ENERGY', call: 'OWN THE FLOOR' },
-  { score: 20, title: 'CHAMPION FLIGHT', call: 'ZERO DEDUCTIONS' },
-  { score: 30, title: 'TOP FLYER',       call: 'THE GYM GOES WILD' },
+  { score: 3,  title: 'SPIRIT STREAK',   call: 'THREE CLEAN GATES',       presentation: 'compact',  duration: 900 },
+  { score: 5,  title: 'RALLY ON',        call: 'THE TEAM IS WITH YOU',    presentation: 'sideline', duration: 1100 },
+  { score: 8,  title: 'CROWD ROAR',      call: 'HIT IT · HOLD IT',        presentation: 'ribbon',   duration: 1200 },
+  { score: 12, title: 'FULL-OUT ENERGY', call: 'OWN THE FLOOR',           presentation: 'trail',    duration: 1350 },
+  { score: 20, title: 'CHAMPION FLIGHT', call: 'ZERO DEDUCTIONS',         presentation: 'full',     duration: 1800 },
+  { score: 30, title: 'TOP FLYER',       call: 'THE GYM GOES WILD',       presentation: 'ribbon',   duration: 1250 },
 ].map((moment) => ({
   ...moment,
   prize: POM_POM_PRIZES.find((prize) => prize.minScore === moment.score) || null,
@@ -65,6 +65,35 @@ export function difficultyFor(score, width, height) {
     speed: baseSpeed * (0.9 + progress * 0.34),
     spawnEvery: Math.max(1.3, 1.78 - n * 0.014),
   };
+}
+
+// Small milestones rotate through distinct cheer treatments. A true
+// full-screen rally is deliberately rare: score 20, then each 50-gate mark.
+export function rewardMomentFor(value) {
+  const score = Math.max(0, Math.round(Number(value) || 0));
+  const planned = STREAK_MOMENTS.find((moment) => moment.score === score);
+  if (planned) return planned;
+  if (score > 30 && score % 50 === 0) {
+    return {
+      score,
+      title: 'LEGENDARY FLIGHT',
+      call: 'THE WHOLE GYM ERUPTS',
+      presentation: 'full',
+      duration: 1800,
+      prize: null,
+    };
+  }
+  if (score > 30 && score % 10 === 0) {
+    return {
+      score,
+      title: 'RALLY ROLLING',
+      call: 'KEEP THE STREAK ALIVE',
+      presentation: 'ribbon',
+      duration: 1150,
+      prize: null,
+    };
+  }
+  return null;
 }
 
 export function createPomPom({
@@ -442,7 +471,7 @@ export function createPomPom({
         spray(flyer.x - 10, flyer.y, 10, true);
         pulseScore();
         sfx?.perfect?.();
-        const moment = streakMomentFor(score);
+        const moment = rewardMomentFor(score);
         if (moment) celebrateStreak(moment);
       }
     }
@@ -733,15 +762,6 @@ export function createPomPom({
     }
   }
 
-  function streakMomentFor(value) {
-    const planned = STREAK_MOMENTS.find((moment) => moment.score === value);
-    if (planned) return planned;
-    if (value > 30 && value % 10 === 0) {
-      return { score: value, title: 'CROWD ROAR', call: 'KEEP THE RALLY ALIVE', prize: null };
-    }
-    return null;
-  }
-
   function celebrateStreak(moment) {
     if (!celebrationEl || !root) return;
     const newlyUnlocked = Boolean(moment.prize && runStartBest < moment.prize.minScore);
@@ -758,8 +778,10 @@ export function createPomPom({
       : moment.prize
         ? `${moment.prize.label} CHEER REWARD`
         : 'THE CROWD IS ON ITS FEET';
+    const presentation = moment.presentation || 'compact';
+    celebrationEl.className = `pom-celebration presentation-${presentation}`;
     celebrationEl.innerHTML = `
-      <div class="pom-celebration-glow"></div>
+      ${presentation === 'full' ? '<div class="pom-celebration-glow"></div>' : ''}
       <div class="pom-celebration-rally">
         <img class="pom-celebration-flyer left" src="${ASSET_URL}" alt="" aria-hidden="true" />
         <div class="pom-celebration-copy">
@@ -771,21 +793,33 @@ export function createPomPom({
       </div>`;
     celebrationEl.dataset.show = 'true';
 
-    // Sideline bursts make this read like a cheer rally without touching the
-    // flyer, gate geometry, hitbox, speed, or input cadence.
-    spray(W * 0.12, H * 0.72, 28, true);
-    spray(W * 0.88, H * 0.72, 28, true);
-    sfx?.score?.();
-    if (navigator.vibrate) {
+    // Each cheer treatment has its own footprint and intensity. None changes
+    // flyer physics, gate geometry, hitboxes, speed, or input cadence.
+    if (presentation === 'compact') {
+      spray(flyer.x + 24, flyer.y - 20, 14, true);
+    } else if (presentation === 'sideline') {
+      spray(W * 0.86, H * 0.68, 22, true);
+    } else if (presentation === 'ribbon') {
+      spray(W * 0.18, H * 0.78, 12, true);
+      spray(W * 0.82, H * 0.78, 12, true);
+    } else if (presentation === 'trail') {
+      spray(flyer.x - 18, flyer.y + 4, 34, true);
+    } else {
+      spray(W * 0.12, H * 0.72, 28, true);
+      spray(W * 0.88, H * 0.72, 28, true);
+      sfx?.score?.();
+    }
+    if (navigator.vibrate && presentation === 'full') {
       try { navigator.vibrate([18, 35, 18]); } catch { /* optional */ }
     }
-    celebrationTimer = setTimeout(dismissCelebration, 1800);
+    celebrationTimer = setTimeout(dismissCelebration, moment.duration || 1000);
   }
 
   function dismissCelebration() {
     clearTimeout(celebrationTimer);
     if (!celebrationEl) return;
     delete celebrationEl.dataset.show;
+    celebrationEl.className = 'pom-celebration';
     celebrationEl.innerHTML = '';
   }
 

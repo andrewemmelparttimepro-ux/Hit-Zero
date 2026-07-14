@@ -742,6 +742,8 @@ const UNLOCK_REASONS = {
     4: 'Master 10 skills',
     5: 'Earn 12 Spirit Stars',
   },
+  bowShape: {},
+  uniform: {},
 };
 
 function hasArcadeBuilderAccess(session, profile, realProfile) {
@@ -758,6 +760,8 @@ function builderUnlockState() {
     loaded: true,
     stats: { solid: 99, mastered: 99, tumblingMastered: true, jumpMastered: true },
     allowed: {
+      bowShape: [0, 1, 2, 3, 4],
+      uniform: [0, 1, 2, 3, 4, 5, 6, 7, 8],
       cape: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
       trail: [0, 1, 2, 3, 4, 5, 6],
       nameplate: [0, 1, 2, 3, 4, 5, 6, 7],
@@ -785,7 +789,13 @@ function deriveUnlockState(skillRows = [], skills = [], loaded = true) {
     if (category === 'jumps' || category.includes('jump')) stats.jumpMastered = true;
   }
 
-  const allowed = { cape: [0], trail: [0], nameplate: [0] };
+  const allowed = {
+    bowShape: [0, 1, 2, 3],
+    uniform: [0, 1, 2, 3, 4, 5, 6, 7],
+    cape: [0],
+    trail: [0],
+    nameplate: [0],
+  };
   if (loaded) {
     if (stats.mastered >= 1) { allowed.cape.push(1); allowed.nameplate.push(1); }
     if (stats.mastered >= 3) { allowed.cape.push(2); allowed.nameplate.push(2); }
@@ -820,7 +830,7 @@ function demoUnlockState() {
 
 function filterAvatarForUnlocks(cfg, unlocks) {
   const next = sanitizeAvatar(cfg);
-  for (const slot of ['cape', 'trail', 'nameplate']) {
+  for (const slot of ['bowShape', 'uniform', 'cape', 'trail', 'nameplate']) {
     const allowed = unlocks?.allowed?.[slot] || [0];
     if (!allowed.includes(next[slot])) next[slot] = 0;
   }

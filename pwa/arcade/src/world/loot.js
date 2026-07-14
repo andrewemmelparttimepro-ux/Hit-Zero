@@ -127,9 +127,9 @@ export const MILESTONES = [
 // equip a prize on any device as soon as that score has synced.
 export const POM_POM_PRIZES = [
   { minScore: 3,  key: 'pom_burst_trail',     slot: 'trail',     index: 5, label: 'Pom Burst Trail' },
-  { minScore: 5,  key: 'spirit_flight_cape',  slot: 'cape',      index: 8, label: 'Spirit Flight Cape' },
+  { minScore: 5,  key: 'pom_crown_bow',       slot: 'bowShape',  index: 4, label: 'Pom Crown Bow' },
   { minScore: 8,  key: 'rally_tag',           slot: 'nameplate', index: 6, label: 'Rally Tag' },
-  { minScore: 12, key: 'full_out_trail',      slot: 'trail',     index: 6, label: 'Full-Out Trail' },
+  { minScore: 12, key: 'full_out_uniform',     slot: 'uniform',   index: 8, label: 'Full-Out Pink Gold' },
   { minScore: 20, key: 'champion_flight_cape', slot: 'cape',     index: 9, label: 'Champion Flight Cape' },
   { minScore: 30, key: 'top_flyer_tag',       slot: 'nameplate', index: 7, label: 'Top Flyer Tag' },
 ];

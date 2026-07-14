@@ -14,7 +14,7 @@ export const HAIR_COLORS = [
   0x74d7db, 0xb387ff, 0xf5f0e8, 0xc45b3c, 0x4a3227,
 ];
 export const HAIR_STYLES = ['ponytail', 'bun', 'long', 'short', 'braids', 'pigtails', 'curly', 'bob'];
-export const BOW_SHAPES = ['classic', 'big', 'star', 'sparkle'];
+export const BOW_SHAPES = ['classic', 'big', 'star', 'sparkle', 'pom_crown'];
 // bow index 0 = program accent (resolved at draw time)
 export const BOW_COLORS = [
   null, 0xffffff, 0xff4f79, 0x35c2ff, 0xb387ff,
@@ -30,6 +30,7 @@ export const UNIFORMS = [
   [0x0f172a, 0xffd166],
   [0x1f2937, 0x43e97b],
   [0x5b2145, 0x74d7db],
+  [0xf97fac, 0xffd166],
 ];
 // capes: index 0 = none. The first real cosmetic slot — Super Squad NPCs
 // wear them now; kids earn them via skill mastery + Cheer Town treasures
@@ -45,9 +46,9 @@ export const COSMETIC_LABELS = {
   skin: ['Glow 1', 'Glow 2', 'Glow 3', 'Glow 4', 'Glow 5'],
   hair: ['Ponytail', 'Bun', 'Long', 'Short', 'Braids', 'Pigtails', 'Curly', 'Bob'],
   hairColor: ['Brunette', 'Black', 'Blonde', 'Auburn', 'Pink', 'Teal', 'Purple', 'Platinum', 'Copper', 'Mocha'],
-  bowShape: ['Classic', 'Big Bow', 'Star Bow', 'Sparkle Bow'],
+  bowShape: ['Classic', 'Big Bow', 'Star Bow', 'Sparkle Bow', 'Pom Crown Bow'],
   bow: ['Gym Colors', 'White', 'Hot Pink', 'Blue', 'Purple', 'Gold', 'Green', 'Black', 'Coral', 'Lavender'],
-  uniform: ['Gym Colors', 'Midnight Pink', 'Navy Teal', 'Royal White', 'White Pink', 'Gold Night', 'Green Glow', 'Plum Teal'],
+  uniform: ['Gym Colors', 'Midnight Pink', 'Navy Teal', 'Royal White', 'White Pink', 'Gold Night', 'Green Glow', 'Plum Teal', 'Full-Out Pink Gold'],
   cape: [
     'No Cape', 'Gold Cape', 'Teal Cape', 'Gym Cape', 'White Cape',
     'Purple Cape', 'Sunset Cape', 'Emerald Cape', 'Spirit Flight Cape', 'Champion Flight Cape',
@@ -363,6 +364,18 @@ export function createAvatar({ config, name, team, theme, isSelf = false, npc = 
       bow.circle(0, by + 1, 4).fill(B);
       starShape(bow, 17, by - 8, 5, 4.5, 2).fill(0xffffff);
       bow.circle(-16, by - 7, 2).fill({ color: 0xffffff, alpha: 0.75 });
+    } else if (cfg.bowShape === 4) {
+      // Earned in Pom-Pom: twin pom clusters around a tiny gold crown.
+      for (const sx of [-1, 1]) {
+        bow.circle(sx * 11, by - 2, 7).fill(B);
+        bow.circle(sx * 16, by - 5, 4.5).fill(B);
+        bow.circle(sx * 8, by - 8, 4.5).fill(B);
+        bow.circle(sx * 12, by + 4, 4.5).fill(B);
+        bow.circle(sx * 11, by - 2, 2).fill({ color: 0xffffff, alpha: 0.68 });
+      }
+      bow.moveTo(-6, by + 2).lineTo(-5, by - 7).lineTo(0, by - 3)
+        .lineTo(5, by - 7).lineTo(6, by + 2).closePath().fill(0xffd166);
+      bow.circle(0, by + 2, 4.5).fill(0xffd166);
     } else {
       bow.moveTo(-3, by).quadraticCurveTo(-16, by - 10, -13, by + 3).quadraticCurveTo(-8, by + 7, -3, by).closePath().fill(B);
       bow.moveTo(3, by).quadraticCurveTo(16, by - 10, 13, by + 3).quadraticCurveTo(8, by + 7, 3, by).closePath().fill(B);

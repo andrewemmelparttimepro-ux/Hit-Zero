@@ -287,17 +287,22 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
       renderTab(activeTab);
     }
 
-    function colorRow(label, values, key, resolve) {
+    function colorRow(label, values, key, resolve, options = {}) {
       const row = document.createElement('div');
       row.className = 'arc-style-row';
       row.innerHTML = `<label>${label}</label>`;
       const wrap = document.createElement('div');
       wrap.className = 'arc-swatches';
       values.forEach((c, i) => {
+        const gated = Number.isFinite(options.lockedFrom) && i >= options.lockedFrom;
+        const allowed = !gated || canUse(key, i);
         const b = document.createElement('button');
-        b.className = 'arc-swatch' + (cfg[key] === i ? ' sel' : '');
+        b.className = 'arc-swatch' + (cfg[key] === i ? ' sel' : '') + (!allowed ? ' locked' : '');
+        b.type = 'button';
+        b.disabled = !allowed;
         b.style.background = resolve ? resolve(c, i) : cssHex(c);
-        b.title = COSMETIC_LABELS[key]?.[i] || label;
+        b.title = allowed ? (COSMETIC_LABELS[key]?.[i] || label) : lockReason(key, i);
+        b.setAttribute('aria-label', b.title);
         b.addEventListener('click', () => choose(key, i));
         wrap.appendChild(b);
       });
@@ -305,16 +310,21 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
       return row;
     }
 
-    function chipRow(label, values, key, labels = values) {
+    function chipRow(label, values, key, labels = values, options = {}) {
       const row = document.createElement('div');
       row.className = 'arc-style-row';
       row.innerHTML = `<label>${label}</label>`;
       const wrap = document.createElement('div');
       wrap.className = 'arc-chip-grid';
       values.forEach((value, i) => {
+        const gated = Number.isFinite(options.lockedFrom) && i >= options.lockedFrom;
+        const allowed = !gated || canUse(key, value);
         const b = document.createElement('button');
-        b.className = 'arc-chip' + (cfg[key] === value ? ' sel' : '');
-        b.textContent = labels[i];
+        b.className = 'arc-chip' + (cfg[key] === value ? ' sel' : '') + (!allowed ? ' locked' : '');
+        b.type = 'button';
+        b.disabled = !allowed;
+        b.textContent = allowed ? labels[i] : `${labels[i]} 🔒`;
+        b.title = allowed ? labels[i] : lockReason(key, value);
         b.addEventListener('click', () => choose(key, value));
         wrap.appendChild(b);
       });
@@ -374,14 +384,15 @@ export function createHud({ theme, sfx, onToggleMute, onAvatarChange }) {
         content.appendChild(chipRow('Hair style', HAIR_STYLES, 'hair', COSMETIC_LABELS.hair));
         content.appendChild(colorRow('Hair color', HAIR_COLORS, 'hairColor'));
       } else if (id === 'bow') {
-        content.appendChild(chipRow('Bow shape', BOW_SHAPES.map((_, i) => i), 'bowShape', COSMETIC_LABELS.bowShape));
+        content.appendChild(chipRow('Bow shape', BOW_SHAPES.map((_, i) => i), 'bowShape', COSMETIC_LABELS.bowShape, { lockedFrom: 4 }));
         content.appendChild(colorRow('Bow color', BOW_COLORS, 'bow',
           (c) => c === null ? `linear-gradient(120deg, ${theme.accent}, ${theme.accent2})` : cssHex(c)));
       } else if (id === 'uniform') {
         content.appendChild(colorRow('Uniform colorway', UNIFORMS, 'uniform',
           (u) => u === null
             ? `linear-gradient(120deg, #14141c 50%, ${theme.accent} 50%)`
-            : `linear-gradient(120deg, ${cssHex(u[0])} 50%, ${cssHex(u[1])} 50%)`));
+            : `linear-gradient(120deg, ${cssHex(u[0])} 50%, ${cssHex(u[1])} 50%)`,
+          { lockedFrom: 8 }));
       } else if (id === 'special') {
         content.appendChild(specialGrid('Capes', 'cape', CAPES,
           (c, i) => i === 0 ? 'rgba(255,255,255,0.06)' : cssHex(c ?? theme.accentNum)));
