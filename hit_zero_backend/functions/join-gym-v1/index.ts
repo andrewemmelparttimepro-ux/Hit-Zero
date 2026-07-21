@@ -518,7 +518,7 @@ async function registrationPaymentInfo(body: any) {
   if (!registrationIds.length) return json({ error: 'Registration id is required.' }, 400);
   const { data: regRows, error: regError } = await supa
     .from('registrations')
-    .select('id, program_id, window_id, class_id, athlete_name, parent_name, parent_email, payment_status, payment_provider, amount_paid_cents, currency, payment_metadata, status')
+    .select('id, program_id, window_id, class_id, athlete_name, parent_name, parent_email, payment_status, payment_provider, amount_paid_cents, currency, payment_metadata, status, discount_code_id, discount_code, list_amount_cents, discount_amount_cents, final_amount_cents')
     .in('id', registrationIds);
   if (regError) throw regError;
   const rowsById = new Map((regRows || []).map((row: any) => [row.id, row]));
@@ -567,7 +567,9 @@ async function registrationPaymentInfo(body: any) {
   const items: any[] = regs.map((row: any) => {
     const klass: any = row.class_id ? classById.get(row.class_id) : null;
     const windowRow: any = row.window_id ? windowById.get(row.window_id) : null;
-    const priceCents = klass ? Number(klass.price_cents || 0) : windowRow ? Math.round(Number(windowRow.fee_amount || 0) * 100) : 0;
+    const currentListCents = klass ? Number(klass.price_cents || 0) : windowRow ? Math.round(Number(windowRow.fee_amount || 0) * 100) : 0;
+    const hasServerPriceSnapshot = row.final_amount_cents !== null && row.final_amount_cents !== undefined;
+    const priceCents = hasServerPriceSnapshot ? Number(row.final_amount_cents) : currentListCents;
     return {
       registration_id: row.id,
       athlete_name: row.athlete_name || null,
@@ -577,6 +579,9 @@ async function registrationPaymentInfo(body: any) {
       name: klass?.name || windowRow?.title || 'registration',
       schedule_summary: klass?.schedule_summary || null,
       price_cents: priceCents,
+      list_amount_cents: hasServerPriceSnapshot ? Number(row.list_amount_cents ?? currentListCents) : currentListCents,
+      discount_amount_cents: hasServerPriceSnapshot ? Number(row.discount_amount_cents || 0) : 0,
+      discount_code: hasServerPriceSnapshot ? row.discount_code || null : null,
       price_unit: klass?.price_unit || null,
       price_unit_label: klass?.price_unit_label || null,
     };
@@ -589,6 +594,9 @@ async function registrationPaymentInfo(body: any) {
     name: `${items.length} registrations`,
     schedule_summary: items.map((row: any) => `${row.athlete_name || 'Athlete'} - ${row.name}`).join('; '),
     price_cents: amountCents,
+    list_amount_cents: items.reduce((sum: number, row: any) => sum + Number(row.list_amount_cents || row.price_cents || 0), 0),
+    discount_amount_cents: items.reduce((sum: number, row: any) => sum + Number(row.discount_amount_cents || 0), 0),
+    discount_code: [...new Set(items.map((row: any) => row.discount_code).filter(Boolean))].join(', ') || null,
     price_unit: null,
     price_unit_label: null,
   };
@@ -606,6 +614,10 @@ async function registrationPaymentInfo(body: any) {
       amount_paid_cents: reg.amount_paid_cents || 0,
       currency: reg.currency || settings?.currency || 'USD',
       receipt_url: reg.payment_metadata?.receipt_url || null,
+      discount_code: reg.discount_code || null,
+      list_amount_cents: reg.list_amount_cents,
+      discount_amount_cents: reg.discount_amount_cents || 0,
+      final_amount_cents: reg.final_amount_cents,
       status: reg.status,
     },
     registrations: regs.map((row: any) => ({
@@ -615,6 +627,10 @@ async function registrationPaymentInfo(body: any) {
       parent_email: row.parent_email,
       payment_status: row.payment_status || 'none',
       receipt_url: row.payment_metadata?.receipt_url || null,
+      discount_code: row.discount_code || null,
+      list_amount_cents: row.list_amount_cents,
+      discount_amount_cents: row.discount_amount_cents || 0,
+      final_amount_cents: row.final_amount_cents,
       status: row.status,
     })),
     item,
@@ -632,6 +648,7 @@ async function registrationPaymentInfo(body: any) {
 }
 
 function paymentAmountForRegistration(reg: any, classById: Map<string, any>, windowById: Map<string, any>) {
+  if (reg.final_amount_cents !== null && reg.final_amount_cents !== undefined) return Number(reg.final_amount_cents || 0);
   if (reg.class_id && classById.has(reg.class_id)) return Number(classById.get(reg.class_id).price_cents || 0);
   if (reg.window_id && windowById.has(reg.window_id)) return Math.round(Number(windowById.get(reg.window_id).fee_amount || 0) * 100);
   return 0;
@@ -659,7 +676,7 @@ async function sendPaymentReminders(profile: any, body: any) {
     : [];
   let query = supa
     .from('registrations')
-    .select('id, program_id, window_id, class_id, athlete_name, parent_name, parent_email, payment_status, status')
+    .select('id, program_id, window_id, class_id, athlete_name, parent_name, parent_email, payment_status, status, discount_code, list_amount_cents, discount_amount_cents, final_amount_cents')
     .eq('program_id', profile.program_id)
     .in('payment_status', ['none', 'pending', 'failed'])
     .in('status', ['pending', 'accepted']);
@@ -672,7 +689,7 @@ async function sendPaymentReminders(profile: any, body: any) {
     if (selectedEmails.size) {
       const { data: relatedRows, error: relatedError } = await supa
         .from('registrations')
-        .select('id, program_id, window_id, class_id, athlete_name, parent_name, parent_email, payment_status, status')
+        .select('id, program_id, window_id, class_id, athlete_name, parent_name, parent_email, payment_status, status, discount_code, list_amount_cents, discount_amount_cents, final_amount_cents')
         .eq('program_id', profile.program_id)
         .in('payment_status', ['none', 'pending', 'failed'])
         .in('status', ['pending', 'accepted'])

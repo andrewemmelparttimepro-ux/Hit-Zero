@@ -30,6 +30,9 @@ function fmtCents(cents) {
   const d = cents / 100;
   return Number.isInteger(d) ? `$${d}` : `$${d.toFixed(2)}`;
 }
+function normalizeCheckoutCode(value) {
+  return String(value || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 32);
+}
 function customPriceLabelOverridesAmount(c, label) {
   if (c?.price_unit !== 'custom' || !label) return false;
   if (Number(c.price_cents || 0) === 0) return true;
@@ -133,10 +136,13 @@ function PublicBooking({ classId, onClose }) {
   const [submitting, setSubmitting] = _useS_pb(false);
   const [submitErr, setSubmitErr] = _useS_pb(null);
   const [done, setDone] = _useS_pb(null); // { registrationId, willInvoice }
+  const [discountQuote, setDiscountQuote] = _useS_pb(null);
+  const [discountBusy, setDiscountBusy] = _useS_pb(false);
+  const [discountErr, setDiscountErr] = _useS_pb('');
   const [form, setForm] = _useS_pb({
     athleteName: '', athleteDob: '',
     parentName: '', parentEmail: '', parentPhone: '',
-    notes: '', hp: '',
+    notes: '', discountCode: '', hp: '',
   });
   const mountedAt = _useR_pb(Date.now());
 
@@ -197,6 +203,48 @@ function PublicBooking({ classId, onClose }) {
 
   function set(k, v) { setForm(prev => ({ ...prev, [k]: v })); }
 
+  async function fetchDiscountQuote(rawCode) {
+    const code = normalizeCheckoutCode(rawCode);
+    if (!code) throw new Error('Enter a discount code.');
+    const fnBase = pbFunctionsBase();
+    const anon = pbAnonKey();
+    const res = await fetch(`${fnBase}/functions/v1/public-intake-v1`, {
+      method: 'POST',
+      headers: {
+        apikey: anon,
+        Authorization: `Bearer ${anon}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        kind: 'discount_quote',
+        program_slug: program?.slug || klass?.program_slug || 'mca',
+        program_id: program?.id || klass?.program_id || null,
+        class_id: classId,
+        discount_code: code,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.ok || !data?.pricing) {
+      throw new Error(data?.message || 'That discount code could not be applied.');
+    }
+    return data.pricing;
+  }
+
+  async function applyDiscountCode() {
+    setDiscountBusy(true);
+    setDiscountErr('');
+    try {
+      const pricing = await fetchDiscountQuote(form.discountCode);
+      setForm(prev => ({ ...prev, discountCode: pricing.code }));
+      setDiscountQuote(pricing);
+    } catch (err) {
+      setDiscountQuote(null);
+      setDiscountErr(err.message || 'That discount code could not be applied.');
+    } finally {
+      setDiscountBusy(false);
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setSubmitErr(null);
@@ -214,6 +262,13 @@ function PublicBooking({ classId, onClose }) {
 
     setSubmitting(true);
     try {
+      let appliedDiscount = discountQuote;
+      const requestedCode = normalizeCheckoutCode(form.discountCode);
+      if (requestedCode && appliedDiscount?.code !== requestedCode) {
+        appliedDiscount = await fetchDiscountQuote(requestedCode);
+        setDiscountQuote(appliedDiscount);
+        setDiscountErr('');
+      }
       const fnBase = pbFunctionsBase();
       const anon = pbAnonKey();
       const res = await fetch(`${fnBase}/functions/v1/public-intake-v1`, {
@@ -233,6 +288,7 @@ function PublicBooking({ classId, onClose }) {
           parent_email: email,
           parent_phone: form.parentPhone.trim() || null,
           notes: form.notes.trim() || null,
+          discount_code: appliedDiscount?.code || null,
           source: 'hit_zero_public_booking',
           payment_required: Boolean(program?.public_checkout_enabled),
           metadata: {
@@ -251,6 +307,7 @@ function PublicBooking({ classId, onClose }) {
         registrationId: data.registration_id,
         willInvoice: !program?.public_checkout_enabled,
         existing: !!data.existing,
+        pricing: data.pricing || appliedDiscount || null,
       });
     } catch (err) {
       setSubmitErr(err.message);
@@ -297,7 +354,14 @@ function PublicBooking({ classId, onClose }) {
           </p>
           {!done.willInvoice && (
             <PublicPaymentStep
-              klass={klass}
+              klass={done.pricing ? {
+                ...klass,
+                price_cents: done.pricing.final_amount_cents,
+                list_amount_cents: done.pricing.list_amount_cents,
+                discount_amount_cents: done.pricing.discount_amount_cents,
+                discount_code: done.pricing.code,
+                discount_label: done.pricing.label,
+              } : klass}
               program={program}
               form={form}
               registrationId={done.registrationId}
@@ -404,6 +468,42 @@ function PublicBooking({ classId, onClose }) {
             <PBField label="Notes (optional)">
               <textarea className="hz-input" rows="2" placeholder="Anything we should know" value={form.notes} onChange={e => set('notes', e.target.value)} style={{ resize: 'vertical', minHeight: 64 }} disabled={submitting}/>
             </PBField>
+
+            {!willInvoice && Number(klass.price_cents || 0) > 1 && (
+              <div style={{ padding: 12, border: '1px solid var(--hz-line)', borderRadius: 12, background: 'rgba(255,255,255,0.025)' }}>
+                <div className="hz-eyebrow" style={{ fontSize: 10, marginBottom: 7 }}>Discount code (optional)</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    className="hz-input"
+                    value={form.discountCode}
+                    onChange={e => {
+                      set('discountCode', normalizeCheckoutCode(e.target.value));
+                      setDiscountQuote(null);
+                      setDiscountErr('');
+                    }}
+                    placeholder="Enter code"
+                    autoCapitalize="characters"
+                    autoCorrect="off"
+                    spellCheck="false"
+                    disabled={submitting || discountBusy}
+                    style={{ flex: 1, textTransform: 'uppercase' }}
+                  />
+                  <button type="button" className="hz-btn" onClick={applyDiscountCode} disabled={submitting || discountBusy || !form.discountCode}>
+                    {discountBusy ? 'Checking…' : 'Apply'}
+                  </button>
+                </div>
+                {discountErr && <div role="alert" style={{ color: 'var(--hz-pink)', fontSize: 12, marginTop: 8 }}>{discountErr}</div>}
+                {discountQuote && (
+                  <div role="status" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginTop: 9, color: 'var(--hz-green)', fontSize: 12.5 }}>
+                    <span>{discountQuote.label} applied</span>
+                    <span>
+                      <span style={{ color: 'var(--hz-dimmer)', textDecoration: 'line-through', marginRight: 7 }}>{fmtCents(discountQuote.list_amount_cents)}</span>
+                      <strong>{fmtCents(discountQuote.final_amount_cents)}</strong>
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {submitErr && (
               <div role="alert" style={{ padding: '10px 12px', background: 'rgba(255,94,108,0.08)', borderRadius: 10, border: '1px solid rgba(255,94,108,0.25)', color: 'var(--hz-pink)', fontSize: 13 }}>
@@ -819,7 +919,12 @@ function PublicPaymentLink({ registrationId }) {
             {items.map(row => (
               <div key={row.registration_id || row.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '8px 10px', borderRadius: 10, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.03)', fontSize: 12.5 }}>
                 <span>{row.athlete_name || 'Athlete'} - {row.name || 'Registration'}</span>
-                <strong>{fmtCents(row.price_cents || 0)}</strong>
+                <span>
+                  {Number(row.discount_amount_cents || 0) > 0 && (
+                    <span style={{ color: 'var(--hz-dimmer)', textDecoration: 'line-through', marginRight: 7 }}>{fmtCents(row.list_amount_cents || row.price_cents || 0)}</span>
+                  )}
+                  <strong>{fmtCents(row.price_cents || 0)}</strong>
+                </span>
               </div>
             ))}
           </div>
@@ -828,6 +933,12 @@ function PublicPaymentLink({ registrationId }) {
           <span style={{ fontSize: 36, fontWeight: 800, background: 'linear-gradient(135deg, var(--hz-teal), var(--hz-pink))', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>{fmtCents(info.amount_cents || item.price_cents)}</span>
           {unitFor(item) && <span style={{ color: 'var(--hz-dim)', fontSize: 13 }}>{unitFor(item)}</span>}
         </div>
+        {Number(item.discount_amount_cents || 0) > 0 && (
+          <div style={{ marginTop: 8, color: 'var(--hz-green)', fontSize: 12.5 }}>
+            {item.discount_code ? `Code ${item.discount_code}` : 'Discount'} saved you {fmtCents(item.discount_amount_cents)}.
+            <span style={{ color: 'var(--hz-dimmer)', marginLeft: 6 }}>Original {fmtCents(item.list_amount_cents)}.</span>
+          </div>
+        )}
         {!isPaid && monthly && (
           <div style={{ marginTop: 14, padding: '10px 12px', background: 'rgba(39,207,215,0.08)', borderRadius: 10, border: '1px solid rgba(39,207,215,0.22)', color: 'var(--hz-teal)', fontSize: 12.5, lineHeight: 1.5, textAlign: 'left' }}>
             {monthlyPaymentNotice({ ...item, price_cents: info.amount_cents || item.price_cents })}
@@ -867,6 +978,7 @@ function PublicPaymentStep({ klass, program, form, registrationId, registrationI
   const [receipt, setReceipt] = _useS_pb(null);
   const cardId = _useR_pb(`sq-card-${Math.random().toString(36).slice(2)}`);
   const monthly = isMonthlyPrice(klass);
+  const hasDiscount = Number(klass.discount_amount_cents || 0) > 0;
 
   _useE_pb(() => {
     let cancelled = false;
@@ -980,6 +1092,13 @@ function PublicPaymentStep({ klass, program, form, registrationId, registrationI
   return (
     <div className="hz-card" style={{ marginTop: 18, padding: 16, textAlign: 'left' }}>
       <div className="hz-eyebrow" style={{ marginBottom: 10 }}>Secure Square payment</div>
+      {hasDiscount && (
+        <div style={{ marginBottom: 12, padding: '10px 12px', background: 'rgba(63,231,160,0.08)', borderRadius: 10, border: '1px solid rgba(63,231,160,0.25)', color: 'var(--hz-green)', fontSize: 12.5, lineHeight: 1.5 }}>
+          <strong>{klass.discount_label || (klass.discount_code ? `Code ${klass.discount_code}` : 'Discount')} applied.</strong>{' '}
+          <span style={{ textDecoration: 'line-through', color: 'var(--hz-dimmer)' }}>{fmtCents(klass.list_amount_cents)}</span>{' '}
+          <span>{fmtCents(klass.price_cents)} due today.</span>
+        </div>
+      )}
       {monthly && (
         <div style={{ marginBottom: 12, padding: '10px 12px', background: 'rgba(39,207,215,0.08)', borderRadius: 10, border: '1px solid rgba(39,207,215,0.22)', color: 'var(--hz-teal)', fontSize: 12.5, lineHeight: 1.5 }}>
           {monthlyPaymentNotice(klass)}

@@ -29,6 +29,11 @@
 // always succeeds whether the email goes out or not.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import {
+  DiscountCodeError,
+  normalizeDiscountCode,
+  quoteClassDiscount,
+} from '../_shared/discounts.ts';
 
 const SB_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SB_SR  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -235,6 +240,44 @@ async function resolveProgram(programSlug: string | undefined, programId: string
   return { program };
 }
 
+function discountErrorResponse(err: unknown) {
+  if (err instanceof DiscountCodeError) return bad(err.status, err.code, err.message);
+  console.warn('[intake] discount lookup failed', err);
+  return bad(500, 'discount_lookup_failed', 'Could not check that discount code. Please try again.');
+}
+
+async function handleDiscountQuote(body: any): Promise<Response> {
+  const resolved = await resolveProgram(body.program_slug, body.program_id);
+  if (resolved.error) return resolved.error;
+  const { program } = resolved;
+  if (typeof body.class_id !== 'string' || !UUID_RE.test(body.class_id)) {
+    return bad(400, 'bad_class_id', 'class_id must be a valid uuid');
+  }
+  const { data: classRow, error } = await supa
+    .from('program_classes')
+    .select('id, program_id, is_public, registration_open, price_cents')
+    .eq('id', body.class_id)
+    .maybeSingle();
+  if (error) return bad(500, 'class_lookup_failed', error.message);
+  if (!classRow || classRow.program_id !== program.id || !classRow.is_public) {
+    return bad(404, 'class_not_found', 'class not found');
+  }
+  if (!classRow.registration_open) {
+    return bad(403, 'class_closed', 'this class is not open for sign-ups right now');
+  }
+  try {
+    const quote = await quoteClassDiscount(supa, {
+      programId: program.id,
+      classId: classRow.id,
+      code: body.discount_code,
+      listAmountCents: Number(classRow.price_cents || 0),
+    });
+    return json({ ok: true, pricing: quote });
+  } catch (err) {
+    return discountErrorResponse(err);
+  }
+}
+
 async function handleLead(body: any): Promise<Response> {
   const resolved = await resolveProgram(body.program_slug, body.program_id);
   if (resolved.error) return resolved.error;
@@ -377,6 +420,29 @@ async function handleRegistration(body: any): Promise<Response> {
     classRow = c;
   }
 
+  let pricing: any = classRow ? {
+    code_id: null,
+    code: null,
+    label: null,
+    list_amount_cents: Number(classRow.price_cents || 0),
+    discount_amount_cents: 0,
+    final_amount_cents: Number(classRow.price_cents || 0),
+  } : null;
+  const requestedDiscountCode = normalizeDiscountCode(body.discount_code);
+  if (requestedDiscountCode) {
+    if (!classRow) return bad(400, 'discount_requires_class', 'discount codes require a class registration');
+    try {
+      pricing = await quoteClassDiscount(supa, {
+        programId: program.id,
+        classId: classRow.id,
+        code: requestedDiscountCode,
+        listAmountCents: Number(classRow.price_cents || 0),
+      });
+    } catch (err) {
+      return discountErrorResponse(err);
+    }
+  }
+
   const levelInterest = body.level_interest != null ? Number(body.level_interest) : null;
   if (levelInterest != null && (!Number.isInteger(levelInterest) || levelInterest < 1 || levelInterest > 6)) {
     return bad(400, 'bad_level_interest', 'level_interest must be an integer 1-6');
@@ -395,6 +461,11 @@ async function handleRegistration(body: any): Promise<Response> {
     source: body.source ? String(body.source).slice(0, 100) : 'public_website',
     status: 'pending',
     payment_status: 'none',
+    discount_code_id: pricing?.code_id ?? null,
+    discount_code: pricing?.code ?? null,
+    list_amount_cents: pricing?.list_amount_cents ?? null,
+    discount_amount_cents: pricing?.discount_amount_cents ?? 0,
+    final_amount_cents: pricing?.final_amount_cents ?? null,
     intake_metadata: {
       ...(typeof body.metadata === 'object' && body.metadata ? body.metadata : {}),
       athlete_age: ageFromDob(body.athlete_dob),
@@ -402,6 +473,13 @@ async function handleRegistration(body: any): Promise<Response> {
       schedule_summary: classRow?.schedule_summary ?? null,
       age_range_min: classRow?.age_range_min ?? null,
       age_range_max: classRow?.age_range_max ?? null,
+      discount: pricing?.code ? {
+        code: pricing.code,
+        label: pricing.label,
+        list_amount_cents: pricing.list_amount_cents,
+        discount_amount_cents: pricing.discount_amount_cents,
+        final_amount_cents: pricing.final_amount_cents,
+      } : null,
       public_intake_kind: 'registration',
     },
   };
@@ -436,7 +514,12 @@ async function handleRegistration(body: any): Promise<Response> {
     source: insertRow.source as string | null,
   }).catch(() => {});
 
-  return json({ ok: true, registration_id: data.id, class: classRow ? { id: classRow.id, name: classRow.name } : null });
+  return json({
+    ok: true,
+    registration_id: data.id,
+    class: classRow ? { id: classRow.id, name: classRow.name } : null,
+    pricing,
+  });
 }
 
 async function handleOpenGym(body: any): Promise<Response> {
@@ -569,14 +652,15 @@ Deno.serve(async (req: Request) => {
 
   const kind = String(body?.kind || '').toLowerCase();
   try {
-    if (kind !== 'lead' && kind !== 'registration' && kind !== 'open_gym') {
-      return bad(400, 'bad_kind', "kind must be 'lead', 'registration', or 'open_gym'");
+    if (kind !== 'lead' && kind !== 'registration' && kind !== 'open_gym' && kind !== 'discount_quote') {
+      return bad(400, 'bad_kind', "kind must be 'lead', 'registration', 'open_gym', or 'discount_quote'");
     }
     const email = body?.parent_email ? String(body.parent_email) : null;
     const limited = await throttle(req, kind, null, email);
     if (limited) return limited;
     if (kind === 'lead') return await handleLead(body);
     if (kind === 'registration') return await handleRegistration(body);
+    if (kind === 'discount_quote') return await handleDiscountQuote(body);
     return await handleOpenGym(body);
   } catch (err) {
     return bad(500, 'unexpected', err instanceof Error ? err.message : String(err));

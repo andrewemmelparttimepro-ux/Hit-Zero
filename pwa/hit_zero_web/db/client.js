@@ -1833,7 +1833,14 @@
       const klass = reg.class_id ? (data.program_classes || []).find(c => c.id === reg.class_id) : null;
       const win = reg.window_id ? (data.registration_windows || []).find(w => w.id === reg.window_id) : null;
       const program = (data.programs || []).find(p => p.id === reg.program_id) || data.programs?.[0] || {};
-      const item = klass || (win ? { id: win.id, program_id: reg.program_id, name: win.title, price_cents: Math.round(Number(win.fee_amount || 0) * 100) } : null);
+      const baseItem = klass || (win ? { id: win.id, program_id: reg.program_id, name: win.title, price_cents: Math.round(Number(win.fee_amount || 0) * 100) } : null);
+      const item = baseItem ? {
+        ...baseItem,
+        price_cents: reg.final_amount_cents ?? baseItem.price_cents,
+        list_amount_cents: reg.list_amount_cents ?? baseItem.price_cents,
+        discount_amount_cents: reg.discount_amount_cents || 0,
+        discount_code: reg.discount_code || null,
+      } : null;
       if (!item?.price_cents) return { data: null, error: new Error('This registration does not have a payable amount yet.') };
       return { data: { ok: true, registration: reg, item, program: { ...program, public_checkout_enabled: true }, amount_cents: item.price_cents, currency: 'USD' }, error: null };
     },

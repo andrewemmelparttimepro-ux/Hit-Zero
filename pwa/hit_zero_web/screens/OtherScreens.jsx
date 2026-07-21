@@ -2468,6 +2468,28 @@ async function writeProgramClass(action, payload, id) {
   return { error: new Error(`Unknown class mutation: ${action}`) };
 }
 
+async function readClassDiscountCodes(classId) {
+  if (!liveOfferingsMode()) return { data: [], error: null };
+  return window.HZsupa
+    .from('class_discount_codes')
+    .select('id, program_id, class_id, code, label, discount_type, discount_value, is_active, starts_at, ends_at, created_at')
+    .eq('class_id', classId)
+    .order('created_at', { ascending: true });
+}
+
+async function writeClassDiscountCode(action, payload, id) {
+  if (!liveOfferingsMode()) return { data: null, error: new Error('Discount codes are available in live mode only.') };
+  const table = window.HZsupa.from('class_discount_codes');
+  if (action === 'insert') return table.insert(payload).select('*').single();
+  if (action === 'update') return table.update(payload).eq('id', id).select('*').single();
+  if (action === 'delete') return table.delete().eq('id', id);
+  return { data: null, error: new Error(`Unknown discount-code mutation: ${action}`) };
+}
+
+function normalizedDiscountCode(value) {
+  return String(value || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 32);
+}
+
 function nullableInt(value) {
   if (value === '' || value === null || value === undefined) return null;
   const parsed = parseInt(value, 10);
@@ -2707,6 +2729,7 @@ function ClassRow({ cls, disabled, onMutated }) {
   const [dirty, setDirty] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [rowError, setRowError] = React.useState('');
+  const [showDiscounts, setShowDiscounts] = React.useState(false);
 
   function mark() {
     setDirty(true);
@@ -2806,6 +2829,9 @@ function ClassRow({ cls, disabled, onMutated }) {
           Registration open
         </label>
         <div style={{ flex: 1 }}/>
+        <button className="hz-btn" disabled={saving} onClick={() => setShowDiscounts(value => !value)}>
+          {showDiscounts ? 'Hide discounts' : 'Discount codes'}
+        </button>
         <button className="hz-btn" disabled={!dirty || saving} onClick={save}>{saving ? '…' : dirty ? 'Save' : '✓'}</button>
         <button className="hz-btn hz-btn-danger" disabled={saving} onClick={remove} title="Delete">Delete</button>
       </div>
@@ -2814,6 +2840,150 @@ function ClassRow({ cls, disabled, onMutated }) {
           {rowError}
         </div>
       )}
+      {showDiscounts && (
+        <ClassDiscountCodesEditor
+          cls={cls}
+          disabled={disabled || saving}
+          onMutated={onMutated}
+        />
+      )}
+    </div>
+  );
+}
+
+function ClassDiscountCodesEditor({ cls, disabled, onMutated }) {
+  const [codes, setCodes] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [busy, setBusy] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState('');
+  const [code, setCode] = React.useState('');
+  const [label, setLabel] = React.useState('');
+  const [discountType, setDiscountType] = React.useState('percent');
+  const [amount, setAmount] = React.useState('');
+
+  async function load() {
+    setLoading(true);
+    setErrorMessage('');
+    const { data, error } = await readClassDiscountCodes(cls.id);
+    if (error) setErrorMessage(error.message || 'Could not load discount codes.');
+    else setCodes(data || []);
+    setLoading(false);
+  }
+
+  React.useEffect(() => { load(); }, [cls.id]);
+
+  function displayValue(row) {
+    return row.discount_type === 'percent'
+      ? `${row.discount_value}% off`
+      : `$${(Number(row.discount_value || 0) / 100).toFixed(Number(row.discount_value || 0) % 100 ? 2 : 0)} off`;
+  }
+
+  async function addCode() {
+    const cleanCode = normalizedDiscountCode(code);
+    const cleanLabel = label.trim();
+    const numeric = Number(amount);
+    if (cleanCode.length < 3) { setErrorMessage('Code must be at least 3 letters or numbers.'); return; }
+    if (!cleanLabel) { setErrorMessage('Add a short label, such as Sibling or Parade handout.'); return; }
+    if (!Number.isFinite(numeric) || numeric <= 0) { setErrorMessage('Enter a discount amount greater than zero.'); return; }
+    const discountValue = discountType === 'percent' ? Math.round(numeric) : Math.round(numeric * 100);
+    if (discountType === 'percent' && (discountValue < 1 || discountValue > 99)) {
+      setErrorMessage('Percent discounts must be between 1% and 99%.');
+      return;
+    }
+    if (discountType === 'fixed' && discountValue >= Number(cls.price_cents || 0)) {
+      setErrorMessage('Dollar discount must be less than the class price. Use the staff comp workflow for a free registration.');
+      return;
+    }
+    setBusy(true);
+    setErrorMessage('');
+    const { error } = await writeClassDiscountCode('insert', {
+      program_id: cls.program_id,
+      class_id: cls.id,
+      code: cleanCode,
+      label: cleanLabel,
+      discount_type: discountType,
+      discount_value: discountValue,
+      is_active: true,
+    });
+    if (error) {
+      const duplicate = String(error.code || '') === '23505';
+      setErrorMessage(duplicate ? 'That code already exists for this gym.' : (error.message || 'Could not add discount code.'));
+    } else {
+      setCode('');
+      setLabel('');
+      setAmount('');
+      await load();
+      onMutated?.(`Discount code added to ${cls.name}.`);
+    }
+    setBusy(false);
+  }
+
+  async function toggleCode(row) {
+    setBusy(true);
+    setErrorMessage('');
+    const { error } = await writeClassDiscountCode('update', { is_active: !row.is_active }, row.id);
+    if (error) setErrorMessage(error.message || 'Could not update discount code.');
+    else {
+      await load();
+      onMutated?.(`${row.code} ${row.is_active ? 'paused' : 'activated'}.`);
+    }
+    setBusy(false);
+  }
+
+  async function removeCode(row) {
+    if (!confirm(`Delete discount code "${row.code}"? Existing registration price records will be kept.`)) return;
+    setBusy(true);
+    setErrorMessage('');
+    const { error } = await writeClassDiscountCode('delete', null, row.id);
+    if (error) setErrorMessage(error.message || 'Could not delete discount code.');
+    else {
+      await load();
+      onMutated?.(`${row.code} deleted.`);
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div style={{ marginTop: 12, padding: 12, borderRadius: 10, border: '1px solid rgba(39,207,215,0.22)', background: 'rgba(39,207,215,0.045)' }}>
+      <div className="hz-eyebrow" style={{ fontSize: 10, marginBottom: 5 }}>Checkout discount codes</div>
+      <div style={{ color: 'var(--hz-dim)', fontSize: 11.5, lineHeight: 1.5, marginBottom: 10 }}>
+        Codes apply only to {cls.name}. Square verifies the discounted total from the saved registration, so families cannot change the amount in their browser.
+      </div>
+
+      {loading ? <div style={{ color: 'var(--hz-dim)', fontSize: 12 }}>Loading codes…</div> : (
+        <div style={{ display: 'grid', gap: 7, marginBottom: 10 }}>
+          {codes.map(row => (
+            <div key={row.id} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 9, padding: '8px 10px', borderRadius: 9, border: '1px solid var(--hz-line)', background: 'rgba(0,0,0,0.12)', opacity: row.is_active ? 1 : 0.6 }}>
+              <code style={{ fontFamily: 'var(--hz-mono)', fontWeight: 800, color: row.is_active ? 'var(--hz-teal)' : 'var(--hz-dim)' }}>{row.code}</code>
+              <span style={{ color: 'var(--hz-dim)', fontSize: 12 }}>{row.label} · {displayValue(row)}</span>
+              <div style={{ flex: 1 }}/>
+              <button className="hz-btn hz-btn-sm" onClick={() => toggleCode(row)} disabled={disabled || busy}>{row.is_active ? 'Pause' : 'Activate'}</button>
+              <button className="hz-btn hz-btn-sm hz-btn-danger" onClick={() => removeCode(row)} disabled={disabled || busy}>Delete</button>
+            </div>
+          ))}
+          {codes.length === 0 && <div style={{ color: 'var(--hz-dim)', fontSize: 12 }}>No codes yet. Add the sibling and parade codes below.</div>}
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(128px, 1fr))', gap: 8, alignItems: 'end' }}>
+        <FieldRow label="Code">
+          <input className="hz-input" value={code} onChange={e => setCode(normalizedDiscountCode(e.target.value))} placeholder="SIBLING" disabled={disabled || busy}/>
+        </FieldRow>
+        <FieldRow label="Internal label">
+          <input className="hz-input" value={label} onChange={e => setLabel(e.target.value)} placeholder="Sibling discount" maxLength={80} disabled={disabled || busy}/>
+        </FieldRow>
+        <FieldRow label="Type">
+          <select className="hz-input" value={discountType} onChange={e => setDiscountType(e.target.value)} disabled={disabled || busy}>
+            <option value="percent">Percent</option>
+            <option value="fixed">Dollars</option>
+          </select>
+        </FieldRow>
+        <FieldRow label={discountType === 'percent' ? 'Percent off' : 'Dollars off'}>
+          <input className="hz-input" type="number" min="1" step={discountType === 'percent' ? '1' : '0.01'} value={amount} onChange={e => setAmount(e.target.value)} placeholder={discountType === 'percent' ? '10' : '15'} disabled={disabled || busy}/>
+        </FieldRow>
+        <button className="hz-btn hz-btn-primary" onClick={addCode} disabled={disabled || busy || loading}>{busy ? '…' : 'Add code'}</button>
+      </div>
+      {errorMessage && <div role="alert" style={{ color: 'var(--hz-pink)', fontSize: 12, marginTop: 9 }}>{errorMessage}</div>}
     </div>
   );
 }

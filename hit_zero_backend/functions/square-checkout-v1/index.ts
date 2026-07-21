@@ -101,17 +101,24 @@ async function paymentItemsForRegistrations(registrations: any[]) {
       ? row.intake_metadata
       : {};
     const metadataCents = Number(metadata.price_cents || metadata.payment?.amount_cents || 0);
-    const priceCents = klass
+    const listPriceCents = klass
       ? Number(klass.price_cents || 0)
       : windowRow
         ? Math.round(Number(windowRow.fee_amount || 0) * 100)
         : metadataCents;
+    const hasServerPriceSnapshot = row.final_amount_cents !== null && row.final_amount_cents !== undefined;
+    const priceCents = hasServerPriceSnapshot
+      ? Number(row.final_amount_cents)
+      : listPriceCents;
 
     return {
       registration_id: row.id,
       athlete_name: row.athlete_name || null,
       name: klass?.name || windowRow?.title || metadata.class_name || 'registration',
       price_cents: Number.isFinite(priceCents) ? priceCents : 0,
+      list_amount_cents: hasServerPriceSnapshot ? Number(row.list_amount_cents ?? listPriceCents) : listPriceCents,
+      discount_amount_cents: hasServerPriceSnapshot ? Number(row.discount_amount_cents || 0) : 0,
+      discount_code: hasServerPriceSnapshot ? row.discount_code || null : null,
       source: klass ? 'class' : windowRow ? 'registration_window' : metadataCents ? 'intake_metadata' : 'none',
     };
   });
@@ -183,7 +190,7 @@ Deno.serve(async (req: Request) => {
   if (registrationIds.length) {
     const { data: regRows, error: regErr } = await supa
       .from('registrations')
-      .select('id, program_id, window_id, class_id, payment_status, parent_email, parent_name, athlete_name, intake_metadata')
+      .select('id, program_id, window_id, class_id, payment_status, parent_email, parent_name, athlete_name, intake_metadata, discount_code_id, discount_code, list_amount_cents, discount_amount_cents, final_amount_cents')
       .in('id', registrationIds);
     if (regErr) return bad(500, 'registration_lookup_failed', regErr.message);
     const byId = new Map((regRows || []).map((row: any) => [row.id, row]));
@@ -312,6 +319,9 @@ Deno.serve(async (req: Request) => {
           captured_at: new Date().toISOString(),
           group_payment: registrations.length > 1,
           registration_ids: registrations.map((reg) => reg.id),
+          list_amount_cents: Number(item?.list_amount_cents || item?.price_cents || body.amount_cents),
+          discount_amount_cents: Number(item?.discount_amount_cents || 0),
+          discount_code: item?.discount_code || null,
         },
       }).eq('id', row.id);
     }));
