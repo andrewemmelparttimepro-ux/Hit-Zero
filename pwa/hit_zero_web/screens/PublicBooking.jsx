@@ -64,7 +64,38 @@ function isMonthlyPrice(c) {
   const label = String(c.price_unit_label || '').toLowerCase();
   return unit.includes('month') || label.includes('/month') || label.includes('per month');
 }
+function hasRecurringBilling(c) {
+  return Boolean(
+    c?.recurring_billing_enabled
+    && Number(c?.recurring_billing_amount_cents || 0) > 0
+    && Array.isArray(c?.recurring_billing_dates)
+    && c.recurring_billing_dates.length
+    && c?.recurring_billing_end_date
+    && c?.recurring_billing_terms_version
+  );
+}
+function fmtBillingDate(value, includeYear = false) {
+  if (!value) return '';
+  const [year, month, day] = String(value).split('-').map(Number);
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long', day: 'numeric', ...(includeYear ? { year: 'numeric' } : {}), timeZone: 'UTC',
+  }).format(new Date(Date.UTC(year, month - 1, day)));
+}
+function recurringScheduleCopy(c) {
+  if (!hasRecurringBilling(c)) return '';
+  const amount = fmtCents(c.recurring_billing_amount_cents);
+  const dates = c.recurring_billing_dates.map(value => fmtBillingDate(value));
+  const joined = dates.length > 1 ? `${dates.slice(0, -1).join(', ')}, and ${dates[dates.length - 1]}` : dates[0];
+  return `Pay the first month at registration. Hit Zero will then automatically draft ${amount} on ${joined}. The program ends ${fmtBillingDate(c.recurring_billing_end_date)}.`;
+}
+function recurringAuthorizationText(c) {
+  if (!hasRecurringBilling(c)) return '';
+  const dates = c.recurring_billing_dates.map(value => fmtBillingDate(value, true));
+  const joined = dates.length > 1 ? `${dates.slice(0, -1).join(', ')}, and ${dates[dates.length - 1]}` : dates[0];
+  return `I authorize Magic City Athletics and Hit Zero to charge the card used today ${fmtCents(c.recurring_billing_amount_cents)} on ${joined}. I understand the program ends ${fmtBillingDate(c.recurring_billing_end_date, true)} and no further automatic drafts are authorized.`;
+}
 function monthlyPaymentNotice(c) {
+  if (hasRecurringBilling(c)) return recurringScheduleCopy(c);
   const amount = fmtCents(c?.price_cents);
   const amountCopy = amount ? `${amount} ` : '';
   return `Today's ${amountCopy}Square payment is a one-time registration/payment step. It does not start automatic monthly drafts. Your gym will handle monthly tuition/autopay when fall billing begins.`;
@@ -517,8 +548,10 @@ function PublicBooking({ classId, onClose }) {
             <p style={{ fontSize: 11, color: 'var(--hz-dimmer)', lineHeight: 1.5, textAlign: 'center' }}>
               {willInvoice
                 ? 'Submitting creates a pending MCA registration request. Payment instructions arrive by email.'
-                : monthly
-                  ? 'Payment is required to register. This Square payment does not start automatic monthly drafts.'
+                : hasRecurringBilling(klass)
+                  ? 'Payment is required to register. You will review and authorize the exact October-December draft schedule before Square processes today\'s payment.'
+                  : monthly
+                    ? 'Payment is required to register. This Square payment does not start automatic monthly drafts.'
                   : 'Payment is required to register. You are fully confirmed after Square payment is complete.'}
             </p>
           </form>
@@ -976,8 +1009,10 @@ function PublicPaymentStep({ klass, program, form, registrationId, registrationI
   const [paying, setPaying] = _useS_pb(false);
   const [error, setError] = _useS_pb('');
   const [receipt, setReceipt] = _useS_pb(null);
+  const [recurringAccepted, setRecurringAccepted] = _useS_pb(false);
   const cardId = _useR_pb(`sq-card-${Math.random().toString(36).slice(2)}`);
   const monthly = isMonthlyPrice(klass);
+  const recurring = hasRecurringBilling(klass);
   const hasDiscount = Number(klass.discount_amount_cents || 0) > 0;
 
   _useE_pb(() => {
@@ -1033,7 +1068,21 @@ function PublicPaymentStep({ klass, program, form, registrationId, registrationI
     setPaying(true);
     setError('');
     try {
-      const tokenResult = await card.tokenize();
+      const fullName = String(form.parentName || '').trim().split(/\s+/);
+      const tokenResult = await card.tokenize({
+        amount: (Number(klass.price_cents || 0) / 100).toFixed(2),
+        currencyCode: String(config.currency || 'USD').toUpperCase(),
+        intent: recurring ? 'CHARGE_AND_STORE' : 'CHARGE',
+        customerInitiated: true,
+        sellerKeyedIn: false,
+        billingContact: {
+          givenName: fullName[0] || undefined,
+          familyName: fullName.slice(1).join(' ') || undefined,
+          email: form.parentEmail || undefined,
+          phone: form.parentPhone || undefined,
+          countryCode: 'US',
+        },
+      });
       if (tokenResult.status !== 'OK') {
         const msg = (tokenResult.errors || []).map(e => e.message || e.detail).filter(Boolean).join(' ');
         throw new Error(msg || 'Check the card details and try again.');
@@ -1058,11 +1107,15 @@ function PublicPaymentStep({ klass, program, form, registrationId, registrationI
           registration_id: registrationIds.length <= 1 ? registrationIds[0] || registrationId : undefined,
           registration_ids: registrationIds.length > 1 ? registrationIds : undefined,
           note: `Hit Zero booking · ${klass.name}${registrationIds.length > 1 ? ` · ${registrationIds.length} registrations` : ''}`,
+          recurring_authorization: recurring ? {
+            accepted: recurringAccepted,
+            terms_version: klass.recurring_billing_terms_version,
+          } : undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) throw new Error(data.message || 'Payment failed. Please try again.');
-      setReceipt(data.payment || {});
+      setReceipt({ ...(data.payment || {}), recurring_setup: data.recurring_setup || null });
     } catch (err) {
       setError(err.message || 'Payment failed. Please try again.');
     } finally {
@@ -1077,9 +1130,19 @@ function PublicPaymentStep({ klass, program, form, registrationId, registrationI
         <div style={{ color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.5 }}>
           Your spot is locked in. Square status: {receipt.status || 'paid'}.
         </div>
-        {monthly && (
+        {monthly && !recurring && (
           <div style={{ color: 'var(--hz-dim)', fontSize: 12.5, lineHeight: 1.5, marginTop: 10 }}>
             This was a one-time Square payment. It did not start automatic monthly drafts.
+          </div>
+        )}
+        {recurring && receipt.recurring_setup?.status === 'active' && (
+          <div style={{ color: 'var(--hz-green)', fontSize: 12.5, lineHeight: 1.5, marginTop: 10 }}>
+            Automatic tuition is set: {fmtCents(receipt.recurring_setup.amount_cents)} on {receipt.recurring_setup.billing_dates.map(value => fmtBillingDate(value)).join(', ')}. It stops after the December draft.
+          </div>
+        )}
+        {recurring && receipt.recurring_setup?.status === 'action_required' && (
+          <div role="alert" style={{ color: 'var(--hz-amber)', fontSize: 12.5, lineHeight: 1.5, marginTop: 10 }}>
+            {receipt.recurring_setup.message}
           </div>
         )}
         {receipt.receipt_url && (
@@ -1104,6 +1167,20 @@ function PublicPaymentStep({ klass, program, form, registrationId, registrationI
           {monthlyPaymentNotice(klass)}
         </div>
       )}
+      {recurring && (
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, margin: '2px 0 14px', padding: 12, borderRadius: 10, border: '1px solid rgba(249,127,172,0.28)', background: 'rgba(249,127,172,0.07)', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={recurringAccepted}
+            onChange={event => setRecurringAccepted(event.target.checked)}
+            disabled={paying}
+            style={{ marginTop: 3, width: 17, height: 17, accentColor: 'var(--hz-pink)' }}
+          />
+          <span style={{ color: 'var(--hz-text)', fontSize: 12.5, lineHeight: 1.55 }}>
+            <strong>Authorize the scheduled drafts.</strong> {recurringAuthorizationText(klass)}
+          </span>
+        </label>
+      )}
       <div id={cardId.current} style={{ minHeight: 88, padding: 12, borderRadius: 10, background: '#fff' }} />
       {loading && <SkeletonLine width="64%" height={11} style={{ marginTop: 12 }} />}
       {error && (
@@ -1114,10 +1191,10 @@ function PublicPaymentStep({ klass, program, form, registrationId, registrationI
       <button
         className="hz-btn hz-btn-primary"
         onClick={payNow}
-        disabled={loading || paying || !card}
+        disabled={loading || paying || !card || (recurring && !recurringAccepted)}
         style={{ width: '100%', justifyContent: 'center', minHeight: 46, marginTop: 14 }}
       >
-        {paying ? 'Processing...' : `Pay ${monthly ? "today's " : ''}${fmtCents(klass.price_cents)} with Square`}
+        {paying ? 'Processing...' : recurring && !recurringAccepted ? 'Authorize drafts to continue' : `Pay ${monthly ? "today's " : ''}${fmtCents(klass.price_cents)} with Square`}
       </button>
     </div>
   );

@@ -388,7 +388,7 @@ async function handleRegistration(body: any): Promise<Response> {
     }
     const { data: c } = await supa
       .from('program_classes')
-      .select('id, program_id, is_public, registration_open, name, capacity, age_range_min, age_range_max, schedule_summary, starts_at, ends_at, price_cents, price_unit, price_unit_label')
+      .select('id, program_id, is_public, registration_open, name, capacity, age_range_min, age_range_max, schedule_summary, starts_at, ends_at, price_cents, price_unit, price_unit_label, recurring_billing_enabled, recurring_billing_amount_cents, recurring_billing_dates, recurring_billing_end_date, recurring_billing_terms_version')
       .eq('id', body.class_id)
       .maybeSingle();
     if (!c) return bad(404, 'class_not_found', 'class not found');
@@ -473,6 +473,13 @@ async function handleRegistration(body: any): Promise<Response> {
       schedule_summary: classRow?.schedule_summary ?? null,
       age_range_min: classRow?.age_range_min ?? null,
       age_range_max: classRow?.age_range_max ?? null,
+      recurring_billing: classRow?.recurring_billing_enabled ? {
+        enabled: true,
+        amount_cents: classRow.recurring_billing_amount_cents,
+        billing_dates: classRow.recurring_billing_dates,
+        end_date: classRow.recurring_billing_end_date,
+        terms_version: classRow.recurring_billing_terms_version,
+      } : null,
       discount: pricing?.code ? {
         code: pricing.code,
         label: pricing.label,

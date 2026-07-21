@@ -518,7 +518,7 @@ async function registrationPaymentInfo(body: any) {
   if (!registrationIds.length) return json({ error: 'Registration id is required.' }, 400);
   const { data: regRows, error: regError } = await supa
     .from('registrations')
-    .select('id, program_id, window_id, class_id, athlete_name, parent_name, parent_email, payment_status, payment_provider, amount_paid_cents, currency, payment_metadata, status')
+    .select('id, program_id, window_id, class_id, athlete_name, parent_name, parent_email, payment_status, payment_provider, amount_paid_cents, currency, payment_metadata, intake_metadata, status, discount_code, list_amount_cents, discount_amount_cents, final_amount_cents')
     .in('id', registrationIds);
   if (regError) throw regError;
   const rowsById = new Map((regRows || []).map((row: any) => [row.id, row]));
@@ -550,7 +550,7 @@ async function registrationPaymentInfo(body: any) {
     classIds.length
       ? supa
       .from('program_classes')
-      .select('id, program_id, name, schedule_summary, price_cents, price_unit, price_unit_label')
+      .select('id, program_id, name, schedule_summary, price_cents, price_unit, price_unit_label, recurring_billing_enabled, recurring_billing_amount_cents, recurring_billing_dates, recurring_billing_end_date, recurring_billing_terms_version')
       .in('id', classIds)
       : Promise.resolve({ data: [], error: null }),
     windowIds.length
@@ -567,7 +567,10 @@ async function registrationPaymentInfo(body: any) {
   const items: any[] = regs.map((row: any) => {
     const klass: any = row.class_id ? classById.get(row.class_id) : null;
     const windowRow: any = row.window_id ? windowById.get(row.window_id) : null;
-    const priceCents = klass ? Number(klass.price_cents || 0) : windowRow ? Math.round(Number(windowRow.fee_amount || 0) * 100) : 0;
+    const basePriceCents = klass ? Number(klass.price_cents || 0) : windowRow ? Math.round(Number(windowRow.fee_amount || 0) * 100) : 0;
+    const hasPriceSnapshot = row.final_amount_cents !== null && row.final_amount_cents !== undefined;
+    const priceCents = hasPriceSnapshot ? Number(row.final_amount_cents) : basePriceCents;
+    const recurringSnapshot = row.intake_metadata?.recurring_billing;
     return {
       registration_id: row.id,
       athlete_name: row.athlete_name || null,
@@ -579,6 +582,14 @@ async function registrationPaymentInfo(body: any) {
       price_cents: priceCents,
       price_unit: klass?.price_unit || null,
       price_unit_label: klass?.price_unit_label || null,
+      list_amount_cents: hasPriceSnapshot ? Number(row.list_amount_cents ?? basePriceCents) : basePriceCents,
+      discount_amount_cents: hasPriceSnapshot ? Number(row.discount_amount_cents || 0) : 0,
+      discount_code: hasPriceSnapshot ? row.discount_code || null : null,
+      recurring_billing_enabled: Boolean(recurringSnapshot?.enabled ?? klass?.recurring_billing_enabled),
+      recurring_billing_amount_cents: recurringSnapshot?.amount_cents ?? klass?.recurring_billing_amount_cents ?? null,
+      recurring_billing_dates: recurringSnapshot?.billing_dates ?? klass?.recurring_billing_dates ?? [],
+      recurring_billing_end_date: recurringSnapshot?.end_date ?? klass?.recurring_billing_end_date ?? null,
+      recurring_billing_terms_version: recurringSnapshot?.terms_version ?? klass?.recurring_billing_terms_version ?? null,
     };
   });
   amountCents = items.reduce((sum: number, row: any) => sum + Number(row.price_cents || 0), 0);
@@ -646,6 +657,17 @@ function paymentItemName(reg: any, classById: Map<string, any>, windowById: Map<
 function monthlyPaymentNoticeForClass(reg: any, classById: Map<string, any>, amount: string) {
   if (!reg.class_id || !classById.has(reg.class_id)) return '';
   const klass = classById.get(reg.class_id);
+  if (klass.recurring_billing_enabled && Array.isArray(klass.recurring_billing_dates) && klass.recurring_billing_dates.length) {
+    const money = `$${(Number(klass.recurring_billing_amount_cents || 0) / 100).toFixed(2).replace(/\.00$/, '')}`;
+    const fmt = (value: string) => {
+      const [year, month, day] = String(value).split('-').map(Number);
+      return new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' })
+        .format(new Date(Date.UTC(year, month - 1, day)));
+    };
+    const dates = klass.recurring_billing_dates.map(fmt);
+    const joined = dates.length > 1 ? `${dates.slice(0, -1).join(', ')}, and ${dates.at(-1)}` : dates[0];
+    return `Today's ${amount} payment covers the first month. Hit Zero will automatically draft ${money} on ${joined}, then stop. The program ends ${fmt(klass.recurring_billing_end_date)}.`;
+  }
   const unit = String(klass.price_unit || '').toLowerCase();
   const label = String(klass.price_unit_label || '').toLowerCase();
   if (!unit.includes('month') && !label.includes('/month') && !label.includes('per month')) return '';
@@ -689,7 +711,7 @@ async function sendPaymentReminders(profile: any, body: any) {
   const windowIds = [...new Set(rows.map((r: any) => r.window_id).filter(Boolean))];
   const [classes, windows, programRes] = await Promise.all([
     classIds.length
-      ? supa.from('program_classes').select('id, name, price_cents, price_unit, price_unit_label').in('id', classIds)
+      ? supa.from('program_classes').select('id, name, price_cents, price_unit, price_unit_label, recurring_billing_enabled, recurring_billing_amount_cents, recurring_billing_dates, recurring_billing_end_date').in('id', classIds)
       : Promise.resolve({ data: [], error: null }),
     windowIds.length
       ? supa.from('registration_windows').select('id, title, fee_amount').in('id', windowIds)

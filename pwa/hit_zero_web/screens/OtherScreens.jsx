@@ -3276,6 +3276,19 @@ function SquareBillingPanel({ programRef }) {
     if (refreshed.ok) setState(prev => ({ ...prev, loading: false, data }));
   }
 
+  async function onProvisionRecurring() {
+    try {
+      const out = await call('provision_recurring');
+      const count = out?.prepared?.length || 0;
+      setFlash({
+        kind: 'success',
+        text: count
+          ? `Fall autopay is ready for ${out.prepared.map(row => row.class_name).join(', ')}.`
+          : 'No recurring classes are enabled yet.',
+      });
+    } catch {}
+  }
+
   async function onDisconnect() {
     if (!confirm('Disconnect Square from this program?')) return;
     await call('disconnect');
@@ -3309,6 +3322,9 @@ function SquareBillingPanel({ programRef }) {
           <Pill tone={statusTone}>{statusLabel}</Pill>
           <button className="hz-btn" onClick={onSync} disabled={state.busy || !data.configured || conn?.status !== 'connected'}>
             {state.busy ? 'Working…' : 'Sync now'}
+          </button>
+          <button className="hz-btn" onClick={onProvisionRecurring} disabled={state.busy || !data.configured || conn?.status !== 'connected'}>
+            Prepare fall autopay
           </button>
           {conn?.status === 'connected' ? (
             <button className="hz-btn hz-btn-ghost" onClick={onDisconnect} disabled={state.busy}>Disconnect</button>

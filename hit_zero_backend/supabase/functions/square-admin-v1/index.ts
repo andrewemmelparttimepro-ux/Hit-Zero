@@ -5,6 +5,7 @@ import {
   exchangeCodeForToken,
   getSquareConnection,
   getSquareStatus,
+  getUsableAccessToken,
   json,
   loadLocations,
   preflight,
@@ -16,6 +17,7 @@ import {
   supa,
   verifyState,
 } from '../_shared/square.ts';
+import { ensureSquareRecurringPlan } from '../_shared/recurring.ts';
 
 function redirect(url: string) {
   return new Response(null, {
@@ -204,7 +206,7 @@ Deno.serve(async (req) => {
     }
 
     let ownerProfile: any = null;
-    if (['connect_url', 'disconnect', 'sync'].includes(action)) {
+    if (['connect_url', 'disconnect', 'sync', 'provision_recurring'].includes(action)) {
       const guard = await requireOwner(req, programId);
       if (guard.response) return guard.response;
       ownerProfile = guard.profile;
@@ -248,6 +250,47 @@ Deno.serve(async (req) => {
         connection: sanitizeConnection(await getSquareConnection(programId)),
         preview: summary,
       });
+    }
+
+    if (action === 'provision_recurring') {
+      const connection = await getSquareConnection(programId);
+      if (!connection || connection.status !== 'connected') {
+        return json({ error: 'Square must be connected before recurring tuition can be prepared.' }, 400);
+      }
+      const token = await getUsableAccessToken(connection);
+      const { data: classes, error: classesError } = await supa
+        .from('program_classes')
+        .select('id, program_id, name, recurring_billing_enabled, recurring_billing_amount_cents, recurring_billing_dates, recurring_billing_end_date, recurring_billing_terms_version')
+        .eq('program_id', programId)
+        .eq('recurring_billing_enabled', true)
+        .order('display_order');
+      if (classesError) throw classesError;
+      if (!classes?.length) {
+        return json({ ok: true, prepared: [], message: 'No recurring classes are enabled.' });
+      }
+      const { data: settings } = await supa
+        .from('program_payment_settings')
+        .select('currency')
+        .eq('program_id', programId)
+        .maybeSingle();
+      const prepared = [];
+      for (const classRow of classes) {
+        const result = await ensureSquareRecurringPlan({
+          programId,
+          classRow,
+          connection,
+          accessToken: token.accessToken,
+          currency: settings?.currency || 'USD',
+        });
+        prepared.push({
+          class_id: classRow.id,
+          class_name: classRow.name,
+          terms_version: result.terms.terms_version,
+          created: result.created,
+          status: result.config.status,
+        });
+      }
+      return json({ ok: true, prepared });
     }
 
     return json({ error: `Unknown action: ${action}` }, 400);

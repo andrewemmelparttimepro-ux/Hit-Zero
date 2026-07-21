@@ -11,7 +11,7 @@ const SB_SR = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const SQUARE_APP_ID = Deno.env.get('SQUARE_APP_ID') ?? '';
 const SQUARE_APP_SECRET = Deno.env.get('SQUARE_APP_SECRET') ?? '';
 const SQUARE_ENV = (Deno.env.get('SQUARE_ENV') ?? 'production').toLowerCase() === 'sandbox' ? 'sandbox' : 'production';
-const SQUARE_API_VERSION = Deno.env.get('SQUARE_API_VERSION') ?? '2026-01-22';
+const SQUARE_API_VERSION = Deno.env.get('SQUARE_API_VERSION') ?? '2026-07-15';
 const SQUARE_TOKEN_CRYPT_KEY = Deno.env.get('SQUARE_TOKEN_CRYPT_KEY') ?? '';
 const SQUARE_WEBHOOK_SIGNATURE_KEY = Deno.env.get('SQUARE_WEBHOOK_SIGNATURE_KEY') ?? '';
 const APP_ORIGIN = Deno.env.get('APP_ORIGIN') ?? 'https://hit-zero.vercel.app';
@@ -266,6 +266,7 @@ export async function buildAuthorizeUrl(programId: string, returnTo?: string | n
     'SUBSCRIPTIONS_READ',
     'SUBSCRIPTIONS_WRITE',
     'ITEMS_READ',
+    'ITEMS_WRITE',
   ];
   const state = await signState({
     program_id: programId,
