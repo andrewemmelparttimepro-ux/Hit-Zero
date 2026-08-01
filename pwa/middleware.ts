@@ -4,7 +4,7 @@
 // rotated in the Vercel dashboard, no code change required.
 
 export const config = {
-  matcher: ['/((?!_next|_vercel|icons|favicon|.*\\.png$|.*\\.svg$).*)']
+  matcher: ['/((?!api|_next|_vercel|icons|favicon|.*\\.png$|.*\\.svg$).*)']
 };
 
 export default function middleware(request: Request) {
