@@ -437,6 +437,33 @@ window.Messages = Messages;
 // ═══════════════════════════════════════════════════════════════════════════
 // Schedule — upcoming sessions, RSVP + iCal feed
 // ═══════════════════════════════════════════════════════════════════════════
+const MCA_GOOGLE_CALENDAR_URL = 'https://calendar.google.com/calendar/u/0/r?cid=c_01a6fc567e345779502548ef14721ff42467c88f5de852c01faee56cd88e6ad3%40group.calendar.google.com';
+const MCA_CALENDAR_CACHE_KEY = 'hz_mca_calendar_cache_v1';
+
+function readMcaCalendarCache() {
+  try {
+    const value = JSON.parse(localStorage.getItem(MCA_CALENDAR_CACHE_KEY) || 'null');
+    return value && Array.isArray(value.events) ? value : { events: [], fetchedAt: null };
+  } catch {
+    return { events: [], fetchedAt: null };
+  }
+}
+
+function isMagicCityProgram(snap, session) {
+  const programs = snap?.programs || [];
+  const programId = session?.actualProfile?.program_id || session?.profile?.program_id || null;
+  const activeProgram = window.HZactiveProgramFromSnap?.(snap, session) || null;
+  const matchedPrograms = programId ? programs.filter(program => program.id === programId) : programs;
+  const candidates = [activeProgram, ...matchedPrograms, ...(matchedPrograms.length ? [] : programs.length === 1 ? programs : [])]
+    .filter(Boolean);
+  return candidates.some(program => /magic city|\bmca\b/i.test([
+    program.slug,
+    program.name,
+    program.public_name,
+    program.brand_name,
+  ].filter(Boolean).join(' ')));
+}
+
 function staffScheduleSessionsFromSnap(snap, limit = 16) {
   const teamIds = new Set((snap.teams || []).map(t => t.id));
   const rows = (snap.sessions || [])
@@ -471,13 +498,73 @@ function Schedule({ snap, session, pushToast }) {
     ? Array.from(scope.visibleTeamIds)[0]
     : null;
   const canSubscribe = canEdit || !!familyTeamId;
+  const showMcaCalendar = isMagicCityProgram(snap, session);
   const [adding, setAdding] = _useState(false);
   const [editingId, setEditingId] = _useState(null);
   const [busy, setBusy] = _useState(false);
+  const [mcaCalendar, setMcaCalendar] = _useState(readMcaCalendarCache);
+  const [mcaCalendarError, setMcaCalendarError] = _useState('');
+  const [mcaCalendarLoading, setMcaCalendarLoading] = _useState(true);
+  const [mcaLookAheadDays, setMcaLookAheadDays] = _useState(45);
+  const mcaCalendarAbort = _useRef(null);
   const team = (snap.teams || [])[0] || null;
   const notifyError = (title, body) => {
     (pushToast || window.HZToast)?.({ kind: 'error', eyebrow: 'Schedule', title, body });
   };
+
+  async function refreshMcaCalendar(force = false) {
+    mcaCalendarAbort.current?.abort?.();
+    const controller = new AbortController();
+    mcaCalendarAbort.current = controller;
+    setMcaCalendarLoading(true);
+    if (force) setMcaCalendarError('');
+    try {
+      const base = window.HZ_FN_BASE || 'https://ldhzkdqznccfgpdvqyfk.supabase.co';
+      const suffix = force ? `?refresh=${Date.now()}` : '';
+      const headers = window.HZ_ANON_KEY ? { apikey: window.HZ_ANON_KEY } : {};
+      const response = await fetch(`${base}/functions/v1/mca-calendar-v1${suffix}`, {
+        headers,
+        signal: controller.signal,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'The live MCA calendar did not load.');
+      const nextCalendar = {
+        events: Array.isArray(payload.events) ? payload.events : [],
+        fetchedAt: payload.fetchedAt || new Date().toISOString(),
+        sourceFetchedAt: payload.sourceFetchedAt || payload.fetchedAt || new Date().toISOString(),
+        stale: !!payload.stale,
+      };
+      setMcaCalendar(nextCalendar);
+      try { localStorage.setItem(MCA_CALENDAR_CACHE_KEY, JSON.stringify(nextCalendar)); } catch {}
+      setMcaCalendarError('');
+    } catch (error) {
+      if (error?.name !== 'AbortError') setMcaCalendarError(error?.message || 'The live MCA calendar did not load.');
+    } finally {
+      if (mcaCalendarAbort.current === controller) setMcaCalendarLoading(false);
+    }
+  }
+
+  _useEffect(() => {
+    if (!showMcaCalendar) {
+      setMcaCalendarLoading(false);
+      return undefined;
+    }
+    refreshMcaCalendar(false);
+    const timer = setInterval(() => refreshMcaCalendar(false), 5 * 60 * 1000);
+    return () => {
+      clearInterval(timer);
+      mcaCalendarAbort.current?.abort?.();
+    };
+  }, [showMcaCalendar]);
+
+  const mcaNow = Date.now();
+  const mcaUpcoming = (mcaCalendar.events || []).filter(event => new Date(event.end || event.start).getTime() >= mcaNow - 86400000);
+  const mcaVisibleThrough = mcaNow + mcaLookAheadDays * 86400000;
+  const mcaVisible = mcaUpcoming.filter(event => new Date(event.start).getTime() <= mcaVisibleThrough);
+  const scheduleItems = [
+    ...upcoming.map(item => ({ source: 'hit-zero', start: item.scheduled_at, item })),
+    ...(showMcaCalendar ? mcaVisible : []).map(item => ({ source: 'mca-google', start: item.start, item })),
+  ].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
 
   async function addSession(values) {
     if (!team?.id) {
@@ -556,10 +643,36 @@ function Schedule({ snap, session, pushToast }) {
 
       {adding && <SessionForm onSave={addSession} onCancel={() => setAdding(false)} disabled={busy}/>}
 
+      {showMcaCalendar && <div className="hz-card" style={{ padding: 18, marginBottom: 14, borderColor: 'rgba(39,207,215,0.28)', background: 'linear-gradient(135deg, rgba(39,207,215,0.08), rgba(255,255,255,0.025))' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+          <div>
+            <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)', marginBottom: 5 }}>Magic City Athletics · live source</div>
+            <div style={{ fontSize: 18, fontWeight: 900 }}>The gym's Google Calendar is mirrored here.</div>
+            <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 5, maxWidth: 680, lineHeight: 1.5 }}>
+              Practices, classes, open gyms, events, closures, and cancellations refresh automatically. Google Calendar remains the source of truth.
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <a className="hz-btn hz-btn-ghost hz-btn-sm" href={MCA_GOOGLE_CALENDAR_URL} target="_blank" rel="noreferrer">Open source</a>
+            <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={() => refreshMcaCalendar(true)} disabled={mcaCalendarLoading}>
+              {mcaCalendarLoading ? 'Refreshing...' : 'Refresh now'}
+            </button>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 12, flexWrap: 'wrap', fontSize: 11, color: 'var(--hz-dim)' }}>
+          <span style={{ width: 8, height: 8, borderRadius: 8, background: mcaCalendarError ? 'var(--hz-amber)' : 'var(--hz-teal)', boxShadow: mcaCalendarError ? 'none' : '0 0 12px rgba(39,207,215,.7)' }}/>
+          {mcaCalendarError
+            ? <span>{mcaCalendarError}{mcaCalendar.events.length ? ' Showing the last successful MCA update.' : ' Hit Zero sessions remain available below.'}</span>
+            : mcaCalendar.fetchedAt
+              ? <span>{mcaUpcoming.length} upcoming MCA dates · source refreshed {timeAgo(mcaCalendar.sourceFetchedAt || mcaCalendar.fetchedAt)}{mcaCalendar.stale ? ' · cached copy' : ''}</span>
+              : <span>Connecting to the MCA calendar...</span>}
+        </div>
+      </div>}
+
       <div style={{ display: 'grid', gap: 14 }}>
-        {upcoming.length === 0 && classEnrollments.length === 0 && !adding && (
+        {scheduleItems.length === 0 && classEnrollments.length === 0 && !adding && !mcaCalendarLoading && (
           <div className="hz-card" style={{ padding: 40, color: 'var(--hz-dim)', textAlign: 'center' }}>
-            Nothing on the books. {canEdit ? 'Click "+ Add session" above to put a practice or competition on the calendar.' : 'Linked team sessions and paid class registrations will appear here.'}
+            Nothing on the books. {canEdit ? 'Click "+ Add session" above to put a team-only practice or competition on the calendar.' : 'Linked team sessions and paid class registrations will appear here.'}
           </div>
         )}
         {classEnrollments.length > 0 && (
@@ -570,13 +683,71 @@ function Schedule({ snap, session, pushToast }) {
             </div>
           </div>
         )}
-        {upcoming.map(s => editingId === s.id
-          ? <SessionForm key={s.id} session={s}
-              onSave={async (vals) => { const ok = await patchSession(s.id, vals); if (ok) setEditingId(null); }}
-              onCancel={() => setEditingId(null)}
-              onRemove={() => removeSession(s.id).then(() => setEditingId(null))}
-              disabled={busy}/>
-          : <SessionRow key={s.id} session={s} me={me} authSession={session} canEdit={canEdit} snap={snap} onEdit={() => setEditingId(s.id)}/> )}
+        {scheduleItems.map(({ source, item }) => source === 'mca-google'
+          ? <McaCalendarRow key={`mca:${item.id}`} event={item}/>
+          : editingId === item.id
+            ? <SessionForm key={item.id} session={item}
+                onSave={async (vals) => { const ok = await patchSession(item.id, vals); if (ok) setEditingId(null); }}
+                onCancel={() => setEditingId(null)}
+                onRemove={() => removeSession(item.id).then(() => setEditingId(null))}
+                disabled={busy}/>
+            : <SessionRow key={item.id} session={item} me={me} authSession={session} canEdit={canEdit} snap={snap} onEdit={() => setEditingId(item.id)}/> )}
+        {showMcaCalendar && mcaVisible.length < mcaUpcoming.length && (
+          <button className="hz-btn hz-btn-ghost" onClick={() => setMcaLookAheadDays(days => Math.min(days + 45, 540))} style={{ justifySelf: 'center', marginTop: 2 }}>
+            Show 45 more days · {mcaUpcoming.length - mcaVisible.length} MCA dates later
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function McaCalendarRow({ event }) {
+  const start = new Date(event.start);
+  const end = new Date(event.end || event.start);
+  const dateOptions = event.allDay ? { timeZone: 'UTC' } : {};
+  const day = start.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', ...dateOptions });
+  const time = event.allDay
+    ? 'All day'
+    : start.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const minutes = Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
+  const duration = event.allDay
+    ? Math.max(1, Math.round(minutes / 1440)) + (minutes > 1440 ? ' days' : ' day')
+    : minutes >= 120 && minutes % 60 === 0
+      ? `${minutes / 60} hr`
+      : `${minutes} min`;
+  const title = String(event.title || 'MCA event');
+  const kind = /cancel|closed|closure|blocked|no practice/i.test(title)
+    ? 'Schedule change'
+    : /competition|championship|crown|showcase|spirit|battle/i.test(title)
+      ? 'Competition / event'
+      : /open gym/i.test(title)
+        ? 'Open gym'
+        : /practice/i.test(title)
+          ? 'Practice'
+          : /class|tumbling|cheerabilities|traditional cheer|next level/i.test(title)
+            ? 'Class'
+            : 'MCA event';
+
+  return (
+    <div className="hz-card" style={{ padding: 22, borderColor: 'rgba(39,207,215,0.2)' }}>
+      <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+        <div style={{ width: 92, flexShrink: 0 }}>
+          <div className="hz-eyebrow">{day.split(',')[0]}</div>
+          <div style={{ fontFamily: 'var(--hz-serif)', fontSize: 30, fontStyle: 'italic', fontWeight: 700, lineHeight: 1 }}>
+            {day.split(' ').slice(1).join(' ')}
+          </div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 13, marginTop: 4 }}>{time}</div>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ fontWeight: 800, fontSize: 17 }}>{title}</div>
+            <span style={{ padding: '3px 8px', borderRadius: 999, background: 'rgba(39,207,215,0.12)', border: '1px solid rgba(39,207,215,0.28)', color: 'var(--hz-teal)', fontSize: 9, fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase' }}>MCA live</span>
+          </div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{kind}{event.recurring ? ' · recurring' : ''}</div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 13, marginTop: 5 }}>{duration}{event.location ? ` · ${event.location}` : ''}</div>
+          {event.description && <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 8, lineHeight: 1.5, whiteSpace: 'pre-line' }}>{event.description}</div>}
+        </div>
       </div>
     </div>
   );
