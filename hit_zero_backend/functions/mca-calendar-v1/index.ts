@@ -2,6 +2,7 @@ import ICAL from 'ical.js';
 import { createClient } from '@supabase/supabase-js';
 
 const MCA_CALENDAR_ID = 'c_01a6fc567e345779502548ef14721ff42467c88f5de852c01faee56cd88e6ad3@group.calendar.google.com';
+const MCA_CALENDAR_EMBED_URL = `https://calendar.google.com/calendar/embed?src=${encodeURIComponent(MCA_CALENDAR_ID)}&ctz=America%2FChicago`;
 const MCA_CALENDAR_URL = `https://calendar.google.com/calendar/ical/${encodeURIComponent(MCA_CALENDAR_ID)}/public/basic.ics`;
 const DEFAULT_WINDOW_DAYS = 540;
 const MAX_WINDOW_DAYS = 730;
@@ -223,7 +224,7 @@ Deno.serve(async (req) => {
       sourceFetchedAt: source.fetchedAt,
       stale: source.stale,
       source: 'Magic City Athletics Google Calendar',
-      sourceUrl: `https://calendar.google.com/calendar/u/0/r?cid=${encodeURIComponent(MCA_CALENDAR_ID)}`,
+      sourceUrl: MCA_CALENDAR_EMBED_URL,
       events: expanded.events,
     }, 200, true);
   } catch (error) {

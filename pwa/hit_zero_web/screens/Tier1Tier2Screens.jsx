@@ -437,8 +437,8 @@ window.Messages = Messages;
 // ═══════════════════════════════════════════════════════════════════════════
 // Schedule — upcoming sessions, RSVP + iCal feed
 // ═══════════════════════════════════════════════════════════════════════════
-const MCA_GOOGLE_CALENDAR_URL = 'https://calendar.google.com/calendar/u/0/r?cid=c_01a6fc567e345779502548ef14721ff42467c88f5de852c01faee56cd88e6ad3%40group.calendar.google.com';
-const MCA_CALENDAR_CACHE_KEY = 'hz_mca_calendar_cache_v1';
+const MCA_GOOGLE_CALENDAR_URL = 'https://calendar.google.com/calendar/embed?src=c_01a6fc567e345779502548ef14721ff42467c88f5de852c01faee56cd88e6ad3%40group.calendar.google.com&ctz=America%2FChicago';
+const MCA_CALENDAR_CACHE_KEY = 'hz_mca_calendar_cache_v2';
 
 function readMcaCalendarCache() {
   try {
@@ -532,6 +532,7 @@ function Schedule({ snap, session, pushToast }) {
         events: Array.isArray(payload.events) ? payload.events : [],
         fetchedAt: payload.fetchedAt || new Date().toISOString(),
         sourceFetchedAt: payload.sourceFetchedAt || payload.fetchedAt || new Date().toISOString(),
+        sourceUrl: payload.sourceUrl || MCA_GOOGLE_CALENDAR_URL,
         stale: !!payload.stale,
       };
       setMcaCalendar(nextCalendar);
@@ -653,7 +654,7 @@ function Schedule({ snap, session, pushToast }) {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <a className="hz-btn hz-btn-ghost hz-btn-sm" href={MCA_GOOGLE_CALENDAR_URL} target="_blank" rel="noreferrer">Open source</a>
+            <a className="hz-btn hz-btn-ghost hz-btn-sm" href={mcaCalendar.sourceUrl || MCA_GOOGLE_CALENDAR_URL} target="_blank" rel="noreferrer">Open Google Calendar</a>
             <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={() => refreshMcaCalendar(true)} disabled={mcaCalendarLoading}>
               {mcaCalendarLoading ? 'Refreshing...' : 'Refresh now'}
             </button>
