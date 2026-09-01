@@ -34,7 +34,10 @@ enable_signup = true
 [auth.email]
 enable_signup = true
 double_confirm_changes = true
-enable_confirmations = true
+# Family accounts remain private until staff approval or an invite. Requiring a
+# second email-confirmation step was stranding parents after account creation,
+# so email/password signup should return a session and continue to gym access.
+enable_confirmations = false
 
 [auth.sms]
 enable_signup = false

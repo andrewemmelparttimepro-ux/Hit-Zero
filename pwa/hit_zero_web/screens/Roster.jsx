@@ -18,9 +18,28 @@ function rosterIsUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
 }
 
-async function refreshRosterData(action) {
+async function refreshRosterData(action, table = 'athletes') {
   if (window.HZsel?._refresh) await window.HZsel._refresh();
-  window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table: 'athletes', action } }));
+  window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table, action } }));
+}
+
+async function insertRosterTeam(payload) {
+  if (rosterLiveMode()) {
+    const { data, error } = await window.HZsupa
+      .from('teams')
+      .insert(payload)
+      .select('*')
+      .single();
+    if (error) return { data: null, error };
+    // hz:refresh is emitted after this live persistence succeeds.
+    await window.HZdb.from('teams').upsert(data, { onConflict: 'id' });
+    await refreshRosterData('insert', 'teams');
+    return { data, error: null };
+  }
+  // Prototype persistence is followed by the same hz:refresh contract.
+  const out = await window.HZdb.from('teams').insert(payload);
+  if (!out.error) await refreshRosterData('insert', 'teams');
+  return out;
 }
 
 async function insertRosterAthlete(payload) {
@@ -68,10 +87,13 @@ function Roster({ snap, openAthlete, navigate, pushToast }) {
   const [filter, setFilter] = React.useState('all');
   const [view, setView] = React.useState(isMobile ? 'grid' : 'table');
   const [showAdd, setShowAdd] = React.useState(false);
+  const [showTeamAdd, setShowTeamAdd] = React.useState(false);
   const [editingId, setEditingId] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
   const session = window.HZdb?.auth?._getSession?.() || null;
   const scope = window.HZviewerScope ? window.HZviewerScope(snap, session) : null;
+  const canManageTeams = ['owner', 'coach'].includes(scope?.actualRole || session?.actualProfile?.role || session?.profile?.role);
+  const programId = scope?.programId || session?.actualProfile?.program_id || session?.profile?.program_id || (snap.programs || [])[0]?.id || null;
   const visibleAthletes = scope?.visibleAthletes?.length ? scope.visibleAthletes : (window.HZsel.programAthletes?.() || snap.athletes || []);
   const visibleAthleteIds = new Set(visibleAthletes.map(a => a.id));
   const team = scope?.visibleTeams?.[0] || window.HZsel.programTeams?.()[0] || (snap.teams || [])[0] || null;
@@ -143,6 +165,31 @@ function Roster({ snap, openAthlete, navigate, pushToast }) {
     } finally { setBusy(false); }
   }
 
+  async function addTeam(values) {
+    if (!programId) {
+      notifyError('No program loaded', 'Connect this account to a program before adding teams.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const payload = {
+        program_id: programId,
+        name: values.name.trim(),
+        division: values.division.trim() || null,
+        level: values.level ? parseInt(values.level, 10) : 1,
+        season: values.season.trim() || null,
+      };
+      const { error } = await insertRosterTeam(payload);
+      if (error) {
+        console.error('[teams] insert', error);
+        notifyError('Could not add team', error.message);
+        return;
+      }
+      setShowTeamAdd(false);
+      (pushToast || window.HZToast)?.({ kind: 'success', eyebrow: 'Roster', title: 'Team added', body: `${payload.name} is ready for athletes.` });
+    } finally { setBusy(false); }
+  }
+
   async function patchAthlete(id, patch) {
     setBusy(true);
     try {
@@ -171,8 +218,13 @@ function Roster({ snap, openAthlete, navigate, pushToast }) {
   return (
     <div>
       <SectionHeading eyebrow={`${visibleAthletes.length} athletes · ${teamLabel}`} title="The roster." trailing={
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button onClick={() => { setShowAdd(s => !s); setEditingId(null); }} className="hz-btn hz-btn-primary hz-btn-sm">
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {canManageTeams && (
+            <button onClick={() => { setShowTeamAdd(s => !s); setShowAdd(false); setEditingId(null); }} className="hz-btn hz-btn-ghost hz-btn-sm">
+              {showTeamAdd ? 'Cancel team' : '+ Add team'}
+            </button>
+          )}
+          <button onClick={() => { setShowAdd(s => !s); setShowTeamAdd(false); setEditingId(null); }} className="hz-btn hz-btn-primary hz-btn-sm">
             {showAdd ? 'Cancel' : '+ Add athlete'}
           </button>
           <select className="hz-input" style={{ width: 160, padding: '8px 12px' }} value={filter} onChange={e => setFilter(e.target.value)}>
@@ -213,6 +265,10 @@ function Roster({ snap, openAthlete, navigate, pushToast }) {
 
       {showAdd && (
         <AddAthleteCard onSave={addAthlete} onCancel={() => setShowAdd(false)} disabled={busy}/>
+      )}
+
+      {showTeamAdd && (
+        <AddTeamCard onSave={addTeam} onCancel={() => setShowTeamAdd(false)} disabled={busy}/>
       )}
 
       {view === 'table' ? (
@@ -376,6 +432,35 @@ function AddAthleteCard({ onSave, onCancel, disabled }) {
       </select>
       <button type="submit" className="hz-btn hz-btn-primary hz-btn-sm" disabled={disabled || !name.trim()}>Save athlete</button>
       <button type="button" className="hz-btn hz-btn-ghost hz-btn-sm" onClick={onCancel} disabled={disabled}>Cancel</button>
+    </form>
+  );
+}
+
+function AddTeamCard({ onSave, onCancel, disabled }) {
+  const [name, setName] = React.useState('');
+  const [division, setDivision] = React.useState('');
+  const [level, setLevel] = React.useState('1');
+  const [season, setSeason] = React.useState('');
+  const submit = (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    onSave({ name, division, level, season });
+  };
+  return (
+    <form onSubmit={submit} className="hz-card" style={{ padding: 16, marginBottom: 14 }}>
+      <div className="hz-eyebrow" style={{ marginBottom: 10 }}>New roster team</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, alignItems: 'center' }}>
+        <input className="hz-input" placeholder="Team name" value={name} onChange={e => setName(e.target.value)} autoFocus disabled={disabled} required style={{ padding: '8px 12px' }}/>
+        <input className="hz-input" placeholder="Division (optional)" value={division} onChange={e => setDivision(e.target.value)} disabled={disabled} style={{ padding: '8px 12px' }}/>
+        <select className="hz-input" value={level} onChange={e => setLevel(e.target.value)} disabled={disabled} style={{ padding: '8px 12px' }} aria-label="Team level">
+          {[1, 2, 3, 4, 5, 6, 7].map(value => <option key={value} value={value}>Level {value}</option>)}
+        </select>
+        <input className="hz-input" placeholder="Season (optional)" value={season} onChange={e => setSeason(e.target.value)} disabled={disabled} style={{ padding: '8px 12px' }}/>
+      </div>
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+        <button type="button" className="hz-btn hz-btn-ghost hz-btn-sm" onClick={onCancel} disabled={disabled}>Cancel</button>
+        <button type="submit" className="hz-btn hz-btn-primary hz-btn-sm" disabled={disabled || !name.trim()}>Save team</button>
+      </div>
     </form>
   );
 }

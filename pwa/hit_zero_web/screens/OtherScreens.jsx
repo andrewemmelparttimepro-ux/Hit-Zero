@@ -1660,6 +1660,29 @@ function BirthdayCalendar({ snap }) {
   return (
     <div>
       <SectionHeading eyebrow="Roster birthdays" title="Birthdays."/>
+      <div className="hz-card" style={{ padding: 18, marginBottom: 18, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 22, alignItems: 'center', overflow: 'hidden' }}>
+        <img
+          src="/hit_zero_web/assets/birthday-party-package.png"
+          alt="Birthday party package"
+          style={{ width: '100%', maxHeight: 720, objectFit: 'contain', borderRadius: 14, background: '#fff' }}
+        />
+        <div style={{ padding: '4px 6px' }}>
+          <div className="hz-eyebrow" style={{ color: 'var(--hz-pink)', marginBottom: 10 }}>Birthday party package</div>
+          <div className="hz-display" style={{ fontSize: 36, marginBottom: 12 }}>Request your date.</div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 14, lineHeight: 1.65, marginBottom: 18 }}>
+            A two-hour party for up to 15 kids, including supervised gym time, a dedicated host, a birthday shirt, a photo backdrop, and a 10-visit open gym punch card for the birthday athlete.
+          </div>
+          <a
+            className="hz-btn hz-btn-primary"
+            href="https://forms.gle/xHJgfeZXe1CpQNzD7"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: 'inline-flex', textDecoration: 'none' }}
+          >
+            Open birthday request form
+          </a>
+        </div>
+      </div>
       <div className="hz-card" style={{ padding: 18, marginBottom: 18 }}>
         <div style={{ color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.55 }}>
           Birthdays are calculated from linked family packets and registration records. Athletes without a DOB stay hidden here until staff links or collects that field.
