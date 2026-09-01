@@ -33,7 +33,7 @@
     'rubric_versions', 'rubric_categories', 'routine_analyses', 'analysis_elements', 'analysis_deductions',
     'analysis_feedback', 'analysis_skill_updates', 'program_tracks', 'program_classes',
     'program_join_requests', 'program_owner_applications', 'program_invites', 'program_invite_redemptions',
-    'family_info_packets', 'class_enrollments',
+    'family_info_packets', 'class_enrollments', 'team_assignment_events',
   ];
   const listeners = new Map(); // table -> Set<fn>
   const authListeners = new Set();
@@ -1176,7 +1176,11 @@
   }
 	  async function liveToken() {
 	    if (!hasRealAuth()) return null;
-	    const { data: authData, error } = await window.HZsupa.auth.getSession();
+	    const { data: authData, error } = await withTimeout(
+	      window.HZsupa.auth.getSession(),
+	      12000,
+	      'Your sign-in session could not be verified. Reload and sign in again.'
+	    );
 	    if (error) throw error;
 	    return authData?.session?.access_token || null;
 	  }
@@ -1390,6 +1394,68 @@
     } catch {}
     return false;
   }
+  function clearPasswordRecoveryRoute() {
+    try {
+      if (new URLSearchParams(window.location.search || '').get('next') === 'reset-password') {
+        history.replaceState({}, '', '/');
+      }
+    } catch {}
+  }
+  function clearConsumedAuthHash() {
+    try {
+      const hashParams = new URLSearchParams(String(window.location.hash || '').replace(/^#/, ''));
+      if (!hashParams.get('access_token') && !hashParams.get('refresh_token') && !hashParams.get('code') && !hashParams.get('token_hash')) return;
+      const nextHash = window.location.search.includes('next=reset-password') ? '#signin' : '';
+      history.replaceState({}, '', `${window.location.pathname || '/'}${window.location.search || ''}${nextHash}`);
+    } catch {}
+  }
+  async function ensurePasswordRecoverySession() {
+    if (!hasRealAuth()) return { data: null, error: new Error('Password update is unavailable in prototype mode.') };
+    try {
+      const params = new URLSearchParams(window.location.search || '');
+      const hashParams = new URLSearchParams(String(window.location.hash || '').replace(/^#/, ''));
+      const code = params.get('code');
+      const accessToken = hashParams.get('access_token');
+      const refreshToken = hashParams.get('refresh_token');
+
+      if (code && typeof window.HZsupa.auth.exchangeCodeForSession === 'function') {
+        const { data, error } = await withTimeout(
+          window.HZsupa.auth.exchangeCodeForSession(code),
+          20000,
+          'Password reset link could not be confirmed. Request a fresh reset link.'
+        );
+        if (error) return { data: null, error };
+        if (data?.session) {
+          await syncSupabaseSession(data.session, 'PASSWORD_RECOVERY');
+          clearConsumedAuthHash();
+        }
+      } else if (accessToken && refreshToken && typeof window.HZsupa.auth.setSession === 'function') {
+        const { data, error } = await withTimeout(
+          window.HZsupa.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }),
+          20000,
+          'Password reset link could not be confirmed. Request a fresh reset link.'
+        );
+        if (error) return { data: null, error };
+        if (data?.session) {
+          await syncSupabaseSession(data.session, 'PASSWORD_RECOVERY');
+          clearConsumedAuthHash();
+        }
+      }
+
+      const { data: sessionData, error } = await withTimeout(
+        window.HZsupa.auth.getSession(),
+        12000,
+        'Password reset link could not be verified. Request a fresh reset link.'
+      );
+      if (error) return { data: null, error };
+      if (!sessionData?.session?.user) {
+        return { data: null, error: new Error('This reset link is no longer active. Request a fresh reset link.') };
+      }
+      return { data: sessionData.session, error: null };
+    } catch (err) {
+      return { data: null, error: err instanceof Error ? err : new Error(String(err)) };
+    }
+  }
   async function syncSupabaseSession(rawSession, authEvent = null) {
     if (!rawSession?.user) {
       setSession(null);
@@ -1401,13 +1467,19 @@
     if (wrapped?.user?.email) rememberEmail(wrapped.user.email);
     setSession(wrapped);
     if (window.location.pathname === '/auth/callback') history.replaceState({}, '', '/');
+    clearConsumedAuthHash();
     return wrapped;
   }
   function ensureRealAuthSubscription() {
     if (!hasRealAuth() || realAuthSub) return;
-    const { data: sub } = window.HZsupa.auth.onAuthStateChange(async (evt, session) => {
-      try { await syncSupabaseSession(session, evt); }
-      catch (err) { console.warn('[HZ] auth sync failed', err); }
+    const { data: sub } = window.HZsupa.auth.onAuthStateChange((evt, session) => {
+      // Supabase auth callbacks hold an internal lock. Database/auth calls made
+      // inside the callback deadlock every later request, so defer profile sync
+      // until the callback has returned and released that lock.
+      setTimeout(() => {
+        syncSupabaseSession(session, evt)
+          .catch((err) => console.warn('[HZ] auth sync failed', err));
+      }, 0);
     });
     realAuthSub = sub.subscription;
   }
@@ -1415,7 +1487,11 @@
     if (!hasRealAuth()) return Promise.resolve(getSession());
     ensureRealAuthSubscription();
     if (!authInitPromise) {
-      authInitPromise = window.HZsupa.auth.getSession()
+      authInitPromise = withTimeout(
+        window.HZsupa.auth.getSession(),
+        15000,
+        'Hit Zero could not finish checking this sign-in.'
+      )
         .then(async ({ data: result, error }) => {
           if (error) throw error;
           return syncSupabaseSession(result.session);
@@ -1500,26 +1576,36 @@
 	      if (error) return { data: null, error };
 	      return { data: out || { ok: true }, error: null };
 	    },
-	    async updatePassword(password) {
+	    async updatePassword(password, options = {}) {
 	      if (!hasRealAuth()) return { data: null, error: new Error('Password update is unavailable in prototype mode.') };
 	      if (!password || String(password).length < 8) return { data: null, error: new Error('Use at least 8 characters.') };
+	      const recoverySession = await ensurePasswordRecoverySession();
+	      if (recoverySession.error) return recoverySession;
+	      const updateInput = { password };
+	      if (options.userMetadata && typeof options.userMetadata === 'object') {
+	        updateInput.data = options.userMetadata;
+	      }
 		      const { data: out, error } = await withTimeout(
-		        window.HZsupa.auth.updateUser({ password }),
-		        18000,
-		        'Password update timed out. Check your connection and try again.'
+		        window.HZsupa.auth.updateUser(updateInput),
+		        45000,
+		        'Password update is taking longer than expected. It may still have succeeded; try signing in with the new password, or request a fresh reset link.'
 		      );
 		      if (error) return { data: null, error };
-		      const { data: sessionData } = await withTimeout(
-		        window.HZsupa.auth.getSession(),
-		        12000,
-		        'Password updated, but Hit Zero could not refresh the session. Sign in with the new password.'
-		      );
-	      await syncSupabaseSession(sessionData?.session, 'PASSWORD_UPDATED');
 	      try {
-	        if (new URLSearchParams(window.location.search || '').get('next') === 'reset-password') {
-	          history.replaceState({}, '', '/');
-	        }
-	      } catch {}
+		        const { data: sessionData } = await withTimeout(
+		          window.HZsupa.auth.getSession(),
+		          12000,
+		          'Password updated, but Hit Zero could not refresh the session. Sign in with the new password.'
+		        );
+	        await syncSupabaseSession(sessionData?.session, 'PASSWORD_UPDATED');
+	      } catch (err) {
+	        clearPasswordRecoveryRoute();
+	        return {
+	          data: { ...(out || {}), ok: true, needsSignIn: true },
+	          error: null,
+	        };
+	      }
+	      clearPasswordRecoveryRoute();
 	      return { data: out || { ok: true }, error: null };
 	    },
 	    async signUpFamily(input = {}) {

@@ -3396,9 +3396,14 @@ function ChangePasswordCard({ session, userMeta }) {
     setBusy(true);
     try {
       const cleared = { ...(userMeta || {}), must_change_password: false };
-      const { error } = await window.HZsupa.auth.updateUser({ password: next, data: cleared });
+      const { data, error } = await window.HZdb.auth.updatePassword(next, { userMetadata: cleared });
       if (error) throw error;
-      setFlash({ kind: 'success', text: 'Password updated. You\'re all set.' });
+      setFlash({
+        kind: 'success',
+        text: data?.needsSignIn
+          ? 'Password updated. Sign in with the new password to continue.'
+          : 'Password updated. You\'re all set.',
+      });
       setNext(''); setConfirm('');
     } catch (e) {
       setFlash({ kind: 'error', text: e.message || 'Could not update password.' });

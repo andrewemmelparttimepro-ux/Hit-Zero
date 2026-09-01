@@ -33,7 +33,7 @@
       analysis_feedback, analysis_skill_updates,
       // Owner-managed offerings (drives the marketing site)
       program_tracks, program_classes,
-      family_info_packets, class_enrollments,
+      family_info_packets, class_enrollments, team_assignment_events,
       // Mock Score
       score_runs, score_deductions,
     ] = await Promise.all([
@@ -60,7 +60,7 @@
       q('routine_analyses'), q('analysis_elements'), q('analysis_deductions'),
       q('analysis_feedback'), q('analysis_skill_updates'),
       q('program_tracks'), q('program_classes'),
-      q('family_info_packets'), q('class_enrollments'),
+      q('family_info_packets'), q('class_enrollments'), q('team_assignment_events'),
       q('score_runs'), q('score_deductions'),
     ]);
     cache = {
@@ -85,7 +85,7 @@
       routine_analyses, analysis_elements, analysis_deductions,
       analysis_feedback, analysis_skill_updates,
       program_tracks, program_classes,
-      family_info_packets, class_enrollments,
+      family_info_packets, class_enrollments, team_assignment_events,
       score_runs, score_deductions,
     };
     return cache;
@@ -124,8 +124,8 @@
   function programTeams() {
     const pid = programProfile()?.id;
     return (cache?.teams || [])
-      .filter(t => !pid || t.program_id === pid)
-      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      .filter(t => !t.deleted_at && (!pid || t.program_id === pid))
+      .sort((a, b) => (a.display_order ?? 100) - (b.display_order ?? 100) || (a.name || '').localeCompare(b.name || ''));
   }
 
   function programAthletes() {

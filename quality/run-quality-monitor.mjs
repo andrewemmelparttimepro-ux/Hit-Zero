@@ -298,6 +298,7 @@ async function parentCriticalSourceAudit() {
     shell: await read(path.join(root, 'pwa/hit_zero_web/components/HZShell.jsx')),
     drawer: await read(path.join(root, 'pwa/hit_zero_web/components/AthleteDrawer.jsx')),
     other: await read(path.join(root, 'pwa/hit_zero_web/screens/OtherScreens.jsx')),
+    roster: await read(path.join(root, 'pwa/hit_zero_web/screens/Roster.jsx')),
     schedule: await read(path.join(root, 'pwa/hit_zero_web/screens/Tier1Tier2Screens.jsx')),
     auditSql: await read(path.join(root, 'hit_zero_backend/sql/launch-hardening-audit.sql')),
   };
@@ -313,14 +314,36 @@ async function parentCriticalSourceAudit() {
       file: 'pwa/hit_zero_web/db/selectors.js',
     },
     {
-      ok: sources.client.includes('withTimeout(') && sources.client.includes('Password update timed out'),
-      label: 'auth client returns password reset timeout errors',
+      ok: sources.client.includes('ensurePasswordRecoverySession') &&
+        sources.client.includes('exchangeCodeForSession') &&
+        sources.client.includes('setTimeout(() => {') &&
+        sources.client.includes('syncSupabaseSession(session, evt)') &&
+        !sources.client.includes('onAuthStateChange(async') &&
+        !sources.client.includes('Password update timed out'),
+      label: 'auth client avoids callback deadlocks and verifies password recovery sessions',
       file: 'pwa/hit_zero_web/db/client.js',
     },
     {
-      ok: sources.shell.includes('PASSWORD_RESET_TIMEOUT_MS') && sources.shell.includes('drawerHistoryRef') && sources.shell.includes('history.pushState'),
-      label: 'shell has reset timeout UI and drawer history close handling',
+      ok: !sources.shell.includes('PASSWORD_RESET_TIMEOUT_MS') &&
+        sources.shell.includes('window.HZdb.auth.updatePassword(next)') &&
+        sources.shell.includes('needsSignIn') &&
+        sources.shell.includes('drawerHistoryRef') &&
+        sources.shell.includes('history.pushState'),
+      label: 'shell delegates password updates to the verified auth client',
       file: 'pwa/hit_zero_web/components/HZShell.jsx',
+    },
+    {
+      ok: sources.other.includes('window.HZdb.auth.updatePassword(next') &&
+        !sources.other.includes('window.HZsupa.auth.updateUser({ password: next'),
+      label: 'profile password changes use the non-deadlocking auth client',
+      file: 'pwa/hit_zero_web/screens/OtherScreens.jsx',
+    },
+    {
+      ok: sources.roster.includes('Build the teams.') &&
+        sources.roster.includes('Season placement workspace') &&
+        sources.roster.includes('team_assignment_events'),
+      label: 'owners and coaches receive the shared season team builder',
+      file: 'pwa/hit_zero_web/screens/Roster.jsx',
     },
     {
       ok: sources.drawer.includes('Not assessed yet') && sources.drawer.includes('No attendance') && sources.drawer.includes('Paid registrations'),
@@ -378,9 +401,10 @@ async function liveSourceSmoke() {
     { name: 'hitzero_home', url: 'https://thehitzero.net/', want: 'Hit Zero' },
     { name: 'mca_home', url: 'https://mcaminot.com/', wantAny: ['Magic City', 'MCA', 'mcaminot'] },
     { name: 'service_worker', url: 'https://thehitzero.net/sw.js?v=hzq', want: 'hz-v' },
-    { name: 'client_actions', url: 'https://thehitzero.net/hit_zero_web/db/client.js?v=hzq', wantAll: ['createScheduleSession', 'sendPaymentReminders', 'registrationPaymentInfo', 'PROD_PURGE_VERSION', 'class_enrollments', 'Password update timed out'] },
+    { name: 'client_actions', url: 'https://thehitzero.net/hit_zero_web/db/client.js?v=hzq', wantAll: ['createScheduleSession', 'sendPaymentReminders', 'registrationPaymentInfo', 'PROD_PURGE_VERSION', 'class_enrollments', 'ensurePasswordRecoverySession', 'syncSupabaseSession(session, evt)'] },
     { name: 'staff_family_view', url: 'https://thehitzero.net/hit_zero_web/db/client.js?v=hzq-viewas', wantAll: ['allowedViewRoles', "actualRole === 'owner' || actualRole === 'coach'", 'parent'] },
-    { name: 'shell_routes', url: 'https://thehitzero.net/hit_zero_web/components/HZShell.jsx?v=hzq', wantAll: ["startsWith('pay/')", 'FamilyInfoPacketCard', 'PASSWORD_RESET_TIMEOUT_MS', 'drawerHistoryRef', 'family-packet-submission-status', 'Update submitted form'] },
+    { name: 'shell_routes', url: 'https://thehitzero.net/hit_zero_web/components/HZShell.jsx?v=hzq', wantAll: ["startsWith('pay/')", 'FamilyInfoPacketCard', 'window.HZdb.auth.updatePassword(next)', 'drawerHistoryRef', 'family-packet-submission-status', 'Update submitted form'] },
+    { name: 'team_builder', url: 'https://thehitzero.net/hit_zero_web/screens/Roster.jsx?v=hzq', wantAll: ['Build the teams.', 'Season placement workspace', 'team_assignment_events'] },
     { name: 'family_signup_entry', url: 'https://thehitzero.net/hit_zero_web/components/HZShell.jsx?v=hzq-signup', wantAll: ['publicAuthModeFromRoute', 'Create your family account.', 'parent@example.com or athlete username'] },
     { name: 'mca_account_entry', url: 'https://mcaminot.com/app/Primitives.jsx?v=hzq-signup', wantAll: ['HIT_ZERO_CREATE_ACCOUNT_URL', 'Create account', '#signup'] },
     { name: 'booking_pay_link', url: 'https://thehitzero.net/hit_zero_web/screens/PublicBooking.jsx?v=hzq', wantAll: ['PublicPaymentLink', 'Finish payment'] },

@@ -164,7 +164,7 @@
         'volunteer_roles', 'volunteer_assignments', 'drills', 'practice_plans', 'practice_plan_blocks',
         'pin_designs', 'athlete_pins', 'pin_drops', 'pin_quests',
         'program_join_requests', 'program_owner_applications', 'program_invites', 'program_invite_redemptions',
-        'family_info_packets', 'class_enrollments',
+        'family_info_packets', 'class_enrollments', 'team_assignment_events',
         'routines', 'routine_sections', 'routine_audio_assets', 'music_licenses', 'routine_count_maps',
         'routine_events', 'routine_formations', 'routine_positions', 'routine_assignments',
         'routine_ai_suggestions', 'routine_exports', 'routine_versions', 'routine_comments',
@@ -253,17 +253,19 @@
         }
       }
       if (isStaff) {
-        const [registrations, leads, leadTouches, packets] = await Promise.all([
+        const [registrations, leads, leadTouches, packets, assignmentEvents] = await Promise.all([
           s.from('registrations').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
           s.from('leads').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
           s.from('lead_touches').select('*').order('created_at', { ascending: false }).limit(200),
           s.from('family_info_packets').select('*').in('program_id', programIds).order('updated_at', { ascending: false }),
+          s.from('team_assignment_events').select('*').in('program_id', programIds).order('created_at', { ascending: false }).limit(100),
         ]);
         if (!registrations.error) d.registrations = registrations.data || [];
         if (!leads.error) d.leads = leads.data || [];
         const leadIds = new Set((d.leads || []).map(row => row.id));
         if (!leadTouches.error) d.lead_touches = (leadTouches.data || []).filter(row => leadIds.has(row.lead_id));
         if (!packets.error) d.family_info_packets = packets.data || [];
+        if (!assignmentEvents.error) d.team_assignment_events = assignmentEvents.data || [];
       } else if (isLiveSession) {
         d.registrations = [];
         d.leads = [];

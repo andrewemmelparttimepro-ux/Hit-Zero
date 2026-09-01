@@ -240,7 +240,6 @@ function publicAuthModeFromRoute(route) {
 const DEFAULT_PUBLIC_GYM_SLUG = 'mca';
 const DEFAULT_PUBLIC_GYM_NAME = 'your gym';
 const DEFAULT_PUBLIC_GYM_ID = PLACEHOLDER_PROGRAM_ID;
-const PASSWORD_RESET_TIMEOUT_MS = 18000;
 const FAMILY_PACKET_LOAD_TIMEOUT_MS = 10000;
 const FAMILY_PACKET_SUBMIT_TIMEOUT_MS = 35000;
 
@@ -347,7 +346,7 @@ function App() {
       .on('postgres_changes', { table: '*' }, () => refreshSnapshot())
       .subscribe();
     // subscribe to every table we care about
-    ['athlete_skills','celebrations','attendance','routine_sections','sessions','billing_accounts','billing_charges','announcements','score_runs','program_tracks','program_classes','class_enrollments','athletes','parent_links','programs','program_payment_settings','program_join_requests','program_invites','program_owner_applications','family_info_packets','message_threads','thread_members','messages','message_reads','practice_plans','practice_plan_blocks','form_responses'].forEach(t => {
+    ['athlete_skills','celebrations','attendance','routine_sections','sessions','billing_accounts','billing_charges','announcements','score_runs','program_tracks','program_classes','class_enrollments','team_assignment_events','teams','athletes','parent_links','programs','program_payment_settings','program_join_requests','program_invites','program_owner_applications','family_info_packets','message_threads','thread_members','messages','message_reads','practice_plans','practice_plan_blocks','form_responses'].forEach(t => {
       window.HZdb.channel('t-' + t).on('postgres_changes', { table: t }, () => refreshSnapshot()).subscribe();
     });
     return () => {
@@ -1974,15 +1973,19 @@ function PasswordResetGate({ session }) {
     if (next !== confirm) { setFlash({ kind: 'error', text: 'The two passwords do not match.' }); return; }
     setBusy(true);
     try {
-      const { error } = await Promise.race([
-        window.HZdb.auth.updatePassword(next),
-        timeoutAfter(PASSWORD_RESET_TIMEOUT_MS, 'Password update is taking too long. Check your connection and try again.'),
-      ]);
+      const { data, error } = await window.HZdb.auth.updatePassword(next);
       if (error) throw error;
       setNext('');
       setConfirm('');
       setCompleted(true);
-      setFlash({ kind: 'success', text: 'Password updated. You can continue into Hit Zero now.' });
+      setFlash({ kind: 'success', text: data?.needsSignIn ? 'Password updated. Sign in with the new password to continue.' : 'Password updated. You can continue into Hit Zero now.' });
+      if (data?.needsSignIn) {
+        setTimeout(async () => {
+          await window.HZdb.auth.signOut();
+          location.hash = '#signin';
+        }, 900);
+        return;
+      }
       const destination = firstRouteForRole(session?.profile?.role || 'parent');
       setTimeout(() => { location.hash = '#' + destination; }, 900);
     } catch (err) {
