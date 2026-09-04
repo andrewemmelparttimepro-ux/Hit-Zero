@@ -15,8 +15,9 @@
   const VIEW_AS_EMAIL = 'andrew@ndai.pro';
   const VIEW_AS_ROLES = ['owner', 'coach', 'parent', 'athlete'];
   const PROD_PURGE_KEY = 'hz_prod_purge_version';
-  const PROD_PURGE_VERSION = '2026-05-09-family-packet-v1';
+  const PROD_PURGE_VERSION = '2026-09-03-memory-only-live-mirror';
   const PROD_HOSTS = new Set(['thehitzero.net', 'www.thehitzero.net']);
+  const LOCAL_ONLY_TABLES = new Set(['pin_designs', 'athlete_pins', 'pin_drops', 'pin_quests']);
   const EMPTY_TABLES = [
     'programs', 'teams', 'profiles', 'athletes', 'skills', 'athlete_skills', 'sessions', 'attendance',
     'routines', 'routine_sections', 'routine_audio_assets', 'music_licenses', 'routine_count_maps',
@@ -39,7 +40,12 @@
   const authListeners = new Set();
 
   function isProductionHost() {
-    try { return PROD_HOSTS.has(window.location.hostname); } catch { return false; }
+    try {
+      if (window.HZ_FORCE_PROTOTYPE === true) return false;
+      const host = window.location.hostname || '';
+      if (PROD_HOSTS.has(host)) return true;
+      return Boolean(host) && !['localhost', '127.0.0.1', '0.0.0.0', '::1'].includes(host);
+    } catch { return false; }
   }
   function shouldResetLocalPrototype() {
     try {
@@ -912,6 +918,9 @@
     return fresh;
   }
   function save(d) {
+    // Live data can include minors' medical and emergency details. Keep the
+    // mirror in memory only; Supabase remains the durable source of truth.
+    if (isProductionHost()) return;
     try { localStorage.setItem(LS_KEY, JSON.stringify(d)); } catch {}
   }
 
@@ -977,7 +986,7 @@
         (async () => {
           let result;
           if (state.op === 'select') {
-            if (hasRealAuth() && window.HZsupa) {
+            if (hasRealAuth() && window.HZsupa && !LOCAL_ONLY_TABLES.has(table)) {
               let query = window.HZsupa.from(table).select(state._cols || '*');
               state.conditions.forEach(({ op, col, val }) => {
                 if (op === 'eq') query = query.eq(col, val);
@@ -1176,11 +1185,7 @@
   }
 	  async function liveToken() {
 	    if (!hasRealAuth()) return null;
-	    const { data: authData, error } = await withTimeout(
-	      window.HZsupa.auth.getSession(),
-	      12000,
-	      'Your sign-in session could not be verified. Reload and sign in again.'
-	    );
+	    const { data: authData, error } = await window.HZsupa.auth.getSession();
 	    if (error) throw error;
 	    return authData?.session?.access_token || null;
 	  }
@@ -1472,14 +1477,9 @@
   }
   function ensureRealAuthSubscription() {
     if (!hasRealAuth() || realAuthSub) return;
-    const { data: sub } = window.HZsupa.auth.onAuthStateChange((evt, session) => {
-      // Supabase auth callbacks hold an internal lock. Database/auth calls made
-      // inside the callback deadlock every later request, so defer profile sync
-      // until the callback has returned and released that lock.
-      setTimeout(() => {
-        syncSupabaseSession(session, evt)
-          .catch((err) => console.warn('[HZ] auth sync failed', err));
-      }, 0);
+    const { data: sub } = window.HZsupa.auth.onAuthStateChange(async (evt, session) => {
+      try { await syncSupabaseSession(session, evt); }
+      catch (err) { console.warn('[HZ] auth sync failed', err); }
     });
     realAuthSub = sub.subscription;
   }
@@ -1487,11 +1487,7 @@
     if (!hasRealAuth()) return Promise.resolve(getSession());
     ensureRealAuthSubscription();
     if (!authInitPromise) {
-      authInitPromise = withTimeout(
-        window.HZsupa.auth.getSession(),
-        15000,
-        'Hit Zero could not finish checking this sign-in.'
-      )
+      authInitPromise = window.HZsupa.auth.getSession()
         .then(async ({ data: result, error }) => {
           if (error) throw error;
           return syncSupabaseSession(result.session);
@@ -1576,17 +1572,13 @@
 	      if (error) return { data: null, error };
 	      return { data: out || { ok: true }, error: null };
 	    },
-	    async updatePassword(password, options = {}) {
+	    async updatePassword(password) {
 	      if (!hasRealAuth()) return { data: null, error: new Error('Password update is unavailable in prototype mode.') };
 	      if (!password || String(password).length < 8) return { data: null, error: new Error('Use at least 8 characters.') };
 	      const recoverySession = await ensurePasswordRecoverySession();
 	      if (recoverySession.error) return recoverySession;
-	      const updateInput = { password };
-	      if (options.userMetadata && typeof options.userMetadata === 'object') {
-	        updateInput.data = options.userMetadata;
-	      }
 		      const { data: out, error } = await withTimeout(
-		        window.HZsupa.auth.updateUser(updateInput),
+		        window.HZsupa.auth.updateUser({ password }),
 		        45000,
 		        'Password update is taking longer than expected. It may still have succeeded; try signing in with the new password, or request a fresh reset link.'
 		      );
@@ -1919,7 +1911,14 @@
       const klass = reg.class_id ? (data.program_classes || []).find(c => c.id === reg.class_id) : null;
       const win = reg.window_id ? (data.registration_windows || []).find(w => w.id === reg.window_id) : null;
       const program = (data.programs || []).find(p => p.id === reg.program_id) || data.programs?.[0] || {};
-      const item = klass || (win ? { id: win.id, program_id: reg.program_id, name: win.title, price_cents: Math.round(Number(win.fee_amount || 0) * 100) } : null);
+      const baseItem = klass || (win ? { id: win.id, program_id: reg.program_id, name: win.title, price_cents: Math.round(Number(win.fee_amount || 0) * 100) } : null);
+      const item = baseItem ? {
+        ...baseItem,
+        price_cents: reg.final_amount_cents ?? baseItem.price_cents,
+        list_amount_cents: reg.list_amount_cents ?? baseItem.price_cents,
+        discount_amount_cents: reg.discount_amount_cents || 0,
+        discount_code: reg.discount_code || null,
+      } : null;
       if (!item?.price_cents) return { data: null, error: new Error('This registration does not have a payable amount yet.') };
       return { data: { ok: true, registration: reg, item, program: { ...program, public_checkout_enabled: true }, amount_cents: item.price_cents, currency: 'USD' }, error: null };
     },
@@ -2216,6 +2215,10 @@
       }
       writeViewRole(null);
       setSession(null);
+      if (isProductionHost()) {
+        try { localStorage.removeItem(LS_KEY); } catch {}
+        data = emptyData();
+      }
       return { error: null };
     },
     async getSession() {

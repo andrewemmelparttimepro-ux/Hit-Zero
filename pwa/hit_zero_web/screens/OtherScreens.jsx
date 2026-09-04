@@ -567,9 +567,7 @@ function SkillTree({ snap, session }) {
   });
   const scoped = scopedAthleteForFeature(snap, session, selectedAthleteId);
   const myAthlete = scoped.athlete;
-  if (!myAthlete) {
-    return <AthleteFeatureGate choices={scoped.choices} feature="Skill tracking" onPick={setSelectedAthleteId}/>;
-  }
+  const athleteId = myAthlete?.id || '';
   const cats = ['standing_tumbling','running_tumbling','jumps','stunts','pyramids','baskets'];
   const CAT_LABEL = { standing_tumbling: 'Standing Tumbling', running_tumbling: 'Running Tumbling', jumps: 'Jumps', stunts: 'Stunts', pyramids: 'Pyramids', baskets: 'Baskets' };
   const STATUS_LABEL = { none: 'Not yet', working: 'Working', got_it: 'Got it', mastered: 'Mastered' };
@@ -579,10 +577,10 @@ function SkillTree({ snap, session }) {
     got_it: 'I can do it.',
     mastered: 'I can do it clean and confident.',
   };
-  // Parents, athletes, and staff can all keep the tracker current.
-  // (RLS: "askill: parent updates/edits linked tracker" + athlete self policies.)
-  const isParentViewer = session?.profile?.role === 'parent';
-  const firstName = myAthlete.display_name.split(' ')[0];
+  const viewerRole = session?.profile?.role || session?.actualProfile?.role || '';
+  const isParentViewer = viewerRole === 'parent';
+  const canEdit = viewerRole === 'athlete' || viewerRole === 'coach' || viewerRole === 'owner';
+  const firstName = (myAthlete?.display_name || 'Athlete').split(' ')[0];
   const STATUS_PARENT_HELP = {
     none: 'not started yet',
     working: 'learning it now',
@@ -591,15 +589,21 @@ function SkillTree({ snap, session }) {
   };
   const STATUS_TONES = { none: 'rgba(255,255,255,0.04)', working: 'rgba(255,180,84,0.16)', got_it: 'rgba(39,207,215,0.18)', mastered: 'linear-gradient(135deg, rgba(39,207,215,0.3), rgba(249,127,172,0.3))' };
   const statusMap = {};
-  (snap.athlete_skills || []).filter(r => r.athlete_id === myAthlete.id).forEach(r => { statusMap[r.skill_id] = r.status; });
+  (snap.athlete_skills || []).filter(r => r.athlete_id === athleteId).forEach(r => { statusMap[r.skill_id] = r.status; });
+  const skillRowMap = {};
+  (snap.athlete_skills || []).filter(r => r.athlete_id === athleteId).forEach(r => { skillRowMap[r.skill_id] = r; });
   const [localStatus, setLocalStatus] = React.useState({});
   const [saving, setSaving] = React.useState(null);
   const [error, setError] = React.useState('');
+  const [selectedSkillId, setSelectedSkillId] = React.useState('');
 
   const statusFor = (skillId) => localStatus[skillId] || statusMap[skillId] || 'none';
+  const selectedSkill = (snap.skills || []).find(skill => skill.id === selectedSkillId) || null;
+  const selectedSkillStatus = selectedSkill ? statusFor(selectedSkill.id) : 'none';
+  const selectedSkillNote = selectedSkill ? String(skillRowMap[selectedSkill.id]?.note || '').trim() : '';
   const updateSkill = async (skill, status) => {
     const previous = statusFor(skill.id);
-    if (previous === status || saving) return;
+    if (!canEdit || previous === status || saving) return;
     const row = {
       athlete_id: myAthlete.id,
       skill_id: skill.id,
@@ -632,6 +636,13 @@ function SkillTree({ snap, session }) {
       setSaving(null);
     }
   };
+  React.useEffect(() => {
+    if (selectedSkillId || !(snap.skills || []).length) return;
+    setSelectedSkillId(snap.skills[0].id);
+  }, [selectedSkillId, snap.skills]);
+  if (!myAthlete) {
+    return <AthleteFeatureGate choices={scoped.choices} feature="Skill tracking" onPick={setSelectedAthleteId}/>;
+  }
   const solidCount = Object.values({ ...statusMap, ...localStatus }).filter(s => s === 'mastered' || s === 'got_it').length;
 
   // Endowed progress — real numbers from real skill rows, never inflated.
@@ -684,9 +695,9 @@ function SkillTree({ snap, session }) {
       {isParentViewer ? (
         <div className="hz-card" style={{ marginBottom: 20, borderColor: 'rgba(39,207,215,0.35)' }}>
           <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)', marginBottom: 8 }}>Family tracker</div>
-          <div className="hz-display" style={{ fontSize: 32, marginBottom: 8 }}>Tap what {firstName} can do today.</div>
+          <div className="hz-display" style={{ fontSize: 32, marginBottom: 8 }}>See what {firstName} can do today.</div>
           <div style={{ color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.55, maxWidth: 760 }}>
-            New skill from open gym or the backyard? Tap it below — one tap per skill, it saves instantly, and coaches see the same tree. Picked one by mistake? Tap <b style={{ color: 'var(--hz-text, #fff)' }}>Not yet</b> to clear it. Coaches and {firstName} can update these too.
+            Coaches manage this skill tree. Tap any skill below to review the current status and coach note so you know what to practice with {firstName} at home.
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
             {['none','working','got_it','mastered'].map(s => (
@@ -714,6 +725,52 @@ function SkillTree({ snap, session }) {
           {error && <div style={{ color: 'var(--hz-pink)', fontSize: 13, marginTop: 12 }}>{error}</div>}
         </div>
       )}
+      {selectedSkill && (
+        <div className="hz-card" style={{ marginBottom: 20, borderColor: 'rgba(39,207,215,0.28)' }}>
+          <div className="hz-eyebrow" style={{ marginBottom: 8 }}>{isParentViewer ? 'Selected skill' : 'Skill detail'}</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div>
+              <div className="hz-display" style={{ fontSize: 26, marginBottom: 6 }}>{selectedSkill.name}</div>
+              <div style={{ color: 'var(--hz-dim)', fontSize: 12 }}>
+                Level {selectedSkill.level} · {CAT_LABEL[selectedSkill.category] || selectedSkill.category}
+              </div>
+            </div>
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 12px',
+              borderRadius: 999,
+              fontSize: 11,
+              fontWeight: 800,
+              background: STATUS_TONES[selectedSkillStatus],
+              color: selectedSkillStatus === 'none' ? 'var(--hz-dim)' : '#fff',
+              border: '1px solid var(--hz-line)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+            }}>
+              {STATUS_LABEL[selectedSkillStatus]}
+            </span>
+          </div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 12.5, lineHeight: 1.55, marginTop: 12 }}>
+            {isParentViewer ? `${firstName} is currently marked as ${STATUS_PARENT_HELP[selectedSkillStatus]}.` : STATUS_HELP[selectedSkillStatus]}
+          </div>
+          <div style={{ marginTop: 14 }}>
+            <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Coach note</div>
+            <div style={{
+              padding: 14,
+              borderRadius: 12,
+              border: '1px solid var(--hz-line)',
+              background: 'rgba(255,255,255,0.03)',
+              color: selectedSkillNote ? 'var(--hz-text, #fff)' : 'var(--hz-dim)',
+              fontSize: 13,
+              lineHeight: 1.55,
+            }}>
+              {selectedSkillNote || `No coach note is saved for ${selectedSkill.name} yet.`}
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         {cats.map(cat => {
           const cSkills = snap.skills.filter(s => s.category === cat).sort((a,b) => a.level - b.level);
@@ -735,6 +792,39 @@ function SkillTree({ snap, session }) {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10 }}>
                 {cSkills.map(s => {
                   const st = statusFor(s.id);
+                  if (isParentViewer) {
+                    const hasNote = Boolean(String(skillRowMap[s.id]?.note || '').trim());
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setSelectedSkillId(s.id)}
+                        style={{
+                          padding: 12,
+                          borderRadius: 14,
+                          fontSize: 12,
+                          background: STATUS_TONES[st],
+                          color: st === 'none' ? 'var(--hz-dim)' : '#fff',
+                          border: selectedSkillId === s.id ? '1px solid rgba(39,207,215,0.45)' : '1px solid var(--hz-line)',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'start', marginBottom: 10 }}>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: '#fff' }}>{s.name}</div>
+                            <div style={{ fontFamily: 'var(--hz-mono)', fontSize: 10, opacity: 0.7, marginTop: 3 }}>
+                              L{s.level} · {STATUS_PARENT_HELP[st]}
+                            </div>
+                          </div>
+                          <div style={{ display: 'grid', gap: 6, justifyItems: 'end' }}>
+                            {hasNote && <span className="hz-eyebrow" style={{ color: 'var(--hz-teal)' }}>Coach note</span>}
+                            <span className="hz-eyebrow" style={{ color: 'var(--hz-dim)' }}>Tap to review</span>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  }
                   return (
                     <div key={s.id} style={{
                       padding: 12, borderRadius: 14, fontSize: 12,
@@ -798,16 +888,15 @@ function SkillTreeNudgeCard({ kids, navigate, profileId }) {
   };
   return (
     <div className="hz-card" style={{ marginBottom: 24, borderColor: 'rgba(39,207,215,0.4)' }}>
-      <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)', marginBottom: 8 }}>Skill tree · about 2 minutes</div>
-      <div style={{ fontWeight: 900, fontSize: 18 }}>Tell the coaches what {nameList} can already do.</div>
+      <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)', marginBottom: 8 }}>Skill tree</div>
+      <div style={{ fontWeight: 900, fontSize: 18 }}>See what {nameList} can already do.</div>
       <div style={{ color: 'var(--hz-dim)', fontSize: 12.5, marginTop: 5, lineHeight: 1.5 }}>
-        Tap through the skill tree once — every skill is just one tap: Not yet, Working, Got it, or Mastered.
-        Coaches use it to plan practice and placements, and you'll watch it light up all season.
+        Coaches manage the tracker. Open the skill tree to review the current status and coach notes for each athlete in one place.
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
         {kids.map(kid => (
           <button key={kid.id} className="hz-btn hz-btn-primary" onClick={() => openFor(kid)}>
-            Fill out {kid.display_name.split(' ')[0]}'s skill tree <HZIcon name="arrow-right" size={13}/>
+            View {kid.display_name.split(' ')[0]}'s skill tree <HZIcon name="arrow-right" size={13}/>
           </button>
         ))}
         <button className="hz-btn" onClick={snooze}>Later</button>
@@ -882,6 +971,15 @@ function ParentDashboard({ snap, session, navigate, pushToast }) {
             : leadHasWins ? <>{leadFirst}'s latest <span className="hz-zero">wins</span>.</>
             : <>{leadFirst} at <span className="hz-zero">a glance</span>.</>}
         </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
+          <button
+            className="hz-btn hz-btn-sm"
+            aria-label="View all Gym Feed updates"
+            onClick={() => navigate('announcements')}
+          >
+            View Gym Feed
+          </button>
+        </div>
       </div>
 
       {!leadKid && (
@@ -910,13 +1008,6 @@ function ParentDashboard({ snap, session, navigate, pushToast }) {
           <button className="hz-btn hz-btn-primary" onClick={() => navigate('family_forms')}>Open Forms <HZIcon name="arrow-right" size={13}/></button>
         </div>
       )}
-
-      <SkillTreeNudgeCard
-        kids={myKids.filter(Boolean).filter(kid => window.HZsel.athleteSkillsSummary(kid.id).notAssessed)}
-        navigate={navigate}
-        profileId={session.actualProfile?.id || session.profile?.id}
-      />
-
 
       {unlinkedPaidRegistrations.length > 0 && (
         <div className="hz-card" style={{ marginBottom: 24, borderColor: 'rgba(39,207,215,0.32)' }}>
@@ -964,6 +1055,10 @@ function ParentDashboard({ snap, session, navigate, pushToast }) {
               : billing.account.owed > 0 ? `$${billing.account.owed} due` : 'Paid in full')
           : (paidClassEnrollments.length ? 'Class paid' : 'Billing');
         const latestWin = kidCels[0] || null;
+        const assignedTeam = (snap.teams || []).find(t => t.id === kid.team_id && t.builder_enabled && !t.deleted_at) || null;
+        const assignedTeamLabel = assignedTeam
+          ? (assignedTeam.division ? `${assignedTeam.division} — ${assignedTeam.name}` : assignedTeam.name)
+          : '';
 
         return (
           <div key={kid.id} style={{ marginBottom: 32 }}>
@@ -981,6 +1076,7 @@ function ParentDashboard({ snap, session, navigate, pushToast }) {
                     <div style={{ fontSize: 12, color: 'var(--hz-dim)', textTransform: 'capitalize', marginTop: 2 }}>
                       {kid.position || kid.role || 'athlete'}{kid.age ? ' · Age ' + kid.age : ''} · Tap for full profile
                     </div>
+                    {assignedTeamLabel && <div className="family-team-chip" style={{ '--athlete-team-color': assignedTeam.color || 'var(--hz-teal)' }}><span>◆</span><strong>{assignedTeamLabel}</strong>{assignedTeam.season && <small>{assignedTeam.season}</small>}</div>}
                     <button
                       className="hz-btn"
                       style={{ marginTop: 12, padding: '9px 12px', fontSize: 12 }}
@@ -1072,7 +1168,7 @@ function ParentDashboard({ snap, session, navigate, pushToast }) {
 
       {/* Announcements */}
       <div className="hz-card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
           <div className="hz-eyebrow">From the gym</div>
           <button className="hz-btn hz-btn-ghost hz-btn-sm" aria-label="View all Gym Feed updates" onClick={() => navigate('announcements')}>View Gym Feed</button>
         </div>
@@ -1314,6 +1410,32 @@ function AthleteLoginSetup({ athlete }) {
 }
 window.ParentDashboard = ParentDashboard;
 
+const MCA_FAMILY_RESOURCES = [
+  {
+    title: 'Handbook packet',
+    detail: 'Current all-star welcome packet',
+    href: '/mca-all-star-welcome-packet.pdf',
+    ctaLabel: 'Download PDF',
+  },
+  {
+    title: 'Team contract',
+    detail: 'This slot stays ready for the signed season contract.',
+    href: null,
+    ctaLabel: 'Coming soon',
+  },
+  {
+    title: 'Competition schedule',
+    detail: 'This will appear here as soon as the comp calendar is finalized.',
+    href: null,
+    ctaLabel: 'Coming soon',
+  },
+];
+
+function isMcaProgram(program) {
+  const slug = String(program?.slug || '').toLowerCase();
+  return slug === 'mca';
+}
+
 function FamilyForms({ snap, session, navigate }) {
   const profile = session?.actualProfile || session?.profile || {};
   const rawProgramId = profile.program_id || session?.profile?.program_id || null;
@@ -1333,6 +1455,7 @@ function FamilyForms({ snap, session, navigate }) {
     .sort((a, b) => (a.display_order ?? 100) - (b.display_order ?? 100) || (a.name || '').localeCompare(b.name || ''))
     .slice(0, 8);
   const enrollments = window.HZsel?.classEnrollmentsForParent ? window.HZsel.classEnrollmentsForParent(session) : [];
+  const programResources = isMcaProgram(program) ? MCA_FAMILY_RESOURCES : [];
 
   function isDropInClass(klass) {
     const text = [klass?.name, klass?.price_unit, klass?.price_unit_label, klass?.schedule_summary, klass?.description]
@@ -1415,6 +1538,42 @@ function FamilyForms({ snap, session, navigate }) {
               {enrollments.length === 0 && <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>Paid registrations will appear here.</div>}
             </div>
           </div>
+          {programResources.length > 0 && (
+            <div className="hz-card">
+              <div className="hz-eyebrow" style={{ marginBottom: 10 }}>Program documents</div>
+              <div style={{ color: 'var(--hz-dim)', fontSize: 12.5, lineHeight: 1.5, marginBottom: 12 }}>
+                Keep the current all-star packet handy here, with the contract and comp schedule ready to drop in when {programName} adds them.
+              </div>
+              <div style={{ display: 'grid', gap: 10 }}>
+                {programResources.map((resource) => (
+                  <div key={resource.title} style={{ padding: 12, borderRadius: 10, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.03)' }}>
+                    <div style={{ fontWeight: 900 }}>{resource.title}</div>
+                    <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>{resource.detail}</div>
+                    {resource.href ? (
+                      <a
+                        className="hz-btn hz-btn-primary hz-btn-sm"
+                        href={resource.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ marginTop: 10 }}
+                      >
+                        {resource.ctaLabel}
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        className="hz-btn hz-btn-sm"
+                        disabled
+                        style={{ marginTop: 10, opacity: 0.72 }}
+                      >
+                        {resource.ctaLabel}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <button className="hz-btn" onClick={() => navigate('parent')}>Back to family home</button>
         </aside>
       </div>
@@ -1660,29 +1819,6 @@ function BirthdayCalendar({ snap }) {
   return (
     <div>
       <SectionHeading eyebrow="Roster birthdays" title="Birthdays."/>
-      <div className="hz-card" style={{ padding: 18, marginBottom: 18, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 22, alignItems: 'center', overflow: 'hidden' }}>
-        <img
-          src="/hit_zero_web/assets/birthday-party-package.png"
-          alt="Birthday party package"
-          style={{ width: '100%', maxHeight: 720, objectFit: 'contain', borderRadius: 14, background: '#fff' }}
-        />
-        <div style={{ padding: '4px 6px' }}>
-          <div className="hz-eyebrow" style={{ color: 'var(--hz-pink)', marginBottom: 10 }}>Birthday party package</div>
-          <div className="hz-display" style={{ fontSize: 36, marginBottom: 12 }}>Request your date.</div>
-          <div style={{ color: 'var(--hz-dim)', fontSize: 14, lineHeight: 1.65, marginBottom: 18 }}>
-            A two-hour party for up to 15 kids, including supervised gym time, a dedicated host, a birthday shirt, a photo backdrop, and a 10-visit open gym punch card for the birthday athlete.
-          </div>
-          <a
-            className="hz-btn hz-btn-primary"
-            href="https://forms.gle/xHJgfeZXe1CpQNzD7"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ display: 'inline-flex', textDecoration: 'none' }}
-          >
-            Open birthday request form
-          </a>
-        </div>
-      </div>
       <div className="hz-card" style={{ padding: 18, marginBottom: 18 }}>
         <div style={{ color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.55 }}>
           Birthdays are calculated from linked family packets and registration records. Athletes without a DOB stay hidden here until staff links or collects that field.
@@ -2451,6 +2587,42 @@ function liveOfferingsMode() {
   return Boolean(window.HZsupa && window.HZdb?.auth?._mode?.() === 'live');
 }
 
+function offeringsAuthError(message = 'Your login expired before this change could be saved.') {
+  const error = new Error(`${message} Sign in again, then retry the change.`);
+  error.code = 'HZ_OFFERINGS_AUTH_REQUIRED';
+  return error;
+}
+
+function isOfferingsAuthError(error) {
+  const code = String(error?.code || '').toUpperCase();
+  const message = String(error?.message || '').toLowerCase();
+  return error?.status === 401
+    || code === 'PGRST301'
+    || code === 'JWT_EXPIRED'
+    || message.includes('jwt expired')
+    || message.includes('invalid jwt')
+    || message.includes('refresh token');
+}
+
+async function withLiveOfferingsSession(mutation) {
+  const auth = window.HZsupa?.auth;
+  if (!auth) return { data: null, error: offeringsAuthError('The live database connection is unavailable.') };
+
+  const current = await auth.getSession();
+  if (current?.error) return { data: null, error: current.error };
+  if (!current?.data?.session?.user) return { data: null, error: offeringsAuthError() };
+
+  let result = await mutation();
+  if (!isOfferingsAuthError(result?.error)) return result;
+
+  const refreshed = await auth.refreshSession();
+  if (refreshed?.error || !refreshed?.data?.session?.user) {
+    return { data: null, error: offeringsAuthError() };
+  }
+  result = await mutation();
+  return result;
+}
+
 async function refreshOfferings(table, action) {
   try {
     if (window.HZmirror?.roster) await window.HZmirror.roster();
@@ -2463,12 +2635,12 @@ async function refreshOfferings(table, action) {
 
 async function writeProgramTrack(id, patch) {
   if (liveOfferingsMode()) {
-    const res = await window.HZsupa
+    const res = await withLiveOfferingsSession(() => window.HZsupa
       .from('program_tracks')
       .update(patch)
       .eq('id', id)
       .select('*')
-      .single();
+      .single());
     if (!res?.error) await refreshOfferings('program_tracks', 'update');
     return res;
   }
@@ -2479,10 +2651,9 @@ async function writeProgramTrack(id, patch) {
 
 async function writeProgramClass(action, payload, id) {
   if (liveOfferingsMode()) {
-    const table = window.HZsupa.from('program_classes');
-    if (action === 'insert') return table.insert(payload).select('*').single();
-    if (action === 'update') return table.update(payload).eq('id', id).select('*').single();
-    if (action === 'delete') return table.delete().eq('id', id);
+    if (action === 'insert') return withLiveOfferingsSession(() => window.HZsupa.from('program_classes').insert(payload).select('*').single());
+    if (action === 'update') return withLiveOfferingsSession(() => window.HZsupa.from('program_classes').update(payload).eq('id', id).select('*').single());
+    if (action === 'delete') return withLiveOfferingsSession(() => window.HZsupa.from('program_classes').delete().eq('id', id));
   }
   const table = window.HZdb.from('program_classes');
   if (action === 'insert') return table.insert(payload);
@@ -2491,10 +2662,37 @@ async function writeProgramClass(action, payload, id) {
   return { error: new Error(`Unknown class mutation: ${action}`) };
 }
 
+async function readClassDiscountCodes(classId) {
+  if (!liveOfferingsMode()) return { data: [], error: null };
+  return window.HZsupa
+    .from('class_discount_codes')
+    .select('id, program_id, class_id, code, label, discount_type, discount_value, is_active, starts_at, ends_at, created_at')
+    .eq('class_id', classId)
+    .order('created_at', { ascending: true });
+}
+
+async function writeClassDiscountCode(action, payload, id) {
+  if (!liveOfferingsMode()) return { data: null, error: new Error('Discount codes are available in live mode only.') };
+  if (action === 'insert') return withLiveOfferingsSession(() => window.HZsupa.from('class_discount_codes').insert(payload).select('*').single());
+  if (action === 'update') return withLiveOfferingsSession(() => window.HZsupa.from('class_discount_codes').update(payload).eq('id', id).select('*').single());
+  if (action === 'delete') return withLiveOfferingsSession(() => window.HZsupa.from('class_discount_codes').delete().eq('id', id));
+  return { data: null, error: new Error(`Unknown discount-code mutation: ${action}`) };
+}
+
+function normalizedDiscountCode(value) {
+  return String(value || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 32);
+}
+
 function nullableInt(value) {
   if (value === '' || value === null || value === undefined) return null;
   const parsed = parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizedExternalRegistrationUrl(value) {
+  const url = String(value || '').trim();
+  if (!url) return null;
+  return /^https:\/\//i.test(url) ? url : false;
 }
 
 const CLASS_PRICE_UNIT_LABELS = {
@@ -2533,8 +2731,10 @@ function OfferingsManager({ snap }) {
       if (error) {
         console.error('[tracks] update', error);
         setErrorMessage(error.message || 'Track update failed.');
+        return false;
       } else {
         setNotice('Track updated on the website.');
+        return true;
       }
     } finally { setBusy(false); }
   }
@@ -2619,7 +2819,10 @@ function OfferingsManager({ snap }) {
 
               {/* Track copy editor */}
               {isEditing && (
-                <TrackCopyEditor track={t} onSave={(patch) => patchTrack(t, patch).then(() => setEditingTrackId(null))} disabled={busy}/>
+                <TrackCopyEditor track={t} onSave={async (patch) => {
+                  const saved = await patchTrack(t, patch);
+                  if (saved) setEditingTrackId(null);
+                }} disabled={busy}/>
               )}
 
               {/* Classes inside this track */}
@@ -2722,6 +2925,7 @@ function ClassRow({ cls, disabled, onMutated }) {
   const [priceUnitLabel, setPriceUnitLabel] = React.useState(cls.price_unit_label || '');
   const [schedule, setSchedule] = React.useState(cls.schedule_summary || '');
   const [description, setDescription] = React.useState(cls.description || '');
+  const [externalRegistrationUrl, setExternalRegistrationUrl] = React.useState(cls.external_registration_url || '');
   const [ageMin, setAgeMin] = React.useState(cls.age_range_min ?? '');
   const [ageMax, setAgeMax] = React.useState(cls.age_range_max ?? '');
   const [capacity, setCapacity] = React.useState(cls.capacity ?? '');
@@ -2730,16 +2934,40 @@ function ClassRow({ cls, disabled, onMutated }) {
   const [dirty, setDirty] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [rowError, setRowError] = React.useState('');
+  const [showDiscounts, setShowDiscounts] = React.useState(false);
+  const [savedMessage, setSavedMessage] = React.useState('');
+
+  React.useEffect(() => {
+    if (dirty || saving) return;
+    setName(cls.name || '');
+    setPriceCents(cls.price_cents || 0);
+    setPriceUnit(cls.price_unit || 'per_month');
+    setPriceUnitLabel(cls.price_unit_label || '');
+    setSchedule(cls.schedule_summary || '');
+    setDescription(cls.description || '');
+    setExternalRegistrationUrl(cls.external_registration_url || '');
+    setAgeMin(cls.age_range_min ?? '');
+    setAgeMax(cls.age_range_max ?? '');
+    setCapacity(cls.capacity ?? '');
+    setRegistrationOpen(!!cls.registration_open);
+    setIsPublic(!!cls.is_public);
+  }, [cls.id, cls.updated_at, dirty, saving]);
 
   function mark() {
     setDirty(true);
     setRowError('');
+    setSavedMessage('');
   }
 
   async function save() {
     setSaving(true);
     setRowError('');
     try {
+      const cleanExternalRegistrationUrl = normalizedExternalRegistrationUrl(externalRegistrationUrl);
+      if (cleanExternalRegistrationUrl === false) {
+        setRowError('External registration links must start with https://');
+        return;
+      }
       const patch = {
         name: name.trim() || 'Untitled',
         price_cents: Math.max(0, parseInt(priceCents, 10) || 0),
@@ -2747,18 +2975,22 @@ function ClassRow({ cls, disabled, onMutated }) {
         price_unit_label: normalizedClassPriceUnitLabel(priceUnit, priceUnitLabel),
         schedule_summary: schedule.trim() || null,
         description: description.trim() || null,
+        external_registration_url: cleanExternalRegistrationUrl,
         age_range_min: nullableInt(ageMin),
         age_range_max: nullableInt(ageMax),
         capacity: capacity === '' ? null : Math.max(0, parseInt(capacity, 10) || 0),
         registration_open: !!registrationOpen,
         is_public: !!isPublic,
       };
-      const { error } = await writeProgramClass('update', patch, cls.id);
+      const { data, error } = await writeProgramClass('update', patch, cls.id);
       if (error) {
         console.error('[classes] update', error);
         setRowError(error.message || 'Class save failed.');
+      } else if (!data?.id) {
+        setRowError('The database did not confirm this change. Nothing was marked saved; please retry.');
       } else {
         setDirty(false);
+        setSavedMessage('Saved to the website.');
         onMutated?.('Class saved to the website.');
         await refreshOfferings('program_classes', 'update');
       }
@@ -2819,6 +3051,15 @@ function ClassRow({ cls, disabled, onMutated }) {
         <input className="hz-input class-row__capacity" type="number" value={capacity} onChange={e => { setCapacity(e.target.value); mark(); }} placeholder="Cap ∞" disabled={disabled || saving}/>
       </div>
       <textarea className="hz-input" value={description} onChange={e => { setDescription(e.target.value); mark(); }} placeholder="Details shown with this class" rows={2} disabled={disabled || saving} style={{ width: '100%', marginTop: 8 }}/>
+      <input
+        className="hz-input"
+        type="url"
+        value={externalRegistrationUrl}
+        onChange={e => { setExternalRegistrationUrl(e.target.value); mark(); }}
+        placeholder="External registration URL (optional, https://...)"
+        disabled={disabled || saving}
+        style={{ width: '100%', marginTop: 8 }}
+      />
       <div className="class-row__actions">
         <label className="class-row__public" title="Show on website">
           <input type="checkbox" checked={isPublic} onChange={e => { setIsPublic(e.target.checked); mark(); }} disabled={disabled || saving}/>
@@ -2828,15 +3069,164 @@ function ClassRow({ cls, disabled, onMutated }) {
           <input type="checkbox" checked={registrationOpen} onChange={e => { setRegistrationOpen(e.target.checked); mark(); }} disabled={disabled || saving}/>
           Registration open
         </label>
-        <div style={{ flex: 1 }}/>
-        <button className="hz-btn" disabled={!dirty || saving} onClick={save}>{saving ? '…' : dirty ? 'Save' : '✓'}</button>
-        <button className="hz-btn hz-btn-danger" disabled={saving} onClick={remove} title="Delete">Delete</button>
+        <div className="class-row__action-buttons">
+          <button type="button" className="hz-btn" disabled={saving} onClick={() => setShowDiscounts(value => !value)}>
+            {showDiscounts ? 'Hide discounts' : 'Discount codes'}
+          </button>
+          <button type="button" className="hz-btn hz-btn-primary" disabled={!dirty || saving} onClick={save}>{saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}</button>
+          <button type="button" className="hz-btn hz-btn-danger" disabled={saving} onClick={remove} title="Delete">Delete</button>
+        </div>
       </div>
+      {savedMessage && !dirty && !rowError && <div role="status" style={{ color: 'var(--hz-green)', fontSize: 12 }}>{savedMessage}</div>}
       {rowError && (
         <div style={{ marginTop: 8, padding: 10, borderRadius: 10, border: '1px solid rgba(249,127,172,0.35)', color: 'var(--hz-pink)', background: 'rgba(249,127,172,0.08)', fontSize: 12 }}>
           {rowError}
         </div>
       )}
+      {showDiscounts && (
+        <ClassDiscountCodesEditor
+          cls={cls}
+          disabled={disabled || saving}
+          onMutated={onMutated}
+        />
+      )}
+    </div>
+  );
+}
+
+function ClassDiscountCodesEditor({ cls, disabled, onMutated }) {
+  const [codes, setCodes] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [busy, setBusy] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState('');
+  const [code, setCode] = React.useState('');
+  const [label, setLabel] = React.useState('');
+  const [discountType, setDiscountType] = React.useState('percent');
+  const [amount, setAmount] = React.useState('');
+
+  async function load() {
+    setLoading(true);
+    setErrorMessage('');
+    const { data, error } = await readClassDiscountCodes(cls.id);
+    if (error) setErrorMessage(error.message || 'Could not load discount codes.');
+    else setCodes(data || []);
+    setLoading(false);
+  }
+
+  React.useEffect(() => { load(); }, [cls.id]);
+
+  function displayValue(row) {
+    return row.discount_type === 'percent'
+      ? `${row.discount_value}% off`
+      : `$${(Number(row.discount_value || 0) / 100).toFixed(Number(row.discount_value || 0) % 100 ? 2 : 0)} off`;
+  }
+
+  async function addCode() {
+    const cleanCode = normalizedDiscountCode(code);
+    const cleanLabel = label.trim();
+    const numeric = Number(amount);
+    if (cleanCode.length < 3) { setErrorMessage('Code must be at least 3 letters or numbers.'); return; }
+    if (!cleanLabel) { setErrorMessage('Add a short label, such as Sibling or Parade handout.'); return; }
+    if (!Number.isFinite(numeric) || numeric <= 0) { setErrorMessage('Enter a discount amount greater than zero.'); return; }
+    const discountValue = discountType === 'percent' ? Math.round(numeric) : Math.round(numeric * 100);
+    if (discountType === 'percent' && (discountValue < 1 || discountValue > 99)) {
+      setErrorMessage('Percent discounts must be between 1% and 99%.');
+      return;
+    }
+    if (discountType === 'fixed' && discountValue >= Number(cls.price_cents || 0)) {
+      setErrorMessage('Dollar discount must be less than the class price. Use the staff comp workflow for a free registration.');
+      return;
+    }
+    setBusy(true);
+    setErrorMessage('');
+    const { error } = await writeClassDiscountCode('insert', {
+      program_id: cls.program_id,
+      class_id: cls.id,
+      code: cleanCode,
+      label: cleanLabel,
+      discount_type: discountType,
+      discount_value: discountValue,
+      is_active: true,
+    });
+    if (error) {
+      const duplicate = String(error.code || '') === '23505';
+      setErrorMessage(duplicate ? 'That code already exists for this gym.' : (error.message || 'Could not add discount code.'));
+    } else {
+      setCode('');
+      setLabel('');
+      setAmount('');
+      await load();
+      onMutated?.(`Discount code added to ${cls.name}.`);
+    }
+    setBusy(false);
+  }
+
+  async function toggleCode(row) {
+    setBusy(true);
+    setErrorMessage('');
+    const { error } = await writeClassDiscountCode('update', { is_active: !row.is_active }, row.id);
+    if (error) setErrorMessage(error.message || 'Could not update discount code.');
+    else {
+      await load();
+      onMutated?.(`${row.code} ${row.is_active ? 'paused' : 'activated'}.`);
+    }
+    setBusy(false);
+  }
+
+  async function removeCode(row) {
+    if (!confirm(`Delete discount code "${row.code}"? Existing registration price records will be kept.`)) return;
+    setBusy(true);
+    setErrorMessage('');
+    const { error } = await writeClassDiscountCode('delete', null, row.id);
+    if (error) setErrorMessage(error.message || 'Could not delete discount code.');
+    else {
+      await load();
+      onMutated?.(`${row.code} deleted.`);
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div style={{ marginTop: 12, padding: 12, borderRadius: 10, border: '1px solid rgba(39,207,215,0.22)', background: 'rgba(39,207,215,0.045)' }}>
+      <div className="hz-eyebrow" style={{ fontSize: 10, marginBottom: 5 }}>Checkout discount codes</div>
+      <div style={{ color: 'var(--hz-dim)', fontSize: 11.5, lineHeight: 1.5, marginBottom: 10 }}>
+        Codes apply only to {cls.name}. Square verifies the discounted total from the saved registration, so families cannot change the amount in their browser.
+      </div>
+
+      {loading ? <div style={{ color: 'var(--hz-dim)', fontSize: 12 }}>Loading codes…</div> : (
+        <div style={{ display: 'grid', gap: 7, marginBottom: 10 }}>
+          {codes.map(row => (
+            <div key={row.id} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 9, padding: '8px 10px', borderRadius: 9, border: '1px solid var(--hz-line)', background: 'rgba(0,0,0,0.12)', opacity: row.is_active ? 1 : 0.6 }}>
+              <code style={{ fontFamily: 'var(--hz-mono)', fontWeight: 800, color: row.is_active ? 'var(--hz-teal)' : 'var(--hz-dim)' }}>{row.code}</code>
+              <span style={{ color: 'var(--hz-dim)', fontSize: 12 }}>{row.label} · {displayValue(row)}</span>
+              <div style={{ flex: 1 }}/>
+              <button className="hz-btn hz-btn-sm" onClick={() => toggleCode(row)} disabled={disabled || busy}>{row.is_active ? 'Pause' : 'Activate'}</button>
+              <button className="hz-btn hz-btn-sm hz-btn-danger" onClick={() => removeCode(row)} disabled={disabled || busy}>Delete</button>
+            </div>
+          ))}
+          {codes.length === 0 && <div style={{ color: 'var(--hz-dim)', fontSize: 12 }}>No codes yet. Add the sibling and parade codes below.</div>}
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(128px, 1fr))', gap: 8, alignItems: 'end' }}>
+        <FieldRow label="Code">
+          <input className="hz-input" value={code} onChange={e => setCode(normalizedDiscountCode(e.target.value))} placeholder="SIBLING" disabled={disabled || busy}/>
+        </FieldRow>
+        <FieldRow label="Internal label">
+          <input className="hz-input" value={label} onChange={e => setLabel(e.target.value)} placeholder="Sibling discount" maxLength={80} disabled={disabled || busy}/>
+        </FieldRow>
+        <FieldRow label="Type">
+          <select className="hz-input" value={discountType} onChange={e => setDiscountType(e.target.value)} disabled={disabled || busy}>
+            <option value="percent">Percent</option>
+            <option value="fixed">Dollars</option>
+          </select>
+        </FieldRow>
+        <FieldRow label={discountType === 'percent' ? 'Percent off' : 'Dollars off'}>
+          <input className="hz-input" type="number" min="1" step={discountType === 'percent' ? '1' : '0.01'} value={amount} onChange={e => setAmount(e.target.value)} placeholder={discountType === 'percent' ? '10' : '15'} disabled={disabled || busy}/>
+        </FieldRow>
+        <button className="hz-btn hz-btn-primary" onClick={addCode} disabled={disabled || busy || loading}>{busy ? '…' : 'Add code'}</button>
+      </div>
+      {errorMessage && <div role="alert" style={{ color: 'var(--hz-pink)', fontSize: 12, marginTop: 9 }}>{errorMessage}</div>}
     </div>
   );
 }
@@ -2864,6 +3254,12 @@ function Billing({ snap, session, openAthlete }) {
     .map(acc => ({ ...acc, athlete: snap.athletes.find(a => a.id === acc.athlete_id) }))
     .filter(acc => !isParent || acc.athlete);
   const parentClassEnrollments = isParent ? window.HZsel.classEnrollmentsForParent(session) : [];
+  const activeParentClassEnrollments = isParent
+    ? parentClassEnrollments.filter(row => !window.HZsel.classEnrollmentIsPast(row))
+    : [];
+  const pastParentClassEnrollments = isParent
+    ? parentClassEnrollments.filter(row => window.HZsel.classEnrollmentIsPast(row))
+    : [];
   const ownerClassEnrollments = !isParent
     ? (snap.class_enrollments || [])
       .slice()
@@ -2871,6 +3267,7 @@ function Billing({ snap, session, openAthlete }) {
       .slice(0, 12)
     : [];
   const parentSummary = isParent ? parentBillingSummary(snap, session) : null;
+  const [parentEnrollmentView, setParentEnrollmentView] = React.useState('active');
   const programRef = {
     program_id: (snap.teams || [])[0]?.program_id || program.id || null,
     program_slug: program.slug || 'mca',
@@ -2880,11 +3277,29 @@ function Billing({ snap, session, openAthlete }) {
     <div>
       <SectionHeading eyebrow={isParent ? 'My family' : 'Program billing'} title="Billing."/>
       {isParent && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 20 }}>
+        <div style={{ display: 'grid', gap: 16, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
           <StatTile label="Paid" value={dollarsToParentMoney(parentSummary.paid)} sub={`${parentSummary.enrollments.length} registrations`} accent="var(--hz-green)" size="md"/>
           <StatTile label="Total" value={dollarsToParentMoney(parentSummary.total)} sub="tracked charges" accent="var(--hz-teal)" size="md"/>
           <StatTile label="Balance" value={dollarsToParentMoney(parentSummary.owed)} sub={parentSummary.owed > 0 ? 'open' : 'current'} accent={parentSummary.owed > 0 ? 'var(--hz-amber)' : 'var(--hz-green)'} size="md"/>
           <StatTile label="Pending" value={parentSummary.pendingCount} sub="review/payment items" accent={parentSummary.pendingCount ? 'var(--hz-amber)' : 'var(--hz-teal)'} size="md"/>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <button
+              type="button"
+              className={'hz-btn hz-btn-sm' + (parentEnrollmentView === 'active' ? ' hz-btn-primary' : '')}
+              onClick={() => setParentEnrollmentView('active')}
+            >
+              Active enrollments ({activeParentClassEnrollments.length})
+            </button>
+            <button
+              type="button"
+              className={'hz-btn hz-btn-sm' + (parentEnrollmentView === 'past' ? ' hz-btn-primary' : '')}
+              onClick={() => setParentEnrollmentView('past')}
+            >
+              Past enrollments ({pastParentClassEnrollments.length})
+            </button>
+          </div>
         </div>
       )}
       {!isParent && (
@@ -2943,11 +3358,13 @@ function Billing({ snap, session, openAthlete }) {
           body="Season billing and paid class registrations will appear here as soon as staff or checkout creates them."
         />
       )}
-      {isParent && parentClassEnrollments.length > 0 && (
+      {isParent && (activeParentClassEnrollments.length > 0 || pastParentClassEnrollments.length > 0) && (
         <div className="hz-card" style={{ marginBottom: 20 }}>
-          <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)', marginBottom: 12 }}>Paid registrations</div>
+          <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)', marginBottom: 12 }}>
+            {parentEnrollmentView === 'past' ? 'Past enrollments' : 'Active enrollments'}
+          </div>
           <div style={{ display: 'grid', gap: 10 }}>
-            {parentClassEnrollments.map(row => (
+            {(parentEnrollmentView === 'past' ? pastParentClassEnrollments : activeParentClassEnrollments).map(row => (
               <div key={row.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr) auto', gap: 12, alignItems: 'center', padding: 14, border: '1px solid var(--hz-line)', borderRadius: 10 }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 800 }}>{row.class_name}</div>
@@ -2965,6 +3382,12 @@ function Billing({ snap, session, openAthlete }) {
                 </div>
               </div>
             ))}
+            {(parentEnrollmentView === 'active' && activeParentClassEnrollments.length === 0) && (
+              <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>No active class enrollments right now.</div>
+            )}
+            {(parentEnrollmentView === 'past' && pastParentClassEnrollments.length === 0) && (
+              <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>No past enrollments yet.</div>
+            )}
           </div>
         </div>
       )}
@@ -3396,14 +3819,9 @@ function ChangePasswordCard({ session, userMeta }) {
     setBusy(true);
     try {
       const cleared = { ...(userMeta || {}), must_change_password: false };
-      const { data, error } = await window.HZdb.auth.updatePassword(next, { userMetadata: cleared });
+      const { error } = await window.HZsupa.auth.updateUser({ password: next, data: cleared });
       if (error) throw error;
-      setFlash({
-        kind: 'success',
-        text: data?.needsSignIn
-          ? 'Password updated. Sign in with the new password to continue.'
-          : 'Password updated. You\'re all set.',
-      });
+      setFlash({ kind: 'success', text: 'Password updated. You\'re all set.' });
       setNext(''); setConfirm('');
     } catch (e) {
       setFlash({ kind: 'error', text: e.message || 'Could not update password.' });

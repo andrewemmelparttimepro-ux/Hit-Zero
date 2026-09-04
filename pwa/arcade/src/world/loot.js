@@ -25,9 +25,9 @@ export const LOOT_ITEMS = [
   { id: 'crystal', name: 'Spirit Crystal', emoji: '🔮', rarity: 'rare',     weight: 1 },
 ];
 
-// One-time gear finds that float through Pom-Pom's Spirit Gates. These are
-// not currency and never need to be purchased: touching one grants the exact
-// Closet item immediately through arcade_profiles.progress.
+// Gear finds that float through Pom-Pom's Spirit Gates. These are not currency
+// and never need to be purchased: the first catch grants the exact Closet item
+// through arcade_profiles.progress, while later catches remain replayable.
 export const POM_POM_GOODIES = [
   { id: 'lucky_loop_bow',       label: 'Lucky Loop Bow',       emoji: '🍀', slot: 'bowShape', index: 5 },
   { id: 'starlight_uniform',    label: 'Starlight Uniform',    emoji: '✨', slot: 'uniform',  index: 9 },

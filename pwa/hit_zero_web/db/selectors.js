@@ -7,7 +7,11 @@
   // Cache a snapshot of arrays for sync-style selectors — refreshed on mutation
   let cache = null;
   async function snapshot() {
-    const q = (t) => (async () => (await window.HZdb.from(t).select('*')).data || [])();
+    // The live mirror has already fetched and paged these rows. Reading that
+    // in-memory snapshot avoids a second 70+ request bootstrap, preserves rows
+    // beyond PostgREST's 1,000-row default, and never touches local-only tables.
+    const raw = window.HZdb?._raw?.() || {};
+    const q = (table) => Promise.resolve(Array.isArray(raw[table]) ? raw[table] : []);
     const [
       programs, teams, athletes, skills, athlete_skills, sessions, attendance, routines, routine_sections,
       routine_audio_assets, music_licenses, routine_count_maps, routine_events,
@@ -94,6 +98,29 @@
   const STATUS_PCT = { none: 0, working: 0.33, got_it: 0.75, mastered: 1.0 };
   const round2 = (n) => Math.round(Number(n || 0) * 100) / 100;
   const isSettledRegistrationPayment = (status) => status === 'paid' || status === 'comped';
+  const MONTH_INDEX = {
+    january: 0, jan: 0,
+    february: 1, feb: 1,
+    march: 2, mar: 2,
+    april: 3, apr: 3,
+    may: 4,
+    june: 5, jun: 5,
+    july: 6, jul: 6,
+    august: 7, aug: 7,
+    september: 8, sept: 8, sep: 8,
+    october: 9, oct: 9,
+    november: 10, nov: 10,
+    december: 11, dec: 11,
+  };
+  const WEEKDAY_INDEX = {
+    sunday: 0, sun: 0,
+    monday: 1, mon: 1,
+    tuesday: 2, tue: 2, tues: 2,
+    wednesday: 3, wed: 3,
+    thursday: 4, thu: 4, thur: 4, thurs: 4,
+    friday: 5, fri: 5,
+    saturday: 6, sat: 6,
+  };
 
   function athleteById(id) { return cache?.athletes.find(a => a.id === id); }
   function skillById(id) { return cache?.skills.find(s => s.id === id); }
@@ -415,9 +442,96 @@
     return (cache.program_classes || []).find(c => c.id === id) || null;
   }
 
+  function monthIndex(token) {
+    return MONTH_INDEX[String(token || '').trim().toLowerCase()] ?? null;
+  }
+
+  function stripOrdinal(token) {
+    return String(token || '').replace(/(\d)(st|nd|rd|th)\b/ig, '$1');
+  }
+
+  function parseSummaryDate(value, fallbackYear) {
+    const match = String(value || '').match(/([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,\s*(\d{4}))?/i);
+    if (!match) return null;
+    const month = monthIndex(match[1]);
+    const day = Number(match[2]);
+    const year = Number(match[3] || fallbackYear || new Date().getFullYear());
+    if (month == null || !Number.isFinite(day) || !Number.isFinite(year)) return null;
+    const iso = new Date(year, month, day, 12, 0, 0, 0);
+    return Number.isNaN(iso.getTime()) ? null : iso;
+  }
+
+  function parseWeekdays(text) {
+    const days = new Set();
+    const regex = /\b(sun(?:day)?|mon(?:day)?|tue(?:s|sday)?|wed(?:nesday)?|thu(?:rs|rsday)?|fri(?:day)?|sat(?:urday)?)\b/ig;
+    let match;
+    while ((match = regex.exec(String(text || '')))) {
+      const weekday = WEEKDAY_INDEX[match[1].toLowerCase()];
+      if (weekday != null) days.add(weekday);
+    }
+    return [...days].sort((a, b) => a - b);
+  }
+
+  function parseSummaryWindow(summary, fallbackYear) {
+    const text = String(summary || '').replace(/\s+/g, ' ').trim();
+    if (!text) return { startAt: null, endAt: null };
+    const weekdays = parseWeekdays(text);
+
+    const directRange = text.match(/([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?\s*-\s*([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,\s*(\d{4}))?/i);
+    if (directRange && monthIndex(directRange[1]) != null && monthIndex(directRange[3]) != null) {
+      const year = Number(directRange[5] || fallbackYear || new Date().getFullYear());
+      const startAt = parseSummaryDate(`${directRange[1]} ${directRange[2]}, ${year}`, year);
+      const endAt = parseSummaryDate(`${directRange[3]} ${directRange[4]}, ${year}`, year);
+      return { startAt, endAt: endAt || startAt };
+    }
+
+    const sameMonthRange = text.match(/([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?\s*-\s*(\d{1,2})(?:st|nd|rd|th)?(?:,\s*(\d{4}))?/i);
+    if (sameMonthRange && monthIndex(sameMonthRange[1]) != null) {
+      const year = Number(sameMonthRange[4] || fallbackYear || new Date().getFullYear());
+      const startAt = parseSummaryDate(`${sameMonthRange[1]} ${sameMonthRange[2]}, ${year}`, year);
+      const endAt = parseSummaryDate(`${sameMonthRange[1]} ${sameMonthRange[3]}, ${year}`, year);
+      return { startAt, endAt: endAt || startAt };
+    }
+
+    const joinedRange = text.match(/([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?\s+and\s+(\d{1,2})(?:st|nd|rd|th)?(?:,\s*(\d{4}))?/i);
+    if (joinedRange && monthIndex(joinedRange[1]) != null) {
+      const year = Number(joinedRange[4] || fallbackYear || new Date().getFullYear());
+      const startAt = parseSummaryDate(`${joinedRange[1]} ${joinedRange[2]}, ${year}`, year);
+      const endAt = parseSummaryDate(`${joinedRange[1]} ${joinedRange[3]}, ${year}`, year);
+      return { startAt, endAt: endAt || startAt };
+    }
+
+    const singleDate = parseSummaryDate(text, fallbackYear);
+    if (singleDate && weekdays.length > 0 && /\b(start|starts|begin|begins)\b/i.test(text)) {
+      return { startAt: singleDate, endAt: null };
+    }
+    return { startAt: singleDate, endAt: singleDate };
+  }
+
+  function classEnrollmentTimeline(row, klass) {
+    const startAt = row?.starts_at ? new Date(row.starts_at) : klass?.starts_at ? new Date(klass.starts_at) : null;
+    const endAt = row?.ends_at ? new Date(row.ends_at) : klass?.ends_at ? new Date(klass.ends_at) : null;
+    if (startAt || endAt) {
+      return {
+        startAt: startAt && !Number.isNaN(startAt.getTime()) ? startAt : null,
+        endAt: endAt && !Number.isNaN(endAt.getTime()) ? endAt : null,
+      };
+    }
+    return parseSummaryWindow(row?.schedule_summary || klass?.schedule_summary || row?.metadata?.schedule_summary || '', new Date(row?.created_at || Date.now()).getFullYear());
+  }
+
+  function classEnrollmentIsPast(row) {
+    const endAt = row?.timeline?.endAt || null;
+    if (!endAt || Number.isNaN(endAt.getTime?.() || NaN)) return false;
+    const cutoff = new Date();
+    cutoff.setHours(0, 0, 0, 0);
+    return endAt.getTime() < cutoff.getTime();
+  }
+
   function decorateClassEnrollment(row) {
     if (!row) return null;
     const klass = classById(row.class_id);
+    const timeline = classEnrollmentTimeline(row, klass);
     return {
       ...row,
       class: klass,
@@ -426,6 +540,8 @@
       starts_at: row.starts_at || klass?.starts_at || null,
       ends_at: row.ends_at || klass?.ends_at || null,
       receipt_url: row.receipt_url || row.metadata?.receipt_url || '',
+      timeline,
+      is_past: classEnrollmentIsPast({ timeline }),
     };
   }
 
@@ -739,7 +855,7 @@
     athleteSkills, athleteReadiness, teamReadiness, categoryReadiness,
     athleteAttendance, teamAttendance, athleteSkillsSummary,
     predictedScore, daysToComp, needsWorkQueue, programProfile, programPaymentSettings, programBilling, athleteBilling,
-    classById, classEnrollmentsForAthlete, classEnrollmentsForParent,
+    classById, classEnrollmentTimeline, classEnrollmentIsPast, classEnrollmentsForAthlete, classEnrollmentsForParent,
     classEnrollmentsForProgram, openGymRegistrationsForProgram,
     // Tier 1/2
     inboxThreads, threadMessages, threadMembers,

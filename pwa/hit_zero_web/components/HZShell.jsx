@@ -78,6 +78,7 @@ const NAV_CONFIG = {
     { id: 'reel',         label: 'Reel',            icon: 'reel' },
     { id: 'skilltree',    label: 'Skills',          icon: 'skills' },
     { id: 'ai_judge',     label: 'AI Judge',        icon: 'bolt' },
+    { id: 'arcade',       label: 'Arcade',          icon: 'bolt' },
   ],
 };
 
@@ -149,16 +150,8 @@ function activeProgramFromSnap(snap, session) {
 }
 window.HZactiveProgramFromSnap = activeProgramFromSnap;
 
-// ARCADE beta gate: visible only with the local beta flag or for MCA.
-// Remove at general launch (Phase 3 accept).
-function arcadeEnabled(program) {
-  try { if (localStorage.getItem('hz_arcade_beta') === '1') return true; } catch { /* no storage */ }
-  return (program?.slug || '') === 'mca';
-}
-
-function roleNav(role, program) {
-  const nav = NAV_CONFIG[role] || NAV_CONFIG.coach;
-  return arcadeEnabled(program) ? nav : nav.filter((it) => it.id !== 'arcade');
+function roleNav(role) {
+  return NAV_CONFIG[role] || NAV_CONFIG.coach;
 }
 
 function walkthroughStorageKey(profileId, role, mode) {
@@ -171,27 +164,27 @@ const MOBILE_TABS = {
     { id: 'today',    label: 'Today',    icon: 'today' },
     { id: 'admin',    label: 'Program',  icon: 'admin' },
     { id: 'roster',   label: 'Roster',   icon: 'roster' },
-    { id: 'schedule', label: 'Schedule', icon: 'calendar' },
+    { id: 'arcade',   label: 'Arcade',   icon: 'bolt' },
     { id: '__more',   label: 'More',     icon: 'skills' },
   ],
   coach:   [
     { id: 'today',    label: 'Today',    icon: 'today' },
     { id: 'roster',   label: 'Roster',   icon: 'roster' },
-    { id: 'schedule', label: 'Schedule', icon: 'calendar' },
     { id: 'practice', label: 'Plans',     icon: 'routine' },
+    { id: 'arcade',   label: 'Arcade',   icon: 'bolt' },
     { id: '__more',   label: 'More',     icon: 'skills' },
   ],
   athlete: [
     { id: 'reel',      label: 'Reel',     icon: 'reel' },
     { id: 'skilltree', label: 'Skills',   icon: 'skills' },
-    { id: 'schedule',  label: 'Schedule', icon: 'calendar' },
+    { id: 'arcade',    label: 'Arcade',   icon: 'bolt' },
     { id: 'messages',  label: 'Messages', icon: 'megaphone' },
     { id: '__more',    label: 'More',     icon: 'skills' },
   ],
   parent:  [
     { id: 'parent',   label: 'Home',     icon: 'home' },
     { id: 'schedule', label: 'Schedule', icon: 'calendar' },
-    { id: 'messages', label: 'Messages', icon: 'megaphone' },
+    { id: 'arcade',   label: 'Arcade',   icon: 'bolt' },
     { id: 'medical',  label: 'Medical',  icon: 'bolt' },
     { id: '__more',   label: 'More',     icon: 'skills' },
   ],
@@ -213,8 +206,6 @@ function useIsMobile(breakpoint = 768) {
 window.useIsMobile = useIsMobile;
 
 function navIdsForRole(role) {
-  // Route ids come from the unfiltered config: the arcade beta gate hides the
-  // tab, but a gated user landing on #arcade must still resolve the screen.
   return new Set((NAV_CONFIG[role] || NAV_CONFIG.coach).filter(item => item.id).map(item => item.id));
 }
 
@@ -272,6 +263,123 @@ function routeHashParams(route) {
   }
 }
 
+const PUBLIC_FLOW_STORAGE_KEY = 'hz_public_flow_state';
+const PUBLIC_FLOW_STORAGE_MAX_AGE_MS = 30 * 60 * 1000;
+
+function publicTelemetryValue(value, max = 80) {
+  if (value == null) return undefined;
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  const text = String(value).replace(/\s+/g, ' ').trim();
+  return text ? text.slice(0, max) : undefined;
+}
+
+function publicTelemetryRouteBase(route) {
+  return String(route || '').split('?')[0].replace(/^\/+/, '').toLowerCase();
+}
+
+function publicTelemetryContext(route) {
+  const raw = String(route || '');
+  const base = publicTelemetryRouteBase(raw);
+  const params = routeHashParams(raw);
+  const authMode = publicAuthModeFromRoute(raw);
+  const parts = base.split('/').filter(Boolean);
+  const source = publicTelemetryValue(params.get('source') || params.get('entry') || params.get('ref') || '');
+  const ctx = { route_base: base || 'today' };
+  if (source) ctx.source = source;
+  if (authMode) ctx.auth_mode = authMode;
+  if (base.startsWith('book/')) {
+    ctx.flow = 'booking';
+    const classId = publicTelemetryValue(parts[1] || '', 64);
+    if (classId) ctx.class_id = classId;
+    return ctx;
+  }
+  if (base.startsWith('trial/')) {
+    ctx.flow = 'trial';
+    const gymSlug = publicTelemetryValue(parts[1] || '', 48);
+    if (gymSlug) ctx.gym_slug = gymSlug;
+    return ctx;
+  }
+  if (base.startsWith('pay/')) {
+    ctx.flow = 'payment';
+    ctx.payment_link = true;
+    return ctx;
+  }
+  if (base.startsWith('invite/')) {
+    ctx.flow = 'invite';
+    ctx.invite_link = true;
+    return ctx;
+  }
+  if (authMode) {
+    ctx.flow = 'auth';
+    return ctx;
+  }
+  if (base === 'today') {
+    ctx.flow = 'today';
+    return ctx;
+  }
+  return null;
+}
+
+function trackPublicFlow(eventName, route, extra = {}) {
+  const payload = {};
+  Object.entries({ ...(publicTelemetryContext(route) || {}), ...(extra || {}) }).forEach(([key, value]) => {
+    const safe = publicTelemetryValue(value, 120);
+    if (safe !== undefined && safe !== '') payload[key] = safe;
+  });
+  window.HZAnalytics?.track?.(eventName, payload);
+  return payload;
+}
+
+function contractPublicRoutePayload(route) {
+  const base = publicTelemetryRouteBase(route) || 'today';
+  const params = routeHashParams(route);
+  let search = new URLSearchParams();
+  try { search = new URLSearchParams(location.search || ''); } catch {}
+  return {
+    route: base,
+    hash_mode: publicAuthModeFromRoute(route) || (base.startsWith('book/') ? 'book' : base.startsWith('trial/') ? 'trial' : base),
+    search_auth: publicTelemetryValue(search.get('auth') || ''),
+    search_entry: publicTelemetryValue(search.get('entry') || ''),
+    has_source_param: Boolean(params.get('source') || search.get('source')),
+  };
+}
+
+function trackContractPublicFlow(eventName, route, extra = {}) {
+  const payload = {};
+  Object.entries({ ...(contractPublicRoutePayload(route) || {}), ...(extra || {}) }).forEach(([key, value]) => {
+    const safe = publicTelemetryValue(value, 120);
+    if (safe !== undefined && safe !== '') payload[key] = safe;
+  });
+  window.HZAnalytics?.track?.(eventName, payload);
+  return payload;
+}
+
+function rememberPublicFlowState(route, extra = {}) {
+  const payload = {
+    ...(publicTelemetryContext(route) || {}),
+    ...(extra || {}),
+    saved_at_ms: Date.now(),
+  };
+  try {
+    sessionStorage.setItem(PUBLIC_FLOW_STORAGE_KEY, JSON.stringify(payload));
+  } catch {}
+  return payload;
+}
+
+function consumePublicFlowState() {
+  try {
+    const raw = sessionStorage.getItem(PUBLIC_FLOW_STORAGE_KEY);
+    if (!raw) return null;
+    sessionStorage.removeItem(PUBLIC_FLOW_STORAGE_KEY);
+    const parsed = JSON.parse(raw);
+    const savedAt = Number(parsed?.saved_at_ms || 0);
+    if (!savedAt || (Date.now() - savedAt) > PUBLIC_FLOW_STORAGE_MAX_AGE_MS) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 function preferredGymSlugFromRoute(route) {
   const raw = String(route || '');
   const clean = raw.split('?')[0].replace(/^\/+/, '').toLowerCase();
@@ -286,9 +394,22 @@ function preferredGymSlugFromRoute(route) {
   return DEFAULT_PUBLIC_GYM_SLUG;
 }
 
+function isAuthCallbackHash(hash) {
+  const raw = String(hash || '').replace(/^#/, '');
+  if (!raw) return false;
+  const params = new URLSearchParams(raw);
+  return !!(
+    params.get('access_token') ||
+    params.get('refresh_token') ||
+    params.get('code') ||
+    params.get('type') ||
+    params.get('token_hash')
+  );
+}
+
 function routeFromLocation() {
   const h = location.hash.slice(1);
-  if (h) return h.replace(/^\/+/, '');
+  if (h && !isAuthCallbackHash(h)) return h.replace(/^\/+/, '');
   const path = location.pathname.replace(/^\/+/, '');
   if (path.startsWith('pay/')) return path;
   return 'today';
@@ -307,8 +428,12 @@ function App() {
   const [moreSheetOpen, setMoreSheetOpen] = useState(false);
   const [accountSheetOpen, setAccountSheetOpen] = useState(false);
   const [walkthroughRole, setWalkthroughRole] = useState(null);
+  const [screenAssetError, setScreenAssetError] = useState('');
+  const [, setScreenAssetVersion] = useState(0);
   const drawerHistoryRef = useRef(false);
+  const snapshotFrameRef = useRef(null);
   const isMobile = useIsMobile(768);
+  const effectiveRole = session?.profile?.role || 'coach';
 
   useEffect(() => {
     let live = true;
@@ -334,26 +459,51 @@ function App() {
 
   // Snapshot DB → re-run on any mutation via realtime
   const refreshSnapshot = useCallback(async () => {
-    const s = await window.HZsel.snapshot();
-    setSnap({ ...s, _tick: Date.now() });
+    try {
+      const s = await window.HZsel.snapshot();
+      setSnap({ ...s, _tick: Date.now() });
+    } catch (err) {
+      // A refresh failure must not replace a usable screen with an empty one.
+      console.warn('[HZ] snapshot refresh failed; keeping the last good view', err);
+    }
   }, []);
+
+  const scheduleSnapshotRefresh = useCallback(() => {
+    if (snapshotFrameRef.current != null) return;
+    snapshotFrameRef.current = requestAnimationFrame(() => {
+      snapshotFrameRef.current = null;
+      refreshSnapshot();
+    });
+  }, [refreshSnapshot]);
 
   useEffect(() => {
     refreshSnapshot();
-    const onManualRefresh = () => refreshSnapshot();
+    const onManualRefresh = () => scheduleSnapshotRefresh();
     window.addEventListener('hz:refresh', onManualRefresh);
+    // HZdb fans every local mutation through the wildcard listener. The old
+    // per-table loop subscribed a second time and recomputed the full app for
+    // the same write, while leaking 37 channels on unmount.
     const ch = window.HZdb.channel('app-all')
-      .on('postgres_changes', { table: '*' }, () => refreshSnapshot())
+      .on('postgres_changes', { table: '*' }, () => scheduleSnapshotRefresh())
       .subscribe();
-    // subscribe to every table we care about
-    ['athlete_skills','celebrations','attendance','routine_sections','sessions','billing_accounts','billing_charges','announcements','score_runs','program_tracks','program_classes','class_enrollments','team_assignment_events','teams','athletes','parent_links','programs','program_payment_settings','program_join_requests','program_invites','program_owner_applications','family_info_packets','message_threads','thread_members','messages','message_reads','practice_plans','practice_plan_blocks','form_responses'].forEach(t => {
-      window.HZdb.channel('t-' + t).on('postgres_changes', { table: t }, () => refreshSnapshot()).subscribe();
-    });
     return () => {
       window.removeEventListener('hz:refresh', onManualRefresh);
       ch.unsubscribe();
+      if (snapshotFrameRef.current != null) cancelAnimationFrame(snapshotFrameRef.current);
     };
-  }, [refreshSnapshot]);
+  }, [refreshSnapshot, scheduleSnapshotRefresh]);
+
+  // Paint the shell from the in-memory snapshot first, then hydrate live data
+  // once auth has resolved. This is the stale-boot fix: database latency no
+  // longer blocks first render, and one failed request keeps the last good UI.
+  useEffect(() => {
+    let active = true;
+    if (!authReady || session?.mode !== 'live' || !session?.profile?.id) return undefined;
+    window.HZmirror?.refresh?.({ force: true })
+      .then(() => { if (active) refreshSnapshot(); })
+      .catch((err) => console.warn('[HZ] live hydration failed; keeping the last good view', err));
+    return () => { active = false; };
+  }, [authReady, session?.profile?.id, session?.actualProfile?.program_id, session?.mode, refreshSnapshot]);
 
   // Hash router
   useEffect(() => {
@@ -364,12 +514,49 @@ function App() {
 
   useEffect(() => {
     window.HZAnalytics?.page?.();
-  }, [route]);
+    const ctx = publicTelemetryContext(route);
+    if (!ctx) return;
+    trackContractPublicFlow('hz_public_route_resolved', route);
+    if (ctx.flow === 'today') {
+      if (!session) return;
+      const pending = consumePublicFlowState();
+      if (!pending) return;
+      trackPublicFlow('public_handoff_complete', route, {
+        prior_flow: pending.flow || '',
+        prior_route: pending.route_base || '',
+        prior_mode: pending.auth_mode || '',
+        source: pending.source || '',
+        outcome: pending.outcome || 'arrived',
+        destination: 'today',
+      });
+      return;
+    }
+    trackPublicFlow('public_route_view', route, { view: 'entry' });
+    rememberPublicFlowState(route);
+  }, [route, session]);
 
-  const effectiveRole = session?.profile?.role || 'coach';
+  const requestedScreenAsset = useMemo(() => {
+    const baseRoute = String(route || '').split('?')[0];
+    if (baseRoute.startsWith('book/') || baseRoute.startsWith('drop-in/') || baseRoute.startsWith('dropin/') || baseRoute.startsWith('pay/')) return 'PublicBooking';
+    if (baseRoute.startsWith('trial/')) return 'PublicTrial';
+    if (!session || baseRoute.startsWith('athlete/')) return null;
+    const nav = roleNav(effectiveRole);
+    const screenId = navIdsForRole(effectiveRole).has(baseRoute) ? baseRoute : firstRouteForRole(effectiveRole);
+    return SCREEN_MAP[screenId] || 'CoachToday';
+  }, [route, session?.profile?.id, effectiveRole]);
 
   useEffect(() => {
-    if (!session?.profile || !snap) return;
+    let active = true;
+    setScreenAssetError('');
+    if (!requestedScreenAsset || window[requestedScreenAsset]) return undefined;
+    window.HZloadScreenAsset?.(requestedScreenAsset)
+      .then(() => { if (active) setScreenAssetVersion(version => version + 1); })
+      .catch((err) => { if (active) setScreenAssetError(err?.message || 'Could not load this screen.'); });
+    return () => { active = false; };
+  }, [requestedScreenAsset]);
+
+  useEffect(() => {
+    if (!session?.profile || walkthroughRole) return;
     const mode = session.mode || 'prototype';
     const actualRole = session.actualProfile?.role || session.profile.role;
     const canAutoOpen = mode === 'prototype' || (mode === 'live' && effectiveRole === 'parent' && actualRole === 'parent');
@@ -379,7 +566,7 @@ function App() {
     try {
       if (!localStorage.getItem(key)) setWalkthroughRole(effectiveRole);
     } catch {}
-  }, [session?.profile?.id, session?.actualProfile?.id, effectiveRole, session?.mode, snap?._tick]);
+  }, [session?.profile?.id, session?.actualProfile?.id, effectiveRole, session?.mode, walkthroughRole]);
 
   const closeWalkthrough = useCallback((markDone = true) => {
     if (markDone && session?.profile?.id && walkthroughRole) {
@@ -535,6 +722,7 @@ function App() {
     if (bookingClassId && window.PublicBooking) {
       return <window.PublicBooking classId={bookingClassId} />;
     }
+    return <SkeletonCard rows={4} style={{ margin: 40, maxWidth: 620 }} />;
   }
 
   if (route && (route.startsWith('drop-in/') || route.startsWith('dropin/'))) {
@@ -542,6 +730,7 @@ function App() {
     if (dropInClassId && window.PublicDropIn) {
       return <window.PublicDropIn classId={dropInClassId} />;
     }
+    return <SkeletonCard rows={4} style={{ margin: 40, maxWidth: 620 }} />;
   }
 
   if (route && route.startsWith('pay/')) {
@@ -549,6 +738,7 @@ function App() {
     if (registrationId && window.PublicPaymentLink) {
       return <window.PublicPaymentLink registrationId={registrationId} />;
     }
+    return <SkeletonCard rows={4} style={{ margin: 40, maxWidth: 620 }} />;
   }
 
   // Public free-trial / lead-capture route. Same pattern, different shape:
@@ -558,6 +748,7 @@ function App() {
     if (window.PublicTrial) {
       return <window.PublicTrial gymSlug={gymSlug} />;
     }
+    return <SkeletonCard rows={4} style={{ margin: 40, maxWidth: 620 }} />;
   }
 
   if (!authReady) {
@@ -673,6 +864,10 @@ function App() {
               navigate={navigate}
             />
           </ScreenErrorBoundary>
+        ) : screenAssetError ? (
+          <div style={{ padding: 40, color: 'var(--hz-pink)' }} role="alert">
+            {screenAssetError} <button className="hz-btn" onClick={() => location.reload()}>Retry</button>
+          </div>
         ) : (
           <SkeletonCard rows={5} style={{ margin: 40, maxWidth: 620 }} />
         )}
@@ -1813,12 +2008,29 @@ function InviteRedeemer({ initialCode = '', onRedeemed }) {
 
   async function redeem(e) {
     e.preventDefault();
+    const telemetryRoute = initialCode ? 'invite/link' : 'invite/manual';
+    const startedAt = Date.now();
+    trackPublicFlow('public_invite_submit', telemetryRoute, { invite_surface: initialCode ? 'link' : 'manual' });
     setBusy(true);
     setErr('');
     const { data, error } = await window.HZdb.auth.redeemProgramInvite(code);
     setBusy(false);
-    if (error) setErr(error.message || 'Could not redeem invite.');
-    else onRedeemed(data);
+    if (error) {
+      trackPublicFlow('public_invite_result', telemetryRoute, {
+        invite_surface: initialCode ? 'link' : 'manual',
+        result: 'error',
+        duration_ms: Date.now() - startedAt,
+      });
+      setErr(error.message || 'Could not redeem invite.');
+    } else {
+      trackPublicFlow('public_invite_result', telemetryRoute, {
+        invite_surface: initialCode ? 'link' : 'manual',
+        result: 'success',
+        duration_ms: Date.now() - startedAt,
+      });
+      rememberPublicFlowState(telemetryRoute, { outcome: 'invite_redeemed' });
+      onRedeemed(data);
+    }
   }
 
   return (
@@ -1981,13 +2193,23 @@ function PasswordResetGate({ session }) {
       setFlash({ kind: 'success', text: data?.needsSignIn ? 'Password updated. Sign in with the new password to continue.' : 'Password updated. You can continue into Hit Zero now.' });
       if (data?.needsSignIn) {
         setTimeout(async () => {
+          trackContractPublicFlow('hz_public_auth_redirect', routeFromLocation(), {
+            from_route: publicTelemetryRouteBase(routeFromLocation()) || 'today',
+            to_route: 'signin',
+          });
           await window.HZdb.auth.signOut();
           location.hash = '#signin';
         }, 900);
         return;
       }
       const destination = firstRouteForRole(session?.profile?.role || 'parent');
-      setTimeout(() => { location.hash = '#' + destination; }, 900);
+      setTimeout(() => {
+        trackContractPublicFlow('hz_public_auth_redirect', routeFromLocation(), {
+          from_route: publicTelemetryRouteBase(routeFromLocation()) || 'today',
+          to_route: destination,
+        });
+        location.hash = '#' + destination;
+      }, 900);
     } catch (err) {
       setFlash({ kind: 'error', text: err?.message || 'Could not update password. Try again or request a fresh reset link.' });
     } finally {
@@ -2056,30 +2278,119 @@ function Login({ initialMode = 'password', inviteCode = '', preferredGymSlug = D
     setPublicNotice('');
   }, [initialMode]);
 
+  const authTelemetrySource = useMemo(() => {
+    const routeParams = routeHashParams(routeFromLocation());
+    return publicTelemetryValue(routeParams.get('source') || routeParams.get('entry') || '');
+  }, []);
+
+  const authTelemetryRouteForMode = useCallback((nextMode = mode) => {
+    const base = nextMode === 'signup'
+      ? 'signup'
+      : nextMode === 'find'
+        ? 'find-gym'
+        : nextMode === 'owner'
+          ? 'owner-application'
+          : nextMode === 'invite'
+            ? 'invite/manual'
+            : 'signin';
+    return authTelemetrySource ? `${base}?source=${encodeURIComponent(authTelemetrySource)}` : base;
+  }, [authTelemetrySource, mode]);
+
+  const changeMode = useCallback((nextMode, reason = 'switch') => {
+    setErr(null);
+    if (nextMode === mode) {
+      setMode(nextMode);
+      return;
+    }
+    const nextRoute = authTelemetryRouteForMode(nextMode);
+    trackPublicFlow('public_auth_mode_change', nextRoute, {
+      auth_mode: nextMode,
+      prior_mode: mode,
+      reason,
+    });
+    trackContractPublicFlow('hz_public_auth_mode_selected', nextRoute, {
+      mode: nextMode,
+      preferred_gym_slug: preferredGymSlug || DEFAULT_PUBLIC_GYM_SLUG,
+    });
+    rememberPublicFlowState(nextRoute, { auth_mode: nextMode, outcome: 'mode_change' });
+    setMode(nextMode);
+  }, [authTelemetryRouteForMode, mode]);
+
+  useEffect(() => {
+    const telemetryRoute = authTelemetryRouteForMode(mode);
+    trackPublicFlow('public_auth_view', telemetryRoute, {
+      auth_mode: mode,
+      invite_surface: inviteCode ? 'link' : 'none',
+      gym_slug: preferredGymSlug || DEFAULT_PUBLIC_GYM_SLUG,
+    });
+    rememberPublicFlowState(telemetryRoute, { auth_mode: mode, outcome: 'view' });
+  }, [authTelemetryRouteForMode, inviteCode, mode, preferredGymSlug]);
+
   async function submit(e) {
     e.preventDefault();
+    const telemetryRoute = authTelemetryRouteForMode(mode);
+    const startedAt = Date.now();
     const currentIdentifier = (identifierRef.current?.value || identifier || '').trim();
     const currentEmail = (emailRef.current?.value || email || '').trim();
     const currentPassword = passwordRef.current?.value || password || '';
     const currentDisplayName = (displayNameRef.current?.value || displayName || '').trim();
     if (mode === 'password' && (!currentIdentifier || !currentPassword)) {
-      setErr('Enter your email or username and password.');
+      const errorMessage = 'Enter your email or username and password.';
+      trackPublicFlow('public_auth_result', telemetryRoute, { auth_mode: mode, result: 'validation', reason: 'missing_credentials' });
+      trackContractPublicFlow('hz_public_auth_submit_result', telemetryRoute, {
+        mode,
+        ok: false,
+        error_message: errorMessage,
+        preferred_gym_slug: preferredGymSlug || DEFAULT_PUBLIC_GYM_SLUG,
+      });
+      setErr(errorMessage);
       return;
     }
     if (mode === 'signup' && (!currentEmail || !currentPassword || !currentDisplayName)) {
-      setErr('Enter your name, email, and password.');
+      const errorMessage = 'Enter your name, email, and password.';
+      trackPublicFlow('public_auth_result', telemetryRoute, { auth_mode: mode, result: 'validation', reason: 'missing_signup_fields' });
+      trackContractPublicFlow('hz_public_auth_submit_result', telemetryRoute, {
+        mode,
+        ok: false,
+        error_message: errorMessage,
+        requested_role: requestedRole,
+        preferred_gym_slug: preferredGymSlug || DEFAULT_PUBLIC_GYM_SLUG,
+      });
+      setErr(errorMessage);
       return;
     }
     if (mode === 'reset' && !currentIdentifier && !currentEmail) {
-      setErr('Enter the email or username for the account.');
+      const errorMessage = 'Enter the email or username for the account.';
+      trackPublicFlow('public_auth_result', telemetryRoute, { auth_mode: mode, result: 'validation', reason: 'missing_reset_identifier' });
+      trackContractPublicFlow('hz_public_auth_submit_result', telemetryRoute, {
+        mode,
+        ok: false,
+        error_message: errorMessage,
+        preferred_gym_slug: preferredGymSlug || DEFAULT_PUBLIC_GYM_SLUG,
+      });
+      setErr(errorMessage);
       return;
     }
+    trackPublicFlow('public_auth_submit', telemetryRoute, {
+      auth_mode: mode,
+      requested_role: mode === 'signup' ? requestedRole : undefined,
+    });
     setBusy(true);
     setErr(null);
     try {
       if (mode === 'reset') {
         const { error } = await window.HZdb.auth.requestPasswordReset(currentEmail || currentIdentifier);
         if (error) throw error;
+        trackPublicFlow('public_auth_result', telemetryRoute, {
+          auth_mode: mode,
+          result: 'reset_sent',
+          duration_ms: Date.now() - startedAt,
+        });
+        trackContractPublicFlow('hz_public_auth_submit_result', telemetryRoute, {
+          mode,
+          ok: true,
+          preferred_gym_slug: preferredGymSlug || DEFAULT_PUBLIC_GYM_SLUG,
+        });
         setResetSent(true);
         return;
       }
@@ -2088,9 +2399,40 @@ function Login({ initialMode = 'password', inviteCode = '', preferredGymSlug = D
         ? await window.HZdb.auth.signUpFamily({ email: currentEmail, password: currentPassword, display_name: currentDisplayName, requested_role: requestedRole })
         : await window.HZdb.auth.signInWithPassword(currentIdentifier, currentPassword);
       if (error) throw error;
+      const result = mode === 'signup' && !data?.session ? 'confirm_email' : 'success';
+      trackPublicFlow('public_auth_result', telemetryRoute, {
+        auth_mode: mode,
+        requested_role: mode === 'signup' ? requestedRole : undefined,
+        result,
+        duration_ms: Date.now() - startedAt,
+      });
+      trackContractPublicFlow('hz_public_auth_submit_result', telemetryRoute, {
+        mode,
+        ok: true,
+        requested_role: mode === 'signup' ? requestedRole : undefined,
+        preferred_gym_slug: preferredGymSlug || DEFAULT_PUBLIC_GYM_SLUG,
+      });
+      rememberPublicFlowState(telemetryRoute, {
+        auth_mode: mode,
+        outcome: mode === 'signup' ? (data?.session ? 'account_created' : 'confirm_email') : 'signed_in',
+      });
       if (mode === 'signup' && !data?.session) setSent(true);
     } catch (cause) {
-      setErr(cause?.message || (mode === 'signup' ? 'We could not create that account.' : 'We could not sign you in.'));
+      const errorMessage = cause?.message || (mode === 'signup' ? 'We could not create that account.' : 'We could not sign you in.');
+      trackPublicFlow('public_auth_result', telemetryRoute, {
+        auth_mode: mode,
+        requested_role: mode === 'signup' ? requestedRole : undefined,
+        result: 'error',
+        duration_ms: Date.now() - startedAt,
+      });
+      trackContractPublicFlow('hz_public_auth_submit_result', telemetryRoute, {
+        mode,
+        ok: false,
+        error_message: errorMessage,
+        requested_role: mode === 'signup' ? requestedRole : undefined,
+        preferred_gym_slug: preferredGymSlug || DEFAULT_PUBLIC_GYM_SLUG,
+      });
+      setErr(errorMessage);
     } finally {
       setBusy(false);
     }
@@ -2100,7 +2442,7 @@ function Login({ initialMode = 'password', inviteCode = '', preferredGymSlug = D
     return (
       <AuthFrame title="Check your email." subtitle={`We sent a confirmation link to ${email}. Open it on this device, then sign in and request gym access.`}>
         <div className="hz-card" style={{ maxWidth: 520, margin: '0 auto', textAlign: 'center' }}>
-          <button className="hz-btn hz-btn-primary" onClick={() => { setSent(false); setMode('password'); }}>Back to sign in</button>
+          <button className="hz-btn hz-btn-primary" onClick={() => { setSent(false); changeMode('password', 'post_signup_email'); }}>Back to sign in</button>
         </div>
       </AuthFrame>
     );
@@ -2110,7 +2452,7 @@ function Login({ initialMode = 'password', inviteCode = '', preferredGymSlug = D
     return (
       <AuthFrame title="Check your email." subtitle="We sent a password reset link. Open it on this device and Hit Zero will ask you for a new password.">
         <div className="hz-card" style={{ maxWidth: 520, margin: '0 auto', textAlign: 'center' }}>
-          <button className="hz-btn hz-btn-primary" onClick={() => { setResetSent(false); setMode('password'); }}>Back to sign in</button>
+          <button className="hz-btn hz-btn-primary" onClick={() => { setResetSent(false); changeMode('password', 'post_reset_email'); }}>Back to sign in</button>
         </div>
       </AuthFrame>
     );
@@ -2161,11 +2503,11 @@ function Login({ initialMode = 'password', inviteCode = '', preferredGymSlug = D
       <div style={{ maxWidth: 600, width: '100%', margin: '0 auto' }}>
         <div className="hz-card" style={{ padding: 28 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(104px, 1fr))', gap: 8, marginBottom: 20 }}>
-            <button type="button" className={'hz-btn' + (mode === 'password' ? ' hz-btn-primary' : '')} onClick={() => setMode('password')}>Sign in</button>
-            <button type="button" className={'hz-btn' + (mode === 'signup' ? ' hz-btn-primary' : '')} onClick={() => setMode('signup')}>Create account</button>
-            <button type="button" className={'hz-btn' + (mode === 'find' ? ' hz-btn-primary' : '')} onClick={() => setMode('find')}>Find gym</button>
-            <button type="button" className={'hz-btn' + (mode === 'invite' ? ' hz-btn-primary' : '')} onClick={() => setMode('invite')}>Invite</button>
-            <button type="button" className={'hz-btn' + (mode === 'owner' ? ' hz-btn-primary' : '')} onClick={() => setMode('owner')}>Run a gym</button>
+            <button type="button" className={'hz-btn' + (mode === 'password' ? ' hz-btn-primary' : '')} onClick={() => changeMode('password', 'tab')}>Sign in</button>
+            <button type="button" className={'hz-btn' + (mode === 'signup' ? ' hz-btn-primary' : '')} onClick={() => changeMode('signup', 'tab')}>Create account</button>
+            <button type="button" className={'hz-btn' + (mode === 'find' ? ' hz-btn-primary' : '')} onClick={() => changeMode('find', 'tab')}>Find gym</button>
+            <button type="button" className={'hz-btn' + (mode === 'invite' ? ' hz-btn-primary' : '')} onClick={() => changeMode('invite', 'tab')}>Invite</button>
+            <button type="button" className={'hz-btn' + (mode === 'owner' ? ' hz-btn-primary' : '')} onClick={() => changeMode('owner', 'tab')}>Run a gym</button>
           </div>
           {publicNotice && <div style={{ padding: 12, borderRadius: 10, background: 'rgba(39,207,215,0.08)', color: 'var(--hz-teal)', marginBottom: 16, fontSize: 13 }}>{publicNotice}</div>}
           {mode === 'password' ? (
@@ -2198,7 +2540,7 @@ function Login({ initialMode = 'password', inviteCode = '', preferredGymSlug = D
 	                <button
 	                  type="button"
 	                  className="hz-btn hz-btn-ghost"
-	                  onClick={() => { setErr(null); setEmail(identifier.includes('@') ? identifier : email); setMode('reset'); }}
+	                  onClick={() => { setErr(null); setEmail(identifier.includes('@') ? identifier : email); changeMode('reset', 'forgot_password'); }}
 	                  style={{ minHeight: 0, padding: '6px 8px', fontSize: 12 }}
 	                >
 	                  Forgot password?
@@ -2222,7 +2564,7 @@ function Login({ initialMode = 'password', inviteCode = '', preferredGymSlug = D
 	                autoCapitalize="none"
 	                autoCorrect="off"
 	              />
-	              <button type="button" className="hz-btn hz-btn-ghost" onClick={() => { setErr(null); setMode('password'); }} style={{ marginTop: 12 }}>
+	              <button type="button" className="hz-btn hz-btn-ghost" onClick={() => { setErr(null); changeMode('password', 'back_to_signin'); }} style={{ marginTop: 12 }}>
 	                Back to sign in
 	              </button>
 	            </>
@@ -2284,7 +2626,7 @@ function Login({ initialMode = 'password', inviteCode = '', preferredGymSlug = D
                     program={defaultProgram}
                     onSelect={(program) => {
                       setPublicNotice(`${program.public_name || program.name || DEFAULT_PUBLIC_GYM_NAME} is selected. Create a family account to request access.`);
-                      setMode('signup');
+                      changeMode('signup', 'default_gym_select');
                     }}
                   />
                 )}
@@ -2293,7 +2635,7 @@ function Login({ initialMode = 'password', inviteCode = '', preferredGymSlug = D
                   <div style={{ marginTop: 12 }}>
                     <GymSearchPicker compact onSelect={(program) => {
 	                setPublicNotice(`${program.public_name || program.name} is listed. Create a family account to request access.`);
-	                setMode('signup');
+	                changeMode('signup', 'search_result_select');
 	              }} />
                   </div>
                 </details>
@@ -2304,7 +2646,7 @@ function Login({ initialMode = 'password', inviteCode = '', preferredGymSlug = D
             <div style={{ display: 'grid', gap: 12 }}>
               <div style={{ color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.5 }}>Sign in or create an account first, then redeem the invite code staff sent you.</div>
               <input className="hz-input" value={inviteCode} readOnly placeholder="Invite code appears here from invite links" />
-              <button type="button" className="hz-btn" onClick={() => setMode('signup')}>Create an account first</button>
+              <button type="button" className="hz-btn" onClick={() => changeMode('signup', 'invite_gate')}>Create an account first</button>
             </div>
           )}
           {err && <div style={{ color: 'var(--hz-pink)', marginTop: 18, fontSize: 13 }}>{err}</div>}

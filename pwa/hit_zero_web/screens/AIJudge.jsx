@@ -11,6 +11,24 @@
 
 const { useState: _aiUS, useEffect: _aiUE, useMemo: _aiUM, useRef: _aiUR } = React;
 
+async function loadTusClient() {
+  if (window.tus?.Upload) return window.tus;
+  if (!window.__hzTusLoader) {
+    window.__hzTusLoader = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = window.HZ_TUS_ASSET || '';
+      script.async = true;
+      script.onload = () => window.tus?.Upload ? resolve(window.tus) : reject(new Error('Upload support did not initialize.'));
+      script.onerror = () => reject(new Error('Upload support could not be loaded. Check your connection and retry.'));
+      document.head.appendChild(script);
+    }).catch((error) => {
+      window.__hzTusLoader = null;
+      throw error;
+    });
+  }
+  return window.__hzTusLoader;
+}
+
 const SCORE_CALIBRATION_ANCHORS = [{
   label: 'Known comp day anchor',
   model_pct: 90.3,
@@ -608,8 +626,9 @@ function NewAnalysis({ team, onDone, draft }) {
           // Resumable TUS upload. The stock storage API has a 50MB per-file
           // cap on free tier; TUS chunks in 6MB slices so a full routine
           // (200–500MB) goes through, and we get real byte-level progress.
+          await loadTusClient();
           await new Promise((resolve, reject) => {
-            if (!window.tus) return reject(new Error('tus client not loaded'));
+            if (!window.tus?.Upload) return reject(new Error('Upload support is unavailable.'));
             // Main hostname is the safe default — the `.storage.` subdomain
             // isn't provisioned on every project and fails CORS / DNS.
             const base = (window.HZ_FN_BASE || '');

@@ -105,6 +105,10 @@ function AthleteCoreView({ a, snap, session, tab, setTab }) {
   const attendance = window.HZsel.athleteAttendance(a.id);
   const tabs = tabsForAthleteViewer(session);
   const activeTab = tabs.some(t => t.id === tab) ? tab : 'overview';
+  const assignedTeam = (snap.teams || []).find(t => t.id === a.team_id && t.builder_enabled && !t.deleted_at) || null;
+  const assignedTeamLabel = assignedTeam
+    ? (assignedTeam.division ? `${assignedTeam.division} — ${assignedTeam.name}` : assignedTeam.name)
+    : '';
 
   return (
     <>
@@ -115,6 +119,12 @@ function AthleteCoreView({ a, snap, session, tab, setTab }) {
           <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 6, textTransform: 'capitalize', letterSpacing: '0.04em' }}>
             {(a.position || a.role || 'athlete')}{a.age ? ' · Age ' + a.age : ''}{a.joined_at ? ' · since ' + new Date(a.joined_at).toLocaleString('default', { month: 'short', year: 'numeric' }) : ''}
           </div>
+          {assignedTeamLabel && (
+            <div className="athlete-team-identity" style={{ '--athlete-team-color': assignedTeam.color || 'var(--hz-teal)' }}>
+              <span className="athlete-team-gem">◆</span>
+              <span><small>{assignedTeam.season ? `${assignedTeam.season} team` : 'Team'}</small><strong>{assignedTeamLabel}</strong></span>
+            </div>
+          )}
         </div>
       </div>
 

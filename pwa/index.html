@@ -25,21 +25,33 @@
 <meta property="og:title" content="Hit Zero"/>
 <meta property="og:description" content="An operating system for all-star cheer gyms."/>
 <meta property="og:type" content="website"/>
+<script>performance.mark('hz-boot-start');</script>
 
-<link rel="stylesheet" href="hit_zero_web/styles/web.css"/>
+<link rel="stylesheet" href="hit_zero_web/styles/web.css?v=20260811-team-builder"/>
 
 <!-- Product analytics: Vercel Web Analytics + Speed Insights + optional Microsoft Clarity.
      Keep Clarity masked in the authenticated PWA so private athlete/family data is not replayed. -->
 <script>
   window.HZ_ANALYTICS_CONFIG = {
     app: 'hit-zero-pwa',
-    clarityId: 'wt6hw0o9i1',
+    clarityId: '',
     privateApp: true
   };
 </script>
-<script src="analytics.js"></script>
-<script defer src="/_vercel/insights/script.js"></script>
-<script defer src="/_vercel/speed-insights/script.js"></script>
+<script src="analytics.js?v=2eead2766b2da408"></script>
+<script>
+  // Observability must not contend with auth, the shell, or the first screen.
+  window.addEventListener('load', () => {
+    const load = () => ['/_vercel/insights/script.js', '/_vercel/speed-insights/script.js'].forEach(src => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.async = true;
+      document.head.appendChild(script);
+    });
+    if ('requestIdleCallback' in window) requestIdleCallback(load, { timeout: 3000 });
+    else setTimeout(load, 1500);
+  }, { once: true });
+</script>
 
 <!-- React + Babel pinned versions -->
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
@@ -50,15 +62,15 @@
 <script src="https://unpkg.com/tus-js-client@4.3.1/dist/tus.min.js"></script>
 
 <!-- Prototype seed data. Production quarantines this behind the live mirror. -->
-<script src="hit_zero/data/cheer-data.js"></script>
+<script src="hit_zero/data/cheer-data.js?v=51422fac5565d17d"></script>
 
 <!-- DB + selectors -->
 <script>
   window.HZ_FORCE_PROTOTYPE = ['localhost', '127.0.0.1', '::1'].includes(location.hostname)
     && new URLSearchParams(location.search || '').get('prototype') === '1';
 </script>
-<script src="hit_zero_web/db/client.js"></script>
-<script src="hit_zero_web/db/selectors.js"></script>
+<script src="hit_zero_web/db/client.js?v=fcdaa20f12936aa7"></script>
+<script src="hit_zero_web/db/selectors.js?v=2acb193f6139a53a"></script>
 
 <!-- Real Supabase client for AI Judge video upload + edge-function calls.
      Falls back to the HZdb in-browser mock when keys are absent. -->
@@ -152,6 +164,7 @@
     let activeProgramId = isPlaceholderProgramId(liveProfile?.program_id) ? null : liveProfile?.program_id || null;
     const activeRole = liveSession?.profile?.role || liveProfile?.role || null;
     const isStaff = activeRole === 'coach' || activeRole === 'owner';
+    try { performance.mark('hz-live-hydration-start'); } catch {}
     const clearPrivateRows = () => {
       [
         'teams', 'athletes', 'athlete_skills', 'parent_links', 'billing_accounts', 'billing_charges',
@@ -175,7 +188,12 @@
       d.profiles = liveProfile ? [liveProfile] : [];
     };
 
-    if (isLiveSession) clearPrivateRows();
+    // A retry for the same viewer must keep the last good in-memory data. Only
+    // clear when the authenticated person actually changes.
+    if (isLiveSession && d.__viewer_id !== liveProfile?.id) {
+      clearPrivateRows();
+      d.__viewer_id = liveProfile?.id || null;
+    }
 
     let ownJoinRequests = [];
     let ownPackets = [];
@@ -184,10 +202,10 @@
         s.from('program_join_requests').select('*, programs(id, slug, public_name, name, city, state)').eq('profile_id', liveProfile.id).order('created_at', { ascending: false }),
         s.from('family_info_packets').select('*').eq('profile_id', liveProfile.id).order('updated_at', { ascending: false }),
       ]);
-      ownJoinRequests = joinRequests.data || [];
-      ownPackets = packets.data || [];
-      d.program_join_requests = ownJoinRequests;
-      d.family_info_packets = ownPackets;
+      ownJoinRequests = joinRequests.error ? (d.program_join_requests || []) : (joinRequests.data || []);
+      ownPackets = packets.error ? (d.family_info_packets || []) : (packets.data || []);
+      if (!joinRequests.error) d.program_join_requests = ownJoinRequests;
+      if (!packets.error) d.family_info_packets = ownPackets;
       activeProgramId = [
         ...ownJoinRequests.map(row => row.program_id),
         ...ownPackets.map(row => row.program_id),
@@ -202,21 +220,30 @@
     const programsQuery = s.from('programs').select('*').is('deleted_at', null).order('created_at');
     if (isLiveSession && activeProgramId) programsQuery.eq('id', activeProgramId);
     else if (isLiveSession && !isStaff) programsQuery.in('slug', ['mca', 'magic-city-athletics', 'magic-city-allstars']);
-    const { data: programs } = await programsQuery;
+    const { data: programs, error: programsError } = await programsQuery;
+    if (programsError) throw programsError;
     if (programs?.length) {
       d.programs = programs;
       const programIds = programs.map(p => p.id);
-      const paymentSettings = await s.from('program_payment_settings').select('*').in('program_id', programIds);
-      if (!paymentSettings.error) d.program_payment_settings = paymentSettings.data || [];
-      const [tracks, classes, windows, classEnrollments] = await Promise.all([
+      // These collections only depend on programIds. Fetch them in one wave;
+      // the old sequential groups added multiple network round trips to boot.
+      const [paymentSettings, tracks, classes, windows, classEnrollments, waiverTemplates, formTemplates, announcements, uniforms, volunteerRoles, drills] = await Promise.all([
+        s.from('program_payment_settings').select('*').in('program_id', programIds),
         s.from('program_tracks').select('*').in('program_id', programIds).order('display_order'),
         s.from('program_classes').select('*').in('program_id', programIds).order('display_order'),
         s.from('registration_windows').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
         s.from('class_enrollments').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
+        isLiveSession ? s.from('waiver_templates').select('*').in('program_id', programIds).order('effective_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
+        isLiveSession ? s.from('form_templates').select('*').in('program_id', programIds).order('created_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
+        isLiveSession ? s.from('announcements').select('*').in('program_id', programIds).order('created_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
+        isLiveSession ? s.from('uniforms').select('*').in('program_id', programIds).order('created_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
+        isLiveSession ? s.from('volunteer_roles').select('*').in('program_id', programIds).order('created_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
+        isLiveSession ? s.from('drills').select('*').in('program_id', programIds).order('created_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
       ]);
       // NEVER clobber local data with an errored (or unauthorized) query —
       // a transient failure here used to silently EMPTY the owner's feed,
       // uniforms, volunteer roles and drills until the next good mirror.
+      if (!paymentSettings.error) d.program_payment_settings = paymentSettings.data || [];
       if (!tracks.error) d.program_tracks = tracks.data || [];
       if (!classes.error) d.program_classes = classes.data || [];
       if (!windows.error) d.registration_windows = windows.data || [];
@@ -225,14 +252,6 @@
         // Members-only tables: only meaningful with a real signed-in session.
         // In prototype / logged-out contexts these queries run as anon, get
         // nothing past RLS, and used to wipe the local demo data.
-        const [waiverTemplates, formTemplates, announcements, uniforms, volunteerRoles, drills] = await Promise.all([
-          s.from('waiver_templates').select('*').in('program_id', programIds).order('effective_at', { ascending: false }),
-          s.from('form_templates').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
-          s.from('announcements').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
-          s.from('uniforms').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
-          s.from('volunteer_roles').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
-          s.from('drills').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
-        ]);
         if (!waiverTemplates.error) d.waiver_templates = waiverTemplates.data || [];
         if (!formTemplates.error) d.form_templates = formTemplates.data || [];
         if (!announcements.error) d.announcements = announcements.data || [];
@@ -242,15 +261,13 @@
       }
       if (isLiveSession) {
         const formTemplateIds = (d.form_templates || []).map(row => row.id);
-        if (formTemplateIds.length) {
-          const formFields = await s.from('form_fields').select('*').in('template_id', formTemplateIds).order('position');
-          if (!formFields.error) d.form_fields = formFields.data || [];
-        }
         const uniformIds = (d.uniforms || []).map(row => row.id);
-        if (uniformIds.length) {
-          const uniformItems = await s.from('uniform_items').select('*').in('uniform_id', uniformIds);
-          if (!uniformItems.error) d.uniform_items = uniformItems.data || [];
-        }
+        const [formFields, uniformItems] = await Promise.all([
+          formTemplateIds.length ? s.from('form_fields').select('*').in('template_id', formTemplateIds).order('position') : Promise.resolve({ data: [], error: null }),
+          uniformIds.length ? s.from('uniform_items').select('*').in('uniform_id', uniformIds) : Promise.resolve({ data: [], error: null }),
+        ]);
+        if (!formFields.error) d.form_fields = formFields.data || [];
+        if (!uniformItems.error) d.uniform_items = uniformItems.data || [];
       }
       if (isStaff) {
         const [registrations, leads, leadTouches, packets, assignmentEvents] = await Promise.all([
@@ -277,9 +294,13 @@
     const teamsQuery = s.from('teams').select('*').is('deleted_at', null).order('created_at');
     if (isLiveSession && activeProgramId) teamsQuery.eq('program_id', activeProgramId);
     else if (isLiveSession && programs?.length) teamsQuery.in('program_id', programs.map(p => p.id));
-    const { data: teams } = await teamsQuery;
+    const { data: teams, error: teamsError } = await teamsQuery;
+    if (teamsError) throw teamsError;
     if (!teams || !teams.length) {
-      if (isLiveSession) clearPrivateRows();
+      if (isLiveSession) {
+        d.teams = [];
+        d.athletes = [];
+      }
       return;
     }
     d.teams = teams;
@@ -287,12 +308,12 @@
     const profileQuery = activeRole === 'coach' || activeRole === 'owner'
       ? s.from('profiles').select('*').eq('program_id', activeProgramId).order('display_name')
       : null;
-    const [{ data: athletes }, profileRows] = await Promise.all([
+    const [athleteRows, profileRows] = await Promise.all([
       s.from('athletes').select('*').in('team_id', ids).is('deleted_at', null),
       profileQuery || Promise.resolve({ data: liveProfile ? [liveProfile] : [] }),
     ]);
-    if (athletes) d.athletes = athletes;
-    if (profileRows?.data?.length) d.profiles = profileRows.data;
+    if (!athleteRows.error) d.athletes = athleteRows.data || [];
+    if (!profileRows?.error && profileRows?.data?.length) d.profiles = profileRows.data;
     const aIds = (d.athletes || []).map(a => a.id);
     const sessionRows = await s.from('sessions').select('*').in('team_id', ids).order('scheduled_at');
     if (!sessionRows.error) d.sessions = (sessionRows.data || []).map(row => ({ ...row, scheduled: row.scheduled === false ? false : true }));
@@ -359,14 +380,14 @@
       const formResponseIds = (d.form_responses || []).map(row => row.id);
       if (formResponseIds.length) {
         const answers = await s.from('form_answers').select('*').in('response_id', formResponseIds);
-        d.form_answers = answers.data || [];
+        if (!answers.error) d.form_answers = answers.data || [];
       } else {
         d.form_answers = [];
       }
       const accountIds = d.billing_accounts.map(row => row.id);
       if (accountIds.length) {
         const charges = await s.from('billing_charges').select('*').in('account_id', accountIds);
-        d.billing_charges = charges.data || [];
+        if (!charges.error) d.billing_charges = charges.data || [];
       } else {
         d.billing_charges = [];
       }
@@ -374,9 +395,13 @@
       d.athlete_skills = []; d.parent_links = []; d.attendance = []; d.billing_accounts = []; d.billing_charges = [];
       d.emergency_contacts = []; d.medical_records = []; d.injuries = []; d.waiver_signatures = []; d.uniform_orders = []; d.form_responses = []; d.form_answers = [];
     }
+    // The dashboard can become useful before messaging/routine history finish.
+    if (window.HZsel && window.HZsel._refresh) await window.HZsel._refresh();
+    try { performance.mark('hz-live-core-ready'); } catch {}
+    window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { phase: 'core' } }));
     if (isLiveSession && liveProfile?.id) {
       const ownMemberships = await s.from('thread_members').select('*').eq('profile_id', liveProfile.id);
-      const ownRows = ownMemberships.data || [];
+      const ownRows = ownMemberships.error ? (d.thread_members || []).filter(row => row.profile_id === liveProfile.id) : (ownMemberships.data || []);
       const threadIds = [...new Set(ownRows.map(row => row.thread_id).filter(Boolean))];
       if (threadIds.length) {
         const [threadRows, memberRows, messageRows, readRows] = await Promise.all([
@@ -385,10 +410,10 @@
           s.from('messages').select('*').in('thread_id', threadIds).order('created_at', { ascending: true }),
           s.from('message_reads').select('*').eq('profile_id', liveProfile.id),
         ]);
-        d.message_threads = threadRows.data || [];
-        d.thread_members = memberRows.data || ownRows;
-        d.messages = messageRows.data || [];
-        d.message_reads = readRows.data || [];
+        if (!threadRows.error) d.message_threads = threadRows.data || [];
+        if (!memberRows.error) d.thread_members = memberRows.data || ownRows;
+        if (!messageRows.error) d.messages = messageRows.data || [];
+        if (!readRows.error) d.message_reads = readRows.data || [];
         const knownProfileIds = new Set((d.profiles || []).map(profile => profile.id));
         const memberProfileIds = [...new Set((d.thread_members || []).map(row => row.profile_id).filter(Boolean))].filter(id => !knownProfileIds.has(id));
         if (memberProfileIds.length) {
@@ -397,7 +422,7 @@
             d.profiles = [...(d.profiles || []), ...profileRows.data.filter(profile => !knownProfileIds.has(profile.id))];
           }
         }
-      } else {
+      } else if (!ownMemberships.error) {
         d.message_threads = [];
         d.thread_members = [];
         d.messages = [];
@@ -418,7 +443,7 @@
       ['routine_remix_requests', 'routine_id'],
       ['routine_music_compliance_checks', 'routine_id'],
     ];
-    const { data: routines } = await s.from('routines').select('*').in('team_id', ids).order('created_at');
+    const { data: routines, error: routinesError } = await s.from('routines').select('*').in('team_id', ids).order('created_at');
     if (routines?.length) {
       d.routines = routines;
       const routineIds = routines.map(r => r.id);
@@ -427,17 +452,19 @@
         s.from('routine_formations').select('*').in('routine_id', routineIds).order('start_count'),
         ...routineTables.map(([table, col]) => s.from(table).select('*').in(col, routineIds)),
       ]);
-      d.routine_sections = sections.data || [];
-      d.routine_formations = formations.data || [];
-      routineRows.forEach((res, i) => { d[routineTables[i][0]] = res.data || []; });
+      if (!sections.error) d.routine_sections = sections.data || [];
+      if (!formations.error) d.routine_formations = formations.data || [];
+      routineRows.forEach((res, i) => {
+        if (!res.error) d[routineTables[i][0]] = res.data || [];
+      });
       const formationIds = d.routine_formations.map(f => f.id);
       if (formationIds.length) {
-        const { data: positions } = await s.from('routine_positions').select('*').in('formation_id', formationIds);
-        d.routine_positions = positions || [];
+        const positions = await s.from('routine_positions').select('*').in('formation_id', formationIds);
+        if (!positions.error) d.routine_positions = positions.data || [];
       } else {
         d.routine_positions = [];
       }
-    } else if (isLiveSession) {
+    } else if (isLiveSession && !routinesError) {
       [
         'routines', 'routine_sections', 'routine_audio_assets', 'music_licenses', 'routine_count_maps',
         'routine_events', 'routine_formations', 'routine_positions', 'routine_assignments',
@@ -447,24 +474,20 @@
     }
     if (liveSession?.profile) upsert(d.profiles || (d.profiles = []), liveSession.profile);
     if (window.HZsel && window.HZsel._refresh) await window.HZsel._refresh();
+    try { performance.mark('hz-live-hydrated'); } catch {}
+    window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { phase: 'complete' } }));
   }
-  window.HZmirror = { analysis: mirrorAnalysis, recent: mirrorRecent, roster: mirrorRosterLive };
-
-  // Wrap HZsel.snapshot so every snapshot pulls the live roster first. This
-  // guarantees the team + athletes are always the real Supabase ones, not
-  // the stale mock seed — no matter which screen triggered the snapshot.
-  (function patchSnapshot() {
-    // HZsel loads after this script, so defer until it exists.
-    function patch() {
-      if (!window.HZsel || !window.HZsel.snapshot) { setTimeout(patch, 30); return; }
-      const orig = window.HZsel.snapshot.bind(window.HZsel);
-      window.HZsel.snapshot = async function(...args) {
-        try { await mirrorRosterLive(); } catch (e) { console.warn('mirror roster failed', e); }
-        return orig(...args);
-      };
-    }
-    patch();
-  })();
+  let rosterRefreshPromise = null;
+  let rosterRefreshedAt = 0;
+  function refreshRosterLive({ force = false } = {}) {
+    if (rosterRefreshPromise) return rosterRefreshPromise;
+    if (!force && Date.now() - rosterRefreshedAt < 15000) return Promise.resolve();
+    rosterRefreshPromise = mirrorRosterLive()
+      .then(() => { rosterRefreshedAt = Date.now(); })
+      .finally(() => { rosterRefreshPromise = null; });
+    return rosterRefreshPromise;
+  }
+  window.HZmirror = { analysis: mirrorAnalysis, recent: mirrorRecent, roster: mirrorRosterLive, refresh: refreshRosterLive };
 
   // Swallow drag-and-drop at the window level so a miss on the dropzone
   // doesn't make Chrome navigate to the file (which is what was creating
@@ -475,24 +498,29 @@
 </script>
 </head>
 <body>
+<div id="hz-network-status" class="hz-runtime-banner" role="status" hidden></div>
+<div id="hz-update-ready" class="hz-runtime-banner hz-runtime-update" role="status" hidden>
+  <span>A faster Hit Zero update is ready.</span>
+  <button type="button" id="hz-apply-update">Update when ready</button>
+</div>
 <div id="root"></div>
 
 <!-- Primitives → Shell → Drawer → Screens → App boot -->
-<script type="text/babel" src="hit_zero_web/components/HZPrimitives.jsx"></script>
-<script type="text/babel" src="hit_zero_web/components/AthleteDrawer.jsx"></script>
-<script type="text/babel" src="hit_zero_web/components/HZShell.jsx"></script>
+<script type="text/babel" src="hit_zero_web/components/HZPrimitives.jsx?v=c68eb3ec4ed3d4f6"></script>
+<script type="text/babel" src="hit_zero_web/components/AthleteDrawer.jsx?v=c7618f5b091e0210"></script>
+<script type="text/babel" src="hit_zero_web/components/HZShell.jsx?v=d62300a07bb1caa6"></script>
 
-<script type="text/babel" src="hit_zero_web/screens/CoachToday.jsx"></script>
-<script type="text/babel" src="hit_zero_web/screens/Roster.jsx"></script>
-<script type="text/babel" src="hit_zero_web/screens/SkillMatrix.jsx"></script>
-<script type="text/babel" src="hit_zero_web/screens/RoutineBuilder.jsx"></script>
-<script type="text/babel" src="hit_zero_web/screens/MockScore.jsx"></script>
-<script type="text/babel" src="hit_zero_web/screens/OtherScreens.jsx"></script>
-<script type="text/babel" src="hit_zero_web/screens/Tier1Tier2Screens.jsx?v=mca-calendar-v2"></script>
-<script type="text/babel" src="hit_zero_web/screens/AIJudge.jsx"></script>
-<script type="text/babel" src="hit_zero_web/screens/PublicBooking.jsx"></script>
-<script type="text/babel" src="hit_zero_web/screens/PublicTrial.jsx"></script>
-<script type="text/babel" src="hit_zero_web/screens/ArcadeScreen.jsx"></script>
+<script type="text/babel" src="hit_zero_web/screens/CoachToday.jsx?v=1f9dad14b27ac198"></script>
+<script type="text/babel" src="hit_zero_web/screens/Roster.jsx?v=a5bdea8e3ac2815c"></script>
+<script type="text/babel" src="hit_zero_web/screens/SkillMatrix.jsx?v=c218b4f9aabe2b8f"></script>
+<script type="text/babel" src="hit_zero_web/screens/RoutineBuilder.jsx?v=da9a9cd31004c036"></script>
+<script type="text/babel" src="hit_zero_web/screens/MockScore.jsx?v=541f8f07011fcfe0"></script>
+<script type="text/babel" src="hit_zero_web/screens/OtherScreens.jsx?v=fb59c0cda46b099a"></script>
+<script type="text/babel" src="hit_zero_web/screens/Tier1Tier2Screens.jsx?v=32eafd390d150876"></script>
+<script type="text/babel" src="hit_zero_web/screens/AIJudge.jsx?v=da3b22c2392ce9d0"></script>
+<script type="text/babel" src="hit_zero_web/screens/PublicBooking.jsx?v=6ae6b0cc46f99430"></script>
+<script type="text/babel" src="hit_zero_web/screens/PublicTrial.jsx?v=b6f8dd4995235487"></script>
+<script type="text/babel" src="hit_zero_web/screens/ArcadeScreen.jsx?v=1373227a353fa02a"></script>
 
 <script type="text/babel">
   const root = ReactDOM.createRoot(document.getElementById('root'));
@@ -503,27 +531,46 @@
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js').then((reg) => {
-        // If there's already a waiting worker (new version ready), activate it now.
-        if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        const banner = document.getElementById('hz-update-ready');
+        const apply = document.getElementById('hz-apply-update');
+        const showUpdate = (worker) => {
+          if (!worker || !banner || !apply) return;
+          banner.hidden = false;
+          apply.onclick = () => {
+            window.__HZ_UPDATE_ACCEPTED = true;
+            apply.disabled = true;
+            apply.textContent = 'Updating…';
+            worker.postMessage({ type: 'SKIP_WAITING' });
+          };
+        };
+        if (reg.waiting) showUpdate(reg.waiting);
         reg.addEventListener('updatefound', () => {
           const nw = reg.installing;
           if (!nw) return;
           nw.addEventListener('statechange', () => {
             if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-              nw.postMessage({ type: 'SKIP_WAITING' });
+              showUpdate(nw);
             }
           });
         });
       }).catch(() => {});
-      // When the active worker changes, reload once so the page uses the new bundle.
-      let reloaded = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (reloaded) return;
-        reloaded = true;
-        window.location.reload();
+        if (window.__HZ_UPDATE_ACCEPTED) window.location.reload();
       });
     });
   }
+
+  (function connectionStatus() {
+    const banner = document.getElementById('hz-network-status');
+    if (!banner) return;
+    const render = () => {
+      banner.hidden = navigator.onLine;
+      banner.textContent = navigator.onLine ? '' : 'You are offline. Showing the last data loaded in this session; changes will not save until you reconnect.';
+    };
+    window.addEventListener('online', render);
+    window.addEventListener('offline', render);
+    render();
+  })();
 </script>
 </body>
 </html>

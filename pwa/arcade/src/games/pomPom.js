@@ -96,6 +96,21 @@ export function rewardMomentFor(value) {
   return null;
 }
 
+// Prefer gear the athlete has not unlocked yet, but keep flight goodies alive
+// after the Closet set is complete. Repeat catches are celebratory only; the
+// first catch remains the only one that grants the durable cosmetic.
+export function selectPomPomGoodie(ownedIds = [], activeIds = [], rng = Math.random) {
+  const owned = ownedIds instanceof Set ? ownedIds : new Set(ownedIds || []);
+  const active = activeIds instanceof Set ? activeIds : new Set(activeIds || []);
+  const inactive = POM_POM_GOODIES.filter((item) => !active.has(item.id));
+  const unowned = inactive.filter((item) => !owned.has(item.id));
+  const pool = unowned.length ? unowned : inactive;
+  if (!pool.length) return null;
+  const roll = Math.max(0, Math.min(0.999999, Number(rng?.()) || 0));
+  const item = pool[Math.floor(roll * pool.length)];
+  return { item, isNewUnlock: !owned.has(item.id) };
+}
+
 export function createPomPom({
   mode, theme, sfx, audio, supa, profileId, programId, leaderboardEligible,
   getRecord, checkpointRun, recordRun, collectGoodie, openCloset, onOpenChange,
@@ -558,11 +573,11 @@ export function createPomPom({
   }
 
   function maybeSpawnGoodie(gate, gateNumber) {
-    if (gateNumber < nextGoodieGate || ownedGoodieIds.size >= POM_POM_GOODIES.length) return;
+    if (gateNumber < nextGoodieGate) return;
     const activeIds = new Set(goodies.map((goodie) => goodie.item.id));
-    const available = POM_POM_GOODIES.filter((item) => !ownedGoodieIds.has(item.id) && !activeIds.has(item.id));
-    if (!available.length) return;
-    const item = available[Math.floor(Math.random() * available.length)];
+    const selection = selectPomPomGoodie(ownedGoodieIds, activeIds);
+    if (!selection) return;
+    const { item, isNewUnlock } = selection;
     const risky = Math.random() < 0.62;
     const edgeSign = Math.random() < 0.5 ? -1 : 1;
     const safeEdgeOffset = Math.max(24, gate.gap / 2 - characterSize() * 0.28 - 8);
@@ -578,6 +593,7 @@ export function createPomPom({
       edgeSign,
       phase: Math.random() * Math.PI * 2,
       collected: false,
+      isNewUnlock,
     });
     nextGoodieGate = gateNumber + 4 + Math.floor(Math.random() * 4);
   }
@@ -595,17 +611,20 @@ export function createPomPom({
 
   function collectFlightGoodie(goodie) {
     goodie.collected = true;
-    ownedGoodieIds.add(goodie.item.id);
-    if (!earnedRewards.some((reward) => reward.id === goodie.item.id)) earnedRewards.push(goodie.item);
-    const saved = collectGoodie?.(goodie.item);
-    if (saved) record = sanitizeRecord(saved);
+    const isNewUnlock = !ownedGoodieIds.has(goodie.item.id);
+    if (isNewUnlock) {
+      ownedGoodieIds.add(goodie.item.id);
+      if (!earnedRewards.some((reward) => reward.id === goodie.item.id)) earnedRewards.push(goodie.item);
+      const saved = collectGoodie?.(goodie.item);
+      if (saved) record = sanitizeRecord(saved);
+    }
     const y = goodieY(goodie);
     spray(goodie.x, y, 34, true);
     sfx?.score?.();
     if (navigator.vibrate) {
       try { navigator.vibrate([12, 24, 12]); } catch { /* optional */ }
     }
-    showGoodieToast(goodie.item);
+    showGoodieToast(goodie.item, isNewUnlock);
   }
 
   function didCollide() {
@@ -944,12 +963,12 @@ export function createPomPom({
     celebrationEl.innerHTML = '';
   }
 
-  function showGoodieToast(item) {
+  function showGoodieToast(item, isNewUnlock) {
     if (!goodieToastEl) return;
     clearTimeout(goodieToastTimer);
     goodieToastEl.innerHTML = `
       <span>${escapeHtml(item.emoji || '✦')}</span>
-      <div><b>GOODIE FOUND!</b><strong>${escapeHtml(item.label)}</strong><small>YOURS NOW · VIEW &amp; EQUIP AFTER THIS FLIGHT</small></div>`;
+      <div><b>${isNewUnlock ? 'NEW GOODIE FOUND!' : 'SPIRIT REPLAY!'}</b><strong>${escapeHtml(item.label)}</strong><small>${isNewUnlock ? 'YOURS NOW · VIEW &amp; EQUIP AFTER THIS FLIGHT' : 'ALREADY SAFE IN YOUR CLOSET'}</small></div>`;
     goodieToastEl.dataset.show = 'true';
     goodieToastTimer = setTimeout(dismissGoodieToast, 1900);
   }

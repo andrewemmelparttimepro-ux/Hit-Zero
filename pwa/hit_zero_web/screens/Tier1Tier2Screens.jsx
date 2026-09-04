@@ -437,8 +437,8 @@ window.Messages = Messages;
 // ═══════════════════════════════════════════════════════════════════════════
 // Schedule — upcoming sessions, RSVP + iCal feed
 // ═══════════════════════════════════════════════════════════════════════════
-const MCA_GOOGLE_CALENDAR_URL = 'https://calendar.google.com/calendar/embed?src=c_01a6fc567e345779502548ef14721ff42467c88f5de852c01faee56cd88e6ad3%40group.calendar.google.com&ctz=America%2FChicago';
-const MCA_CALENDAR_CACHE_KEY = 'hz_mca_calendar_cache_v2';
+const MCA_GOOGLE_CALENDAR_URL = 'https://calendar.google.com/calendar/u/0/r?cid=c_01a6fc567e345779502548ef14721ff42467c88f5de852c01faee56cd88e6ad3%40group.calendar.google.com';
+const MCA_CALENDAR_CACHE_KEY = 'hz_mca_calendar_cache_v1';
 
 function readMcaCalendarCache() {
   try {
@@ -494,11 +494,13 @@ function Schedule({ snap, session, pushToast }) {
       : scope?.ownAthleteId
         ? window.HZsel.classEnrollmentsForAthlete(scope.ownAthleteId)
         : [];
+  const activeClassEnrollments = classEnrollments.filter(row => !window.HZsel.classEnrollmentIsPast?.(row));
   const familyTeamId = !canEdit && scope?.visibleTeamIds?.size === 1
     ? Array.from(scope.visibleTeamIds)[0]
     : null;
-  const canSubscribe = canEdit || !!familyTeamId;
+  const canSubscribe = canEdit || !!familyTeamId || activeClassEnrollments.length > 0 || upcoming.length > 0;
   const showMcaCalendar = isMagicCityProgram(snap, session);
+  const [familyScheduleView, setFamilyScheduleView] = _useState('mine');
   const [adding, setAdding] = _useState(false);
   const [editingId, setEditingId] = _useState(null);
   const [busy, setBusy] = _useState(false);
@@ -532,7 +534,6 @@ function Schedule({ snap, session, pushToast }) {
         events: Array.isArray(payload.events) ? payload.events : [],
         fetchedAt: payload.fetchedAt || new Date().toISOString(),
         sourceFetchedAt: payload.sourceFetchedAt || payload.fetchedAt || new Date().toISOString(),
-        sourceUrl: payload.sourceUrl || MCA_GOOGLE_CALENDAR_URL,
         stale: !!payload.stale,
       };
       setMcaCalendar(nextCalendar);
@@ -562,10 +563,13 @@ function Schedule({ snap, session, pushToast }) {
   const mcaUpcoming = (mcaCalendar.events || []).filter(event => new Date(event.end || event.start).getTime() >= mcaNow - 86400000);
   const mcaVisibleThrough = mcaNow + mcaLookAheadDays * 86400000;
   const mcaVisible = mcaUpcoming.filter(event => new Date(event.start).getTime() <= mcaVisibleThrough);
+  const personalScheduleItems = upcoming.map(item => ({ source: 'hit-zero', start: item.scheduled_at, item }));
   const scheduleItems = [
     ...upcoming.map(item => ({ source: 'hit-zero', start: item.scheduled_at, item })),
     ...(showMcaCalendar ? mcaVisible : []).map(item => ({ source: 'mca-google', start: item.start, item })),
   ].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+  const viewingAllSchedule = canEdit || !showMcaCalendar || familyScheduleView === 'all';
+  const visibleScheduleItems = viewingAllSchedule ? scheduleItems : personalScheduleItems;
 
   async function addSession(values) {
     if (!team?.id) {
@@ -642,9 +646,28 @@ function Schedule({ snap, session, pushToast }) {
         </div>
       </div>
 
+      {!canEdit && showMcaCalendar && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+          <button
+            type="button"
+            className={'hz-btn hz-btn-sm' + (familyScheduleView === 'mine' ? ' hz-btn-primary' : '')}
+            onClick={() => setFamilyScheduleView('mine')}
+          >
+            My schedule
+          </button>
+          <button
+            type="button"
+            className={'hz-btn hz-btn-sm' + (familyScheduleView === 'all' ? ' hz-btn-primary' : '')}
+            onClick={() => setFamilyScheduleView('all')}
+          >
+            Full gym schedule
+          </button>
+        </div>
+      )}
+
       {adding && <SessionForm onSave={addSession} onCancel={() => setAdding(false)} disabled={busy}/>}
 
-      {showMcaCalendar && <div className="hz-card" style={{ padding: 18, marginBottom: 14, borderColor: 'rgba(39,207,215,0.28)', background: 'linear-gradient(135deg, rgba(39,207,215,0.08), rgba(255,255,255,0.025))' }}>
+      {showMcaCalendar && viewingAllSchedule && <div className="hz-card" style={{ padding: 18, marginBottom: 14, borderColor: 'rgba(39,207,215,0.28)', background: 'linear-gradient(135deg, rgba(39,207,215,0.08), rgba(255,255,255,0.025))' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
           <div>
             <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)', marginBottom: 5 }}>Magic City Athletics · live source</div>
@@ -654,7 +677,7 @@ function Schedule({ snap, session, pushToast }) {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <a className="hz-btn hz-btn-ghost hz-btn-sm" href={mcaCalendar.sourceUrl || MCA_GOOGLE_CALENDAR_URL} target="_blank" rel="noreferrer">Open Google Calendar</a>
+            <a className="hz-btn hz-btn-ghost hz-btn-sm" href={MCA_GOOGLE_CALENDAR_URL} target="_blank" rel="noreferrer">Open source</a>
             <button className="hz-btn hz-btn-ghost hz-btn-sm" onClick={() => refreshMcaCalendar(true)} disabled={mcaCalendarLoading}>
               {mcaCalendarLoading ? 'Refreshing...' : 'Refresh now'}
             </button>
@@ -671,20 +694,22 @@ function Schedule({ snap, session, pushToast }) {
       </div>}
 
       <div style={{ display: 'grid', gap: 14 }}>
-        {scheduleItems.length === 0 && classEnrollments.length === 0 && !adding && !mcaCalendarLoading && (
+        {visibleScheduleItems.length === 0 && activeClassEnrollments.length === 0 && !adding && !mcaCalendarLoading && (
           <div className="hz-card" style={{ padding: 40, color: 'var(--hz-dim)', textAlign: 'center' }}>
-            Nothing on the books. {canEdit ? 'Click "+ Add session" above to put a team-only practice or competition on the calendar.' : 'Linked team sessions and paid class registrations will appear here.'}
+            Nothing on the books. {canEdit ? 'Click "+ Add session" above to put a team-only practice or competition on the calendar.' : viewingAllSchedule ? 'The MCA calendar will appear here after the live source refresh completes.' : 'Linked team sessions and active class registrations will appear here.'}
           </div>
         )}
-        {classEnrollments.length > 0 && (
+        {activeClassEnrollments.length > 0 && (
           <div className="hz-card" style={{ padding: 18, borderColor: 'rgba(39,207,215,0.28)' }}>
-            <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)', marginBottom: 12 }}>Registered classes</div>
+            <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)', marginBottom: 12 }}>
+              {viewingAllSchedule ? 'Registered classes' : 'My registered classes'}
+            </div>
             <div style={{ display: 'grid', gap: 10 }}>
-              {classEnrollments.map(row => <ClassEnrollmentRow key={row.id} enrollment={row}/>)}
+              {activeClassEnrollments.map(row => <ClassEnrollmentRow key={row.id} enrollment={row}/>)}
             </div>
           </div>
         )}
-        {scheduleItems.map(({ source, item }) => source === 'mca-google'
+        {visibleScheduleItems.map(({ source, item }) => source === 'mca-google'
           ? <McaCalendarRow key={`mca:${item.id}`} event={item}/>
           : editingId === item.id
             ? <SessionForm key={item.id} session={item}
@@ -693,7 +718,7 @@ function Schedule({ snap, session, pushToast }) {
                 onRemove={() => removeSession(item.id).then(() => setEditingId(null))}
                 disabled={busy}/>
             : <SessionRow key={item.id} session={item} me={me} authSession={session} canEdit={canEdit} snap={snap} onEdit={() => setEditingId(item.id)}/> )}
-        {showMcaCalendar && mcaVisible.length < mcaUpcoming.length && (
+        {showMcaCalendar && viewingAllSchedule && mcaVisible.length < mcaUpcoming.length && (
           <button className="hz-btn hz-btn-ghost" onClick={() => setMcaLookAheadDays(days => Math.min(days + 45, 540))} style={{ justifySelf: 'center', marginTop: 2 }}>
             Show 45 more days · {mcaUpcoming.length - mcaVisible.length} MCA dates later
           </button>
@@ -1499,10 +1524,11 @@ window.Leads = Leads;
 // ═══════════════════════════════════════════════════════════════════════════
 // Forms / Evaluations
 // ═══════════════════════════════════════════════════════════════════════════
-function Forms({ snap, session }) {
+function Forms({ snap, session, openAthlete }) {
   const templates = window.HZsel.formTemplatesActive();
   const [activeId, setActiveId] = _useState(templates[0]?.id || null);
   const [athleteId, setAthleteId] = _useState('');
+  const [athleteQuery, setAthleteQuery] = _useState('');
   const [score, setScore] = _useState('');
   const [notes, setNotes] = _useState('');
   const [saving, setSaving] = _useState(false);
@@ -1513,6 +1539,43 @@ function Forms({ snap, session }) {
   const me = session?.actualProfile || session?.profile || {};
   const isStaff = ['coach', 'owner'].includes(me.role || '');
   const athletes = window.HZsel.programAthletes?.() || snap.athletes || [];
+  const roster = athletes.filter((athlete) => {
+    const needle = athleteQuery.trim().toLowerCase();
+    if (!needle) return true;
+    return [
+      athlete.display_name,
+      athlete.initials,
+      athlete.position,
+      athlete.role,
+    ].filter(Boolean).some((value) => String(value).toLowerCase().includes(needle));
+  });
+  const firstVisibleAthlete = roster.find(Boolean) || athletes.find(Boolean) || null;
+  const selectedAthlete = athleteId
+    ? athletes.find((athlete) => athlete.id === athleteId) || null
+    : firstVisibleAthlete;
+  const selectedMedical = selectedAthlete ? window.HZsel.athleteMedical(selectedAthlete.id) : { record: null, contacts: [], injuries: [] };
+  const selectedParents = selectedAthlete
+    ? (snap.parent_links || [])
+      .filter((link) => link.athlete_id === selectedAthlete.id)
+      .map((link) => ({
+        ...link,
+        profile: (snap.profiles || []).find((profile) => profile.id === link.parent_id) || null,
+      }))
+      .filter((link) => link.profile)
+    : [];
+  const selectedResponses = selectedAthlete
+    ? responses.filter((response) => response.subject_athlete_id === selectedAthlete.id)
+    : [];
+
+  React.useEffect(() => {
+    const nextAthleteId = firstVisibleAthlete?.id || '';
+    if (!nextAthleteId) return;
+    if (!athleteId) {
+      setAthleteId(nextAthleteId);
+      return;
+    }
+    if (!selectedAthlete && athleteId !== nextAthleteId) setAthleteId(nextAthleteId);
+  }, [athleteId, firstVisibleAthlete?.id, selectedAthlete]);
 
   async function submitEvaluation(e) {
     e?.preventDefault?.();
@@ -1570,6 +1633,132 @@ function Forms({ snap, session }) {
             <>
               <div className="hz-eyebrow">{active.kind.replace('_',' ')}</div>
               <div className="hz-display" style={{ fontSize: 24, fontWeight: 600 }}>{active.title}</div>
+              {isStaff && (
+                <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 14, marginTop: 18, marginBottom: 22 }}>
+                  <div className="hz-card" style={{ padding: 16, display: 'grid', gap: 12, alignSelf: 'start' }}>
+                    <div>
+                      <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Athlete quick pick</div>
+                      <input
+                        className="hz-input"
+                        placeholder="Search athlete..."
+                        value={athleteQuery}
+                        onChange={(event) => setAthleteQuery(event.target.value)}
+                      />
+                    </div>
+                    <div style={{ display: 'grid', gap: 8, maxHeight: 340, overflow: 'auto' }}>
+                      {roster.map((athlete) => {
+                        const athleteResponses = responses.filter((response) => response.subject_athlete_id === athlete.id);
+                        const med = window.HZsel.athleteMedical(athlete.id);
+                        const isActive = selectedAthlete?.id === athlete.id;
+                        return (
+                          <button
+                            key={athlete.id}
+                            type="button"
+                            className="hz-nosel"
+                            onClick={() => setAthleteId(athlete.id)}
+                            style={{
+                              textAlign: 'left',
+                              padding: 12,
+                              borderRadius: 12,
+                              border: '1px solid ' + (isActive ? 'rgba(39,207,215,0.4)' : 'var(--hz-line)'),
+                              background: isActive ? 'rgba(39,207,215,0.08)' : 'rgba(255,255,255,0.03)',
+                              color: '#fff',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                                <Avatar name={athlete.display_name} initials={athlete.initials} color={athlete.photo_color} src={athlete.photo_url} size={28}/>
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{athlete.display_name}</div>
+                                  <div style={{ fontSize: 10, color: 'var(--hz-dim)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>
+                                    {(athlete.position || athlete.role || 'athlete')}{athlete.age ? ` · age ${athlete.age}` : ''}
+                                  </div>
+                                </div>
+                              </div>
+                              <Pill tone={athleteResponses.length ? 'teal' : 'neutral'}>{athleteResponses.length} eval</Pill>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10, fontSize: 11, color: 'var(--hz-dim)' }}>
+                              <span>{med.record ? 'Medical on file' : 'Medical empty'}</span>
+                              <span>·</span>
+                              <span>{med.contacts.length} contacts</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                      {roster.length === 0 && <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>No athletes match that search.</div>}
+                    </div>
+                  </div>
+
+                  <div className="hz-card" style={{ padding: 16, display: 'grid', gap: 14 }}>
+                    {!selectedAthlete ? (
+                      <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>Pick an athlete to load scoring, family, and medical context.</div>
+                    ) : (
+                      <>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'start', flexWrap: 'wrap' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <Avatar name={selectedAthlete.display_name} initials={selectedAthlete.initials} color={selectedAthlete.photo_color} src={selectedAthlete.photo_url} size={40}/>
+                            <div>
+                              <div style={{ fontWeight: 800, fontSize: 18 }}>{selectedAthlete.display_name}</div>
+                              <div style={{ color: 'var(--hz-dim)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>
+                                {(selectedAthlete.position || selectedAthlete.role || 'athlete')}{selectedAthlete.age ? ` · age ${selectedAthlete.age}` : ''}
+                              </div>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button type="button" className="hz-btn hz-btn-sm" onClick={() => openAthlete?.(selectedAthlete.id)}>Open athlete</button>
+                            <button type="button" className="hz-btn hz-btn-sm" onClick={() => { location.hash = '#athlete/' + selectedAthlete.id + '?tab=medical'; }}>Medical tab</button>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
+                          <div style={{ padding: 12, borderRadius: 12, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.03)' }}>
+                            <div className="hz-eyebrow" style={{ marginBottom: 6 }}>Family</div>
+                            <div style={{ fontSize: 18, fontWeight: 800 }}>{selectedParents.length}</div>
+                            <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>
+                              {selectedParents.length ? selectedParents.map((link) => link.profile.display_name || link.profile.email).join(', ') : 'No linked parents yet.'}
+                            </div>
+                          </div>
+                          <div style={{ padding: 12, borderRadius: 12, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.03)' }}>
+                            <div className="hz-eyebrow" style={{ marginBottom: 6 }}>Medical</div>
+                            <div style={{ fontSize: 18, fontWeight: 800 }}>{selectedMedical.record ? 'On file' : 'Missing'}</div>
+                            <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>
+                              {selectedMedical.contacts.length} emergency contact{selectedMedical.contacts.length === 1 ? '' : 's'}
+                            </div>
+                          </div>
+                          <div style={{ padding: 12, borderRadius: 12, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.03)' }}>
+                            <div className="hz-eyebrow" style={{ marginBottom: 6 }}>Scoring</div>
+                            <div style={{ fontSize: 18, fontWeight: 800 }}>{selectedResponses.length}</div>
+                            <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>
+                              response{selectedResponses.length === 1 ? '' : 's'} on this template
+                            </div>
+                          </div>
+                        </div>
+
+                        {selectedMedical.record && (
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, fontSize: 12 }}>
+                            <div style={{ padding: 12, borderRadius: 12, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.02)' }}>
+                              <div className="hz-eyebrow" style={{ marginBottom: 6 }}>Allergies / meds</div>
+                              <div style={{ color: 'var(--hz-dim)', lineHeight: 1.5 }}>
+                                {selectedMedical.record.allergies || 'No allergies listed.'}
+                                {selectedMedical.record.medications ? ` Medications: ${selectedMedical.record.medications}` : ''}
+                              </div>
+                            </div>
+                            <div style={{ padding: 12, borderRadius: 12, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.02)' }}>
+                              <div className="hz-eyebrow" style={{ marginBottom: 6 }}>Insurance / physician</div>
+                              <div style={{ color: 'var(--hz-dim)', lineHeight: 1.5 }}>
+                                {selectedMedical.record.insurance_carrier || 'No insurance carrier listed.'}
+                                {selectedMedical.record.physician_name ? ` Physician: ${selectedMedical.record.physician_name}` : ''}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div style={{ marginTop: 16, marginBottom: 22 }}>
                 <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Rubric</div>
                 <div style={{ display: 'grid', gap: 8 }}>
@@ -2064,6 +2253,14 @@ function RegistrationInbox({ snap, session }) {
     const matchesPay = payFilter === 'all' || (payFilter === 'settled' ? isSettledRegistrationPayment(r.payment_status) : isUnpaid);
     return matchesQuery && matchesStatus && matchesPay;
   });
+  const visibleCheckoutHolds = checkoutHolds.filter(r => {
+    const q = query.trim().toLowerCase();
+    return !q || [r.athlete_name, r.parent_name, r.parent_email, r.parent_phone, labelFor(r), r.source]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(q);
+  });
   const [activeId, setActiveId] = _useState(allRegs[0]?.id || null);
   const active = allRegs.find(r => r.id === activeId) || regs[0] || allRegs[0] || null;
   const [notes, setNotes] = _useState(active?.notes || '');
@@ -2276,10 +2473,10 @@ function RegistrationInbox({ snap, session }) {
         <div>
           <div className="hz-eyebrow" style={{ marginBottom: 5 }}>Unpaid registrations</div>
           <div style={{ fontSize: 18, fontWeight: 900 }}>{unpaidRegs.length} need payment follow-up.</div>
-          <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>Only submitted/manual registrations appear here. Public checkout starts are not counted until payment is complete.</div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>Only submitted/manual registrations appear in the main queue. Checkout starts that stopped before payment are listed below for owner follow-up.</div>
           {checkoutHolds.length > 0 && (
             <div style={{ color: 'var(--hz-amber)', fontSize: 12, marginTop: 5 }}>
-              {checkoutHolds.length} checkout {checkoutHolds.length === 1 ? 'start is' : 'starts are'} hidden because payment was not completed.
+              {checkoutHolds.length} checkout {checkoutHolds.length === 1 ? 'start is' : 'starts are'} waiting on parent follow-up.
             </div>
           )}
           {reminderError && <div style={{ color: 'var(--hz-pink)', fontSize: 13, marginTop: 8 }}>{reminderError}</div>}
@@ -2306,6 +2503,63 @@ function RegistrationInbox({ snap, session }) {
           {reminderBusy === 'all' ? 'Preparing...' : 'Send payment follow-ups'}
         </button>
       </div>
+
+      {checkoutHolds.length > 0 && (
+        <div className="hz-card" style={{ padding: 18, marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 14 }}>
+            <div>
+              <div className="hz-eyebrow" style={{ marginBottom: 5 }}>Owner-only checkout follow-up</div>
+              <div style={{ fontSize: 18, fontWeight: 900 }}>{visibleCheckoutHolds.length} family{visibleCheckoutHolds.length === 1 ? '' : 'ies'} started registration and stopped before payment.</div>
+              <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>Use this to reach out only when the parent already entered contact info.</div>
+            </div>
+            <div style={{ color: 'var(--hz-dim)', fontSize: 12 }}>
+              {checkoutHolds.length !== visibleCheckoutHolds.length ? `${checkoutHolds.length} total in this gym` : 'Current gym scope'}
+            </div>
+          </div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {visibleCheckoutHolds.map((row) => (
+              <div
+                key={row.id}
+                style={{
+                  padding: 14,
+                  borderRadius: 12,
+                  border: '1px solid rgba(255,180,84,0.18)',
+                  background: 'rgba(255,180,84,0.06)',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <div>
+                    <div className="hz-eyebrow">{labelFor(row)}</div>
+                    <div style={{ fontWeight: 800, fontSize: 15, marginTop: 4 }}>{row.athlete_name || 'Unnamed athlete'}</div>
+                    <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 6 }}>
+                      {row.parent_name || 'Parent name missing'}
+                      {row.parent_email ? ` · ${row.parent_email}` : ''}
+                      {row.parent_phone ? ` · ${row.parent_phone}` : ''}
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gap: 6, justifyItems: 'end' }}>
+                    <PaymentStatusBadge row={row}/>
+                    <div style={{ color: 'var(--hz-dim)', fontSize: 11 }}>{timeAgo(row.created_at)}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10, fontSize: 11, color: 'var(--hz-dim)' }}>
+                  <span>{row.source || 'Unknown source'}</span>
+                  {row.level_interest ? <span>· Level {row.level_interest}</span> : null}
+                  <span>· Started checkout</span>
+                </div>
+                {row.notes && (
+                  <div style={{ marginTop: 10, color: 'var(--hz-dim)', fontSize: 12, lineHeight: 1.5 }}>
+                    {row.notes}
+                  </div>
+                )}
+              </div>
+            ))}
+            {!visibleCheckoutHolds.length && (
+              <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>No checkout-start follow-ups match the current search.</div>
+            )}
+          </div>
+        </div>
+      )}
 
       <form className="hz-card" onSubmit={createAssisted} style={{ padding: 18, marginBottom: 20 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'flex-start', marginBottom: 14 }}>
