@@ -233,6 +233,7 @@ const DEFAULT_PUBLIC_GYM_NAME = 'your gym';
 const DEFAULT_PUBLIC_GYM_ID = PLACEHOLDER_PROGRAM_ID;
 const FAMILY_PACKET_LOAD_TIMEOUT_MS = 10000;
 const FAMILY_PACKET_SUBMIT_TIMEOUT_MS = 35000;
+const AUTH_BOOT_TIMEOUT_MS = 3500;
 
 function timeoutAfter(ms, message) {
   return new Promise((_, reject) => {
@@ -438,17 +439,31 @@ function App() {
   useEffect(() => {
     let live = true;
     if (!window.HZdb.auth._init) return undefined;
+    // Token refresh can stall in older/stale browser sessions. Never hold the
+    // entire application on a blank auth skeleton indefinitely; late success
+    // still flows through the auth subscription below.
+    const timeoutId = setTimeout(() => {
+      if (!live) return;
+      console.warn('[HZ] auth restore exceeded the boot budget; showing a usable shell');
+      setSession(window.HZdb.auth._getSession());
+      setAuthReady(true);
+    }, AUTH_BOOT_TIMEOUT_MS);
     window.HZdb.auth._init()
       .then((nextSession) => {
         if (!live) return;
+        clearTimeout(timeoutId);
         setSession(nextSession);
         setAuthReady(true);
       })
       .catch((err) => {
         console.warn('[HZ] auth boot failed', err);
-        if (live) setAuthReady(true);
+        clearTimeout(timeoutId);
+        if (live) {
+          setSession(window.HZdb.auth._getSession());
+          setAuthReady(true);
+        }
       });
-    return () => { live = false; };
+    return () => { live = false; clearTimeout(timeoutId); };
   }, []);
 
   // Auth subscribe

@@ -1477,9 +1477,14 @@
   }
   function ensureRealAuthSubscription() {
     if (!hasRealAuth() || realAuthSub) return;
-    const { data: sub } = window.HZsupa.auth.onAuthStateChange(async (evt, session) => {
-      try { await syncSupabaseSession(session, evt); }
-      catch (err) { console.warn('[HZ] auth sync failed', err); }
+    // Supabase holds its auth lock while invoking this callback. Awaiting more
+    // Supabase work inside it can deadlock getSession() across tabs and leave
+    // the PWA on its boot skeleton forever. Defer the sync past the callback.
+    const { data: sub } = window.HZsupa.auth.onAuthStateChange((evt, session) => {
+      setTimeout(() => {
+        syncSupabaseSession(session, evt)
+          .catch((err) => console.warn('[HZ] auth sync failed', err));
+      }, 0);
     });
     realAuthSub = sub.subscription;
   }
@@ -1487,7 +1492,11 @@
     if (!hasRealAuth()) return Promise.resolve(getSession());
     ensureRealAuthSubscription();
     if (!authInitPromise) {
-      authInitPromise = window.HZsupa.auth.getSession()
+      authInitPromise = withTimeout(
+        window.HZsupa.auth.getSession(),
+        3500,
+        'Session restore exceeded the boot budget.'
+      )
         .then(async ({ data: result, error }) => {
           if (error) throw error;
           return syncSupabaseSession(result.session);

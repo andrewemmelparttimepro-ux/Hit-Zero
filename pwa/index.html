@@ -39,19 +39,6 @@
   };
 </script>
 <script src="analytics.js?v=2eead2766b2da408"></script>
-<script>
-  // Observability must not contend with auth, the shell, or the first screen.
-  window.addEventListener('load', () => {
-    const load = () => ['/_vercel/insights/script.js', '/_vercel/speed-insights/script.js'].forEach(src => {
-      const script = document.createElement('script');
-      script.src = src;
-      script.async = true;
-      document.head.appendChild(script);
-    });
-    if ('requestIdleCallback' in window) requestIdleCallback(load, { timeout: 3000 });
-    else setTimeout(load, 1500);
-  }, { once: true });
-</script>
 
 <!-- React + Babel pinned versions -->
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
