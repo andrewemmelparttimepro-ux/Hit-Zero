@@ -151,6 +151,14 @@
     let activeProgramId = isPlaceholderProgramId(liveProfile?.program_id) ? null : liveProfile?.program_id || null;
     const activeRole = liveSession?.profile?.role || liveProfile?.role || null;
     const isStaff = activeRole === 'coach' || activeRole === 'owner';
+    // MCA's real program_id is the historical placeholder value (…-1111). A
+    // signed-in coach/owner is authoritatively scoped to their assigned
+    // program, so honor it even when it equals that sentinel. Without this the
+    // staff branch below bails on a null activeProgramId and every owner screen
+    // (registrations, roster, billing) hydrates empty.
+    if (!activeProgramId && isStaff && liveProfile?.program_id) {
+      activeProgramId = liveProfile.program_id;
+    }
     try { performance.mark('hz-live-hydration-start'); } catch {}
     const clearPrivateRows = () => {
       [
