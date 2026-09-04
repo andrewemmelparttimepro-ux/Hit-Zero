@@ -1012,6 +1012,9 @@ function MiniStat({ label, value, sub, accent }) {
     </div>
   );
 }
+// Registration and account screens load in separate production chunks. Keep
+// this shared card helper on the browser global just like the core primitives.
+window.MiniStat = MiniStat;
 function KV({ label, v }) {
   return (
     <div>

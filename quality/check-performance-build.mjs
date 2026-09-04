@@ -29,6 +29,8 @@ assert(!client.includes('onAuthStateChange(async') && /onAuthStateChange\(\(evt,
 assert(/auth\.getSession\(\),\s*3500,\s*'Session restore exceeded the boot budget\.'/m.test(client), 'Supabase session restore must have a hard boot deadline');
 const shell = await readFile(path.join(pwa, 'hit_zero_web/components/HZShell.jsx'), 'utf8');
 assert(/AUTH_BOOT_TIMEOUT_MS\s*=\s*3500/.test(shell) && /auth restore exceeded the boot budget/.test(shell), 'auth restore needs a bounded stale-session fallback');
+const drawer = await readFile(path.join(pwa, 'hit_zero_web/components/AthleteDrawer.jsx'), 'utf8');
+assert(/window\.MiniStat\s*=\s*MiniStat/.test(drawer), 'lazy registration screens need the shared MiniStat global');
 
 const immutableHeader = config.headers?.find(entry => entry.source === '/assets/app/(.*)');
 assert(immutableHeader?.headers?.some(header => header.key === 'Cache-Control' && /immutable/.test(header.value)), 'hashed assets need immutable caching');
