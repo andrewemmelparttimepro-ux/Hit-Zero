@@ -32,6 +32,6 @@ begin
  r:=public.save_family_packet_v2(pa,packet,1,true);
  if (select provenance_review_required from public.medical_records where athlete_id=a) or (select count(*) from public.waiver_signatures where athlete_id=a)<>2 or (select count(*) from public.form_responses where subject_athlete_id=a)<>2 then raise exception 'Correction history or flag incorrect';end if;
  if not exists(select 1 from public.family_packet_revisions where packet_id=old_id and revision=2 and prior_medical->>'allergies'='Child one fixture') then raise exception 'Prior medical evidence not retained';end if;
- begin perform public.save_family_packet_v2(pa,jsonb_set(packet,'{notes}','"Stale edit"'),1,true);raise exception 'Stale overwrite accepted';exception when serialization_failure then null;end;
+ begin perform public.save_family_packet_v2(pa,jsonb_set(packet,'{notes}','"Stale edit"'),1,true);raise exception 'Stale overwrite accepted';exception when check_violation then null;end;
  if has_function_privilege('authenticated','public.save_family_packet_v2(uuid,jsonb,integer,boolean)','EXECUTE') or has_function_privilege('anon','public.apply_family_packet_v2(uuid,uuid,uuid)','EXECUTE') or has_table_privilege('authenticated','public.family_info_packets','UPDATE') then raise exception 'Browser can bypass transaction';end if;
 end $$;
