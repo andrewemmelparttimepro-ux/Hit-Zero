@@ -1137,6 +1137,29 @@ function PublicPaymentLink({ registrationId }) {
   );
 }
 
+function PublicPaymentReceipt({ receipt, recurring, monthly }) {
+    return (
+      <div className="hz-card" style={{ marginTop: 18, padding: 16, background: 'rgba(63,231,160,0.08)', borderColor: 'rgba(63,231,160,0.25)' }}>
+        <div className="hz-eyebrow" style={{ color: 'var(--hz-green)', marginBottom: 8 }}>{receipt.status === 'COMPLETED' ? 'Payment received' : 'Payment awaiting confirmation'}</div>
+        <div style={{ color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.5 }}>
+          {receipt.status === 'COMPLETED' ? 'Square confirmed today’s payment.' : 'Square has not confirmed completion. Do not pay again while this payment is being checked.'} Status: {receipt.status || 'unknown'}.
+        </div>
+        {recurring ? (
+          <div style={{ color: 'var(--hz-dim)', fontSize: 12.5, lineHeight: 1.5, marginTop: 10 }}>
+            {receipt.recurring_setup?.status === 'scheduled' || receipt.recurring_setup?.status === 'active' ? `Automatic drafts are scheduled for ${joinedBillingDates(recurring.dates)} and stop after the final draft.` : receipt.recurring_setup?.message || 'Automatic draft setup has not been confirmed. Staff will need to review it.'}
+          </div>
+        ) : monthly && (
+          <div style={{ color: 'var(--hz-dim)', fontSize: 12.5, lineHeight: 1.5, marginTop: 10 }}>
+            This was a one-time Square payment. It did not start automatic monthly drafts.
+          </div>
+        )}
+        {receipt.receipt_url && (
+          <a className="hz-btn hz-btn-primary" href={receipt.receipt_url} target="_blank" rel="noopener noreferrer" style={{ marginTop: 14, display: 'inline-flex' }}>View Square receipt</a>
+        )}
+      </div>
+    );
+}
+
 function PublicPaymentStep({ klass, program, form, registrationId, registrationIds = [] }) {
   const [config, setConfig] = _useS_pb(null);
   const [card, setCard] = _useS_pb(null);
@@ -1236,7 +1259,7 @@ function PublicPaymentStep({ klass, program, form, registrationId, registrationI
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) throw new Error(data.message || 'Payment failed. Please try again.');
-      setReceipt(data.payment || {});
+      setReceipt({ ...(data.payment || {}), recurring_setup: data.recurring_setup || null });
     } catch (err) {
       setError(err.message || 'Payment failed. Please try again.');
     } finally {
@@ -1244,28 +1267,7 @@ function PublicPaymentStep({ klass, program, form, registrationId, registrationI
     }
   }
 
-  if (receipt) {
-    return (
-      <div className="hz-card" style={{ marginTop: 18, padding: 16, background: 'rgba(63,231,160,0.08)', borderColor: 'rgba(63,231,160,0.25)' }}>
-        <div className="hz-eyebrow" style={{ color: 'var(--hz-green)', marginBottom: 8 }}>Payment received</div>
-        <div style={{ color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.5 }}>
-          Your spot is locked in. Square status: {receipt.status || 'paid'}.
-        </div>
-        {recurring ? (
-          <div style={{ color: 'var(--hz-dim)', fontSize: 12.5, lineHeight: 1.5, marginTop: 10 }}>
-            Automatic drafts are scheduled for {joinedBillingDates(recurring.dates)} and stop after the final draft.
-          </div>
-        ) : monthly && (
-          <div style={{ color: 'var(--hz-dim)', fontSize: 12.5, lineHeight: 1.5, marginTop: 10 }}>
-            This was a one-time Square payment. It did not start automatic monthly drafts.
-          </div>
-        )}
-        {receipt.receipt_url && (
-          <a className="hz-btn hz-btn-primary" href={receipt.receipt_url} target="_blank" rel="noopener noreferrer" style={{ marginTop: 14, display: 'inline-flex' }}>View Square receipt</a>
-        )}
-      </div>
-    );
-  }
+  if (receipt) return <PublicPaymentReceipt receipt={receipt} recurring={recurring} monthly={monthly}/>;
 
   return (
     <div className="hz-card" style={{ marginTop: 18, padding: 16, textAlign: 'left' }}>

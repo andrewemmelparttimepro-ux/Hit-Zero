@@ -74,3 +74,7 @@ entrypoint = "../functions/calendar-ics/index.ts"
 # Dedicated database-only secret is verified in the handler.
 [functions.on-skill-mastered]
 verify_jwt = false
+
+# Keep gateway closed until provider signature configuration and delivery proof exist.
+[functions.square-webhook-v1]
+verify_jwt = true

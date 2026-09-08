@@ -1,0 +1,12 @@
+Deno.env.set('SUPABASE_URL','https://example.test');Deno.env.set('SUPABASE_SERVICE_ROLE_KEY','test-only-key');Deno.env.set('SQUARE_WEBHOOK_SIGNATURE_KEY','fixture-only-key');Deno.env.set('SQUARE_WEBHOOK_NOTIFICATION_URL','https://example.test/functions/v1/square-webhook-v1');
+const real=globalThis.fetch;let fake:typeof fetch=real;globalThis.fetch=(...args:Parameters<typeof fetch>)=>fake(...args);
+const {handleRequest}=await import('../functions/square-webhook-v1/index.ts');
+async function signed(raw:string){const key=await crypto.subtle.importKey('raw',new TextEncoder().encode('fixture-only-key'),{name:'HMAC',hash:'SHA-256'},false,['sign']);const bytes=await crypto.subtle.sign('HMAC',key,new TextEncoder().encode('https://example.test/functions/v1/square-webhook-v1'+raw));return btoa(String.fromCharCode(...new Uint8Array(bytes)));}
+for(const mode of ['forged','valid','duplicate','outage','malformed'])Deno.test(`Square webhook inbox: ${mode}`,async()=>{
+ let writes=0,reads=0;fake=async(input:any,init:any={})=>{
+  if(String(input).includes('billing_provider_connections')){reads++;return Response.json({id:'connection'});}
+  if(String(input).includes('billing_provider_webhook_events')){writes++;if(init.method!=='POST')throw new Error('Existing receipt must not be updated');const row=JSON.parse(init.body);if(row.signature_ok!==true||row.processing_status!=='queued')throw new Error('Only verified events queue');return mode==='duplicate'?Response.json({code:'23505'},{status:409}):mode==='outage'?Response.json({code:'XX000'},{status:503}):new Response(null,{status:201});}
+  throw new Error('No provider call or account sync permitted');
+ };
+ try{const raw=mode==='malformed'?JSON.stringify({type:'payment.updated',merchant_id:'merchant'}):JSON.stringify({event_id:'fixture-event',type:'payment.updated',merchant_id:'merchant'});const signature=mode==='forged'?'bad':await signed(raw);const res=await handleRequest(new Request('https://example.test/functions/v1/square-webhook-v1',{method:'POST',headers:{'x-square-hmacsha256-signature':signature},body:raw}));const expected=mode==='forged'?403:mode==='malformed'?400:mode==='outage'?503:200;if(res.status!==expected)throw new Error(`Expected ${expected}, got ${res.status}`);if(['forged','malformed'].includes(mode)&&(writes||reads))throw new Error('Invalid event reached database');if(mode==='duplicate'&&!(await res.json()).duplicate)throw new Error('Duplicate not acknowledged');}finally{fake=real;}
+});

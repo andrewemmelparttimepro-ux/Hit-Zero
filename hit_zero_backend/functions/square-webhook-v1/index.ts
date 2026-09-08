@@ -1,97 +1,34 @@
-import {
-  corsHeaders,
-  getSquareConnection,
-  json,
-  preflight,
-  runSquareSync,
-  squareConfig,
-  supa,
-  verifySquareWebhookSignature,
-} from '../_shared/square.ts';
+import { json, preflight, supa, verifySquareWebhookSignature } from '../_shared/square.ts';
 
-function merchantIdFromEvent(evt: any) {
-  return evt?.merchant_id
-    || evt?.data?.merchant_id
-    || evt?.data?.object?.merchant_id
-    || null;
-}
-
-Deno.serve(async (req) => {
-  const pf = preflight(req);
-  if (pf) return pf;
-  if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
-
+// Only verified events enter the durable inbox. Processing is deliberately
+// separate: email-based account-wide sync is not a safe payment allocator.
+export async function handleRequest(req: Request) {
+  const pf = preflight(req); if (pf) return pf;
+  if (req.method !== 'POST') return json({ error: 'POST only' },405);
+  if (!Deno.env.get('SQUARE_WEBHOOK_SIGNATURE_KEY')) return json({ error: 'webhook_not_configured' },503);
   const raw = await req.text();
-  const signature = req.headers.get('x-square-hmacsha256-signature');
-  const notificationUrl = squareConfig().appOrigin
-    ? (Deno.env.get('SQUARE_WEBHOOK_NOTIFICATION_URL') ?? req.url)
-    : req.url;
-
-  let signatureOk = false;
-  try {
-    signatureOk = await verifySquareWebhookSignature(signature, raw, notificationUrl);
-  } catch {
-    signatureOk = false;
+  if (new TextEncoder().encode(raw).length > 1_000_000) return json({ error:'payload_too_large' },413);
+  const notificationUrl = Deno.env.get('SQUARE_WEBHOOK_NOTIFICATION_URL')
+    || `${Deno.env.get('SUPABASE_URL')}/functions/v1/square-webhook-v1`;
+  let valid=false;
+  try { valid=await verifySquareWebhookSignature(req.headers.get('x-square-hmacsha256-signature'),raw,notificationUrl); } catch { /* fail closed */ }
+  if (!valid) return json({ error:'invalid_signature' },403);
+  let event:any;
+  try { event=JSON.parse(raw); } catch { return json({ error:'invalid_json' },400); }
+  if (!event || typeof event.event_id!=='string' || !event.event_id || event.event_id.length>200
+    || typeof event.type!=='string' || !event.type || typeof event.merchant_id!=='string' || !event.merchant_id) {
+    return json({ error:'invalid_event' },400);
   }
-
-  let evt: any = null;
-  try {
-    evt = raw ? JSON.parse(raw) : null;
-  } catch {
-    evt = null;
-  }
-
-  const merchantId = merchantIdFromEvent(evt);
-  let connection: any = null;
-  if (merchantId) {
-    const { data } = await supa
-      .from('billing_provider_connections')
-      .select('*')
-      .eq('provider', 'square')
-      .eq('external_account_id', merchantId)
-      .maybeSingle();
-    connection = data || null;
-  }
-
-  const eventId = evt?.event_id || evt?.event_idempotency_key || crypto.randomUUID();
-  const eventType = evt?.type || evt?.event_type || 'unknown';
-
-  await supa.from('billing_provider_webhook_events').upsert({
-    connection_id: connection?.id ?? null,
-    provider: 'square',
-    event_id: eventId,
-    event_type: eventType,
-    signature_ok: signatureOk,
-    payload: evt ?? { raw },
-    processing_status: !signatureOk ? 'error' : 'received',
-    processing_error: signatureOk ? null : 'invalid signature',
-  }, { onConflict: 'provider,event_id' });
-
-  if (signatureOk && connection && /(payment|invoice|customer|subscription)\./i.test(eventType)) {
-    if ((globalThis as any).EdgeRuntime?.waitUntil) {
-      (globalThis as any).EdgeRuntime.waitUntil((async () => {
-        try {
-          await supa.from('billing_provider_webhook_events').update({
-            processing_status: 'queued',
-          }).eq('provider', 'square').eq('event_id', eventId);
-          await runSquareSync(connection, { mode: 'webhook' });
-          await supa.from('billing_provider_webhook_events').update({
-            processing_status: 'processed',
-            processed_at: new Date().toISOString(),
-          }).eq('provider', 'square').eq('event_id', eventId);
-        } catch (e) {
-          await supa.from('billing_provider_webhook_events').update({
-            processing_status: 'error',
-            processing_error: e instanceof Error ? e.message : String(e),
-            processed_at: new Date().toISOString(),
-          }).eq('provider', 'square').eq('event_id', eventId);
-        }
-      })());
-    }
-  }
-
-  return new Response(JSON.stringify({ ok: true, signature_ok: signatureOk }), {
-    status: 200,
-    headers: { ...corsHeaders, 'content-type': 'application/json; charset=utf-8' },
+  const {data:connection,error:lookupError}=await supa.from('billing_provider_connections')
+    .select('id').eq('provider','square').eq('external_account_id',event.merchant_id).maybeSingle();
+  if (lookupError) return json({ error:'connection_lookup_unavailable' },503);
+  const {error}=await supa.from('billing_provider_webhook_events').insert({
+    connection_id:connection?.id || null,provider:'square',event_id:event.event_id,event_type:event.type,
+    signature_ok:true,payload:event,processing_status:connection?'queued':'ignored',
+    processing_error:connection?null:'No connected gym for this merchant',
   });
-});
+  // Insert preserves the original receipt and processing state on redelivery.
+  if(error && error.code!=='23505') return json({ error:'webhook_inbox_unavailable' },503);
+  return json({ok:true,duplicate:error?.code==='23505'});
+}
+if(import.meta.main) Deno.serve(handleRequest);
