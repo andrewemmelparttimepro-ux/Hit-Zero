@@ -739,6 +739,11 @@ function AthleteRoutineView({ snap, session, navigate }) {
 function CoachRoutineBuilder({ snap, navigate, pushToast }) {
   const routine = React.useMemo(() => window.HZsel.routine(), [snap._tick]);
   const team = React.useMemo(() => window.HZsel.team(), [snap._tick]);
+  if (!routine) return <EmptyState icon="routine" title="No routine yet" body="Start a routine for this program."/>;
+  return <CoachRoutineWorkspace key={routine.id} routine={routine} team={team} snap={snap} navigate={navigate} pushToast={pushToast}/>;
+}
+
+function CoachRoutineWorkspace({ routine, team, snap, navigate, pushToast }) {
   const [selected, setSelected] = React.useState(null);
   const [selectedFormationId, setSelectedFormationId] = React.useState(null);
   const [selectedPositionId, setSelectedPositionId] = React.useState(null);
@@ -794,7 +799,6 @@ function CoachRoutineBuilder({ snap, navigate, pushToast }) {
   const liveStageRef = React.useRef(null);
   const sectionEditorRef = React.useRef(null);
   const sectionLabelInputRef = React.useRef(null);
-  const mcaShowcaseEnsureRef = React.useRef(new Set());
 
   const savedAudioAssets = React.useMemo(() => {
     return [...(routine?.audioAssets || [])].sort((a, b) => {
@@ -910,88 +914,6 @@ function CoachRoutineBuilder({ snap, navigate, pushToast }) {
     raf = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(raf);
   }, [audioPlaying]);
-
-  React.useEffect(() => {
-    if (!routine?.id || !window.HZdb) return undefined;
-    const showcaseAthletes = (snap.athletes || []).filter(a => a?.id).slice(0, 20);
-    if (!showcaseAthletes.length) return undefined;
-    const key = `${routine.id}:${showcaseAthletes.map(a => a.id).join(',')}`;
-    if (mcaShowcaseEnsureRef.current.has(key)) return undefined;
-    mcaShowcaseEnsureRef.current.add(key);
-
-    let cancelled = false;
-    const initialsFor = (athlete) => athlete?.initials || String(athlete?.display_name || athlete?.name || '?').split(/\s+/).map(x => x[0]).join('').slice(0, 2).toUpperCase();
-    const sectionForCount = (count) => (routine.sections || []).find(s => count >= s.start_count && count <= s.end_count);
-    const remoteInsert = async (table, rows) => {
-      if (!rows.length || !window.HZsupa || window.HZdb?.auth?._getSession?.()?.mode !== 'live') return;
-      try {
-        const cleanRows = rows.map(row => table === 'routine_positions' ? Object.fromEntries(Object.entries(row).filter(([k]) => k !== 'updated_at')) : row);
-        await window.HZsupa.from(table).upsert(cleanRows, { onConflict: 'id' });
-      } catch (err) {
-        console.warn(`[HZ] MCA showcase sync failed for ${table}`, err);
-      }
-    };
-
-    const ensureShowcase = async () => {
-      const formationIds = MCA_SHOWCASE_SEQUENCE.map(mcaFormationId);
-      const now = new Date().toISOString();
-      const formations = MCA_SHOWCASE_SEQUENCE
-        .map((picture) => {
-          const safeCount = Math.max(1, Math.min(Number(picture.count || 1), Number(routine.length_counts || 46)));
-          const section = sectionForCount(safeCount);
-          return {
-            id: mcaFormationId(picture),
-            routine_id: routine.id,
-            label: picture.label,
-            start_count: safeCount,
-            end_count: safeCount,
-            floor_width: 54,
-            floor_depth: 42,
-            notes: `${picture.note} Timed exactly to 8-count ${safeCount}${section ? ` during ${section.label || section.section_type}` : ''}.`,
-            created_at: now,
-            updated_at: now,
-          };
-        });
-      if (cancelled) return;
-      if (formations.length) {
-        await window.HZdb.from('routine_formations').upsert(formations, { onConflict: 'id' });
-        window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table: 'routine_formations', action: 'upsert' } }));
-        await remoteInsert('routine_formations', formations);
-      }
-
-      const existingPositions = (await window.HZdb.from('routine_positions').select('*').in('formation_id', formationIds)).data || [];
-      const existingById = new Map(existingPositions.map(p => [p.id, p]));
-      const positions = MCA_SHOWCASE_SEQUENCE.flatMap((picture) => {
-        const formationId = mcaFormationId(picture);
-        return showcaseAthletes.map((athlete, index) => {
-          const id = mcaPositionId(picture, athlete.id);
-          const spot = mcaLetterSpot(picture.letter, index, showcaseAthletes.length, picture.variant);
-          const existing = existingById.get(id);
-          return {
-            id,
-            formation_id: formationId,
-            athlete_id: athlete.id,
-            label: initialsFor(athlete),
-            x: Math.max(0.06, Math.min(0.94, spot.x)),
-            y: Math.max(0.08, Math.min(0.92, spot.y)),
-            role: `MCA ${picture.letter}`,
-            created_at: existing?.created_at || now,
-          };
-        });
-      });
-      if (cancelled) return;
-      if (positions.length) {
-        await window.HZdb.from('routine_positions').upsert(positions, { onConflict: 'id' });
-        window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table: 'routine_positions', action: 'upsert' } }));
-        await remoteInsert('routine_positions', positions);
-      }
-    };
-
-    ensureShowcase().catch(err => console.warn('[HZ] MCA showcase seed failed', err));
-    return () => { cancelled = true; };
-  }, [routine?.id, routine?.length_counts, snap._tick]);
-
-  if (!routine) return <EmptyState icon="routine" title="No routine yet" body="Start a routine for this program."/>;
 
   const predicted = window.HZsel.predictedScore();
   const comp = window.HZsel.daysToComp();
