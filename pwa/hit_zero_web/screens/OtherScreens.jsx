@@ -2060,7 +2060,8 @@ function LaunchAccessManager({ snap, session }) {
   const [linkTeams, setLinkTeams] = React.useState({});
   const [familySearch, setFamilySearch] = React.useState('');
   const [success, setSuccess] = React.useState('');
-  const [showSetup, setShowSetup] = React.useState(false);
+  const [showSetup, setShowSetup] = React.useState(()=>String(window.location?.hash || '').includes('family_setup=1'));
+  React.useEffect(()=>{ const open=()=>{if(String(window.location?.hash || '').includes('family_setup=1'))setShowSetup(true);}; window.addEventListener('hashchange',open);return ()=>window.removeEventListener('hashchange',open); },[]);
   const canManage = ['coach', 'owner'].includes(session?.actualProfile?.role || session?.profile?.role);
 
   const load = React.useCallback(async () => {

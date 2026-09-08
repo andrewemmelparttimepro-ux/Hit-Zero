@@ -947,6 +947,7 @@ function App() {
       {cmdkOpen && snap && <CommandK snap={snap} session={session} onClose={() => setCmdkOpen(false)} onNav={(id) => { location.hash = '#' + id; setCmdkOpen(false); }} openAthlete={(id) => { openAthleteDrawer(id); setCmdkOpen(false); }} />}
       {drawerAthleteId && snap && <AthleteDrawer athleteId={drawerAthleteId} snap={snap} session={session} onClose={closeAthleteDrawer} pushToast={pushToast}/>}
       {walkthroughRole && <RoleWalkthrough role={walkthroughRole} onClose={closeWalkthrough} navigate={(id) => { location.hash = '#' + id; closeWalkthrough(); }}/>}
+      <WelcomeUpdate session={session} navigate={navigate}/>
       <div className="toast-stack">
         {toasts.map(t => <Toast key={t.id} toast={t} onClose={(id) => setToasts(prev => prev.filter(x => x.id !== id))} />)}
       </div>
@@ -2913,3 +2914,68 @@ function CommandK({ snap, session, onClose, onNav, openAthlete }) {
   );
 }
 window.CommandK = CommandK;
+
+
+function WelcomeUpdateDialog({notice,busy,error,onClose,onOpen}) {
+  const dialogRef=React.useRef(null);
+  React.useEffect(()=>{
+    const previous=document.activeElement;
+    const element=dialogRef.current;
+    element?.focus();
+    const keydown=e=>{
+      if(e.key==='Escape'){e.preventDefault();if(!busy)onClose();}
+      if(e.key==='Tab'){
+        const buttons=[...element.querySelectorAll('button:not([disabled])')];
+        if(!buttons.length){e.preventDefault();return;}
+        const first=buttons[0],last=buttons[buttons.length-1];
+        if(e.shiftKey && (document.activeElement===first || document.activeElement===element)){e.preventDefault();last.focus();}
+        else if(!e.shiftKey && (document.activeElement===last || document.activeElement===element)){e.preventDefault();first.focus();}
+      }
+    };
+    element?.addEventListener('keydown',keydown);
+    const overflow=document.body.style.overflow;document.body.style.overflow='hidden';
+    return ()=>{element?.removeEventListener('keydown',keydown);document.body.style.overflow=overflow;previous?.focus?.();};
+  },[busy,onClose]);
+  return <div style={{position:'fixed',inset:0,zIndex:10000,background:'rgba(0,0,0,.78)',display:'grid',placeItems:'center',padding:16}}>
+    <section ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="hz-welcome-title" tabIndex={-1}
+      style={{width:'min(100%,600px)',maxHeight:'calc(100dvh - 32px)',overflowY:'auto',background:'var(--hz-surface,#14141b)',color:'var(--hz-text,#f5f5fa)',border:'1px solid var(--hz-teal,#27cfd7)',borderRadius:20,padding:'clamp(18px,4vw,30px)',boxSizing:'border-box',boxShadow:'0 20px 90px #000'}}>
+      <div className="hz-eyebrow" style={{color:'var(--hz-teal)',marginBottom:10}}>New in Hit Zero · For your daily work</div>
+      <h2 id="hz-welcome-title" style={{fontSize:27,lineHeight:1.15,margin:'0 0 12px'}}>{notice.title}</h2>
+      <p style={{fontSize:14,lineHeight:1.5,color:'var(--hz-dim)'}}>{notice.intro}</p>
+      <div style={{display:'grid',gap:14,margin:'20px 0'}}>{(notice.items || []).map((item,i)=><div key={i}>
+        <div style={{fontWeight:800,fontSize:15,marginBottom:4}}>{item.title}</div>
+        <div style={{fontSize:13,lineHeight:1.5,color:'var(--hz-dim)'}}>{item.body}</div>
+      </div>)}</div>
+      <p style={{fontSize:12,lineHeight:1.5,color:'var(--hz-dim)'}}>{notice.footer}</p>
+      {error && <p role="alert" style={{color:'var(--hz-pink)'}}>{error}</p>}
+      <div style={{display:'flex',flexWrap:'wrap',gap:10,marginTop:20}}>
+        <button className="hz-btn hz-btn-primary" disabled={busy} onClick={onOpen}>Open family setup</button>
+        <button className="hz-btn" disabled={busy} onClick={onClose}>{busy?'Saving…':'Got it'}</button>
+      </div>
+      <p style={{fontSize:11,color:'var(--hz-dim)',marginBottom:0}}>Once you dismiss this update, it will not greet you again.</p>
+    </section>
+  </div>;
+}
+function WelcomeUpdate({session,navigate}) {
+  const profile=session?.actualProfile || session?.profile;
+  const [notice,setNotice]=React.useState(null),[busy,setBusy]=React.useState(false),[error,setError]=React.useState('');
+  React.useEffect(()=>{
+    let active=true;setNotice(null);
+    if(session?.mode==='live' && profile?.role==='owner')window.HZdb.auth.welcomeNotice()
+      .then(result=>{if(active && !result.error)setNotice(result.data?.notice || null);}).catch(()=>{});
+    return ()=>{active=false;};
+  },[session?.mode,profile?.id]);
+  const dismiss=React.useCallback(async(open=false)=>{
+    if(!notice || busy)return;
+    setBusy(true);setError('');
+    try {
+      const result=await window.HZdb.auth.dismissWelcomeNotice(notice.id);
+      if(result.error)throw result.error;
+      setNotice(null);if(open)navigate('admin?family_setup=1');
+    }catch(e){setError('Could not save dismissal. Please try again; your update is still here.');}
+    finally{setBusy(false);}
+  },[notice,busy,navigate]);
+  const close=React.useCallback(()=>dismiss(false),[dismiss]);
+  if(!notice)return null;
+  return <WelcomeUpdateDialog notice={notice} busy={busy} error={error} onClose={close} onOpen={()=>dismiss(true)}/>;
+}

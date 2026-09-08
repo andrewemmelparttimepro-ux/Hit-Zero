@@ -1431,6 +1431,35 @@ async function createInvite(profile: any, body: any) {
   return json({ ok: true, invite: data, code, url: `${APP_ORIGIN}/#invite/${encodeURIComponent(code)}` });
 }
 
+// Targeted product updates are server-managed Auth app metadata, never browser
+// preferences. A shared receipt lets one person with two accounts acknowledge once.
+export async function welcomeNotice(profile:any, body:any) {
+  if (!profile?.id || profile.role !== 'owner') return json({ok:true,notice:null});
+  const {data:own,error:ownError}=await supa.auth.admin.getUserById(profile.id);
+  if (ownError) throw ownError;
+  const pointer=own.user?.app_metadata?.hz_welcome_notice;
+  if (!pointer?.id || !pointer?.receipt_user_id) return json({ok:true,notice:null});
+  const canonical=pointer.receipt_user_id===profile.id ? {data:own,error:null}
+    : await supa.auth.admin.getUserById(pointer.receipt_user_id);
+  if (canonical.error) throw canonical.error;
+  const metadata=canonical.data.user?.app_metadata || {};
+  const notice=metadata.hz_welcome_notice;
+  if (!notice || notice.id!==pointer.id || notice.program_id!==profile.program_id
+      || !Array.isArray(notice.audience) || !notice.audience.includes(profile.id)) return json({ok:true,notice:null});
+  if (body.action==='dismiss_welcome_notice') {
+    if (body.notice_id!==notice.id) return json({error:'This update changed. Reopen it before dismissing.'},409);
+    if (!notice.acknowledged_at) {
+      const {error}=await supa.auth.admin.updateUserById(pointer.receipt_user_id,{
+        app_metadata:{...metadata,hz_welcome_notice:{...notice,acknowledged_at:new Date().toISOString()}},
+      });
+      if (error) throw error;
+    }
+    return json({ok:true,notice:null});
+  }
+  if (notice.acknowledged_at) return json({ok:true,notice:null});
+  return json({ok:true,notice:{id:notice.id,title:notice.title,intro:notice.intro,items:notice.items,footer:notice.footer}});
+}
+
 export async function handleRequest(req: Request) {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
@@ -1446,6 +1475,7 @@ export async function handleRequest(req: Request) {
     if (action === 'my_family_packet') return await myFamilyPacket(profile, body);
     if (action === 'submit_family_packet') return await submitFamilyPacket(profile, body);
     if (action === 'submit_join_request') return await submitJoinRequest(profile, body);
+    if (action === 'get_welcome_notice' || action === 'dismiss_welcome_notice') return await welcomeNotice(profile, body);
     if (action === 'staff_queue') return await staffQueue(profile);
     if (action === 'create_schedule_session') return await createScheduleSession(profile, body);
     if (action === 'update_schedule_session') return await updateScheduleSession(profile, body);

@@ -40,3 +40,10 @@ test('live shell identifies the exact gym including MCA and never borrows anothe
  assert.equal(context.activeProgramFromSnap({programs:[other]},{mode:'live',profile:{program_id:mca.id}}),null);
  assert.equal(context.activeProgramFromSnap({programs:[other]},{mode:'live',profile:{}}),null);
 });
+test('owner update explains changes and offers a durable dismissal or direct family setup action',()=>{
+ const notice={title:'Your update',intro:'Changes for daily work',items:[{title:'Every child',body:'Review family links'}],footer:'Use Program → Family setup.'};
+ const html=renderToStaticMarkup(React.createElement(context.WelcomeUpdateDialog,{notice,busy:false,error:'',onClose:()=>{},onOpen:()=>{}}));
+ assert.match(html,/role="dialog" aria-modal="true" aria-labelledby="hz-welcome-title"/);assert.match(html,/Every child/);assert.match(html,/>Got it</);assert.match(html,/>Open family setup</);
+ const busy=renderToStaticMarkup(React.createElement(context.WelcomeUpdateDialog,{notice,busy:true,error:'Please retry',onClose:()=>{},onOpen:()=>{}}));
+ assert.match(busy,/role="alert"/);assert.equal((busy.match(/disabled=""/g)||[]).length,2);
+});
