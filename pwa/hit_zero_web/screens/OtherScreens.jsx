@@ -3284,13 +3284,15 @@ window.OfferingsManager = OfferingsManager;
 // ─── Billing ───
 function Billing({ snap, session, openAthlete }) {
   const bill = window.HZsel.programBilling();
-  const program = window.HZsel.programProfile?.() || (snap.programs || [])[0] || {};
+  const programId = (session.actualProfile || session.profile)?.program_id;
+  const program = (snap.programs || []).find(row => row.id === programId) || {};
+  const programAthleteIds = new Set((snap.athletes || []).filter(a => programId && (a.program_id === programId || (snap.teams || []).some(t => t.id === a.team_id && t.program_id === programId))).map(a => a.id));
   const isParent = session.profile.role === 'parent';
   const scope = window.HZviewerScope ? window.HZviewerScope(snap, session) : null;
   const visibleAthleteIds = scope?.visibleAthleteIds || new Set();
   const accounts = (snap.billing_accounts || [])
-    .filter(acc => !isParent || visibleAthleteIds.has(acc.athlete_id))
-    .map(acc => ({ ...acc, athlete: snap.athletes.find(a => a.id === acc.athlete_id) }))
+    .filter(acc => isParent ? visibleAthleteIds.has(acc.athlete_id) : programAthleteIds.has(acc.athlete_id))
+    .map(acc => ({ ...acc, owed: Math.max(0, Number(acc.season_total || 0) - Number(acc.paid || 0)), athlete: snap.athletes.find(a => a.id === acc.athlete_id) }))
     .filter(acc => !isParent || acc.athlete);
   const parentClassEnrollments = isParent ? window.HZsel.classEnrollmentsForParent(session) : [];
   const activeParentClassEnrollments = isParent
@@ -3301,6 +3303,7 @@ function Billing({ snap, session, openAthlete }) {
     : [];
   const ownerClassEnrollments = !isParent
     ? (snap.class_enrollments || [])
+      .filter(row => programId && row.program_id === programId)
       .slice()
       .sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
       .slice(0, 12)
@@ -3308,8 +3311,8 @@ function Billing({ snap, session, openAthlete }) {
   const parentSummary = isParent ? parentBillingSummary(snap, session) : null;
   const [parentEnrollmentView, setParentEnrollmentView] = React.useState('active');
   const programRef = {
-    program_id: (snap.teams || [])[0]?.program_id || program.id || null,
-    program_slug: program.slug || 'mca',
+    program_id: programId || null,
+    program_slug: program.slug || null,
   };
 
   return (
@@ -3318,7 +3321,7 @@ function Billing({ snap, session, openAthlete }) {
       <p style={{color:'var(--hz-dim)',fontSize:13,lineHeight:1.5,marginBottom:18}}>Class receipts and season accounts may cover overlapping charges. Each total shows its own records.</p>
       {isParent && (
         <div style={{ display: 'grid', gap: 16, marginBottom: 20 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
+          <div className="hz-billing-stats">
           <StatTile label="Class payments" value={dollarsToParentMoney(parentSummary.classPaid)} sub={`${parentSummary.enrollments.length} saved enrollments`} accent="var(--hz-green)" size="md"/>
           <StatTile label="Season paid" value={dollarsToParentMoney(parentSummary.paid)} sub="posted season accounts" accent="var(--hz-teal)" size="md"/>
           <StatTile label="Season balance" value={dollarsToParentMoney(parentSummary.owed)} sub="posted season accounts" accent={parentSummary.owed > 0 ? 'var(--hz-amber)' : 'var(--hz-green)'} size="md"/>
@@ -3344,7 +3347,7 @@ function Billing({ snap, session, openAthlete }) {
       )}
       {!isParent && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 16, marginBottom: 24 }}>
+          <div className="hz-billing-stats">
             <StatTile label="Registration payments" value={`$${bill.registrationRevenue.toLocaleString()}`} sub={`${bill.paidRegistrations || 0} paid records`} accent="var(--hz-green)" size="md"/>
             <StatTile label="Season paid" value={`$${bill.paid.toLocaleString()}`} sub="posted season accounts" accent="var(--hz-teal)" size="md"/>
             <StatTile label="Season balance" value={`$${bill.owed.toLocaleString()}`} sub="posted accounts only" accent="var(--hz-amber)" size="md"/>
@@ -3437,12 +3440,12 @@ function Billing({ snap, session, openAthlete }) {
             <thead><tr><th style={{ paddingLeft: 20 }}>Athlete</th><th>Season</th><th>Paid</th><th>Balance</th>{!isParent && <th>Sync</th>}{!isParent && <th>Square snapshot</th>}<th>Autopay</th></tr></thead>
             <tbody>
               {accounts.map(a => (
-                <tr key={a.id} onClick={() => openAthlete && openAthlete(a.athlete_id)} style={{ cursor: 'pointer' }}>
+                <tr key={a.id}>
                   <td style={{ paddingLeft: 20 }}>
                     {a.athlete && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <Avatar name={a.athlete.display_name} initials={a.athlete.initials} color={a.athlete.photo_color} src={a.athlete.photo_url} size={28}/>
-                        <span style={{ fontWeight: 600 }}>{a.athlete.display_name}</span>
+                        <button type="button" className="hz-btn hz-btn-sm" onClick={() => openAthlete?.(a.athlete_id)} aria-label={'Open ' + a.athlete.display_name + ' billing profile'}>{a.athlete.display_name}</button>
                       </div>
                     )}
                   </td>

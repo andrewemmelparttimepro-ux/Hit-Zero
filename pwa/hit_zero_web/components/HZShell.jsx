@@ -27,28 +27,29 @@ const NAV_CONFIG = {
     { id: 'birthdays',    label: 'Birthdays',       icon: 'calendar' },
   ],
   owner: [
-    { group: 'Overview' },
-    { id: 'today',        label: 'Today',           icon: 'today' },
-    { id: 'profile',      label: 'My Account',      icon: 'home' },
-    { id: 'admin',        label: 'Program',         icon: 'admin' },
-    { id: 'billing',      label: 'Billing',         icon: 'billing' },
-    { id: 'leads',        label: 'Leads',           icon: 'roster' },
-    { group: 'Teams' },
-    { id: 'roster',       label: 'Roster',          icon: 'roster' },
-    { id: 'skills',       label: 'Skill Matrix',    icon: 'skills' },
-    { id: 'routine',      label: 'Routine Builder', icon: 'routine' },
-    { id: 'score',        label: 'Mock Score',      icon: 'score' },
-    { id: 'ai_judge',     label: 'AI Judge',        icon: 'bolt' },
-    { id: 'arcade',       label: 'Arcade',          icon: 'bolt' },
-    { id: 'forms',        label: 'Evaluations',     icon: 'skills' },
-    { group: 'Communications' },
-    { id: 'messages',     label: 'Messages',        icon: 'megaphone' },
-    { id: 'announcements',label: 'Announcements',   icon: 'megaphone' },
-    { id: 'schedule',     label: 'Schedule',        icon: 'calendar' },
-    { id: 'volunteers',   label: 'Volunteers',      icon: 'roster' },
-    { id: 'medical',      label: 'Medical',         icon: 'bolt' },
-    { id: 'birthdays',    label: 'Birthdays',       icon: 'calendar' },
-    { id: 'registration', label: 'Registration',    icon: 'plus' },
+    { group: 'Daily work' },
+    { id: 'today', label: 'Today', icon: 'today' },
+    { id: 'registration', label: 'Registration', icon: 'plus' },
+    { id: 'roster', label: 'Roster', icon: 'roster' },
+    { id: 'skills', label: 'Skill Matrix', icon: 'skills' },
+    { id: 'schedule', label: 'Schedule', icon: 'calendar' },
+    { id: 'billing', label: 'Billing', icon: 'billing' },
+    { group: 'Families' },
+    { id: 'messages', label: 'Messages', icon: 'megaphone' },
+    { id: 'announcements', label: 'Announcements', icon: 'megaphone' },
+    { id: 'medical', label: 'Medical', icon: 'bolt' },
+    { id: 'leads', label: 'Leads', icon: 'roster' },
+    { id: 'volunteers', label: 'Volunteers', icon: 'roster' },
+    { id: 'birthdays', label: 'Birthdays', icon: 'calendar' },
+    { group: 'Training tools' },
+    { id: 'routine', label: 'Routine Builder', icon: 'routine' },
+    { id: 'score', label: 'Mock Score', icon: 'score' },
+    { id: 'forms', label: 'Evaluations', icon: 'skills' },
+    { id: 'ai_judge', label: 'AI Judge', icon: 'bolt' },
+    { id: 'arcade', label: 'Arcade', icon: 'bolt' },
+    { group: 'Settings' },
+    { id: 'admin', label: 'Program', icon: 'admin' },
+    { id: 'profile', label: 'My Account', icon: 'home' },
   ],
   athlete: [
     { group: 'My Cheer' },
@@ -162,16 +163,16 @@ function walkthroughStorageKey(profileId, role, mode) {
 const MOBILE_TABS = {
   owner:   [
     { id: 'today',    label: 'Today',    icon: 'today' },
-    { id: 'admin',    label: 'Program',  icon: 'admin' },
+    { id: 'registration', label: 'Register', icon: 'plus' },
     { id: 'roster',   label: 'Roster',   icon: 'roster' },
-    { id: 'arcade',   label: 'Arcade',   icon: 'bolt' },
+    { id: 'billing',  label: 'Billing',  icon: 'billing' },
     { id: '__more',   label: 'More',     icon: 'skills' },
   ],
   coach:   [
     { id: 'today',    label: 'Today',    icon: 'today' },
     { id: 'roster',   label: 'Roster',   icon: 'roster' },
-    { id: 'practice', label: 'Plans',     icon: 'routine' },
-    { id: 'arcade',   label: 'Arcade',   icon: 'bolt' },
+    { id: 'skills',   label: 'Skills',   icon: 'skills' },
+    { id: 'schedule', label: 'Schedule', icon: 'calendar' },
     { id: '__more',   label: 'More',     icon: 'skills' },
   ],
   athlete: [
@@ -184,8 +185,8 @@ const MOBILE_TABS = {
   parent:  [
     { id: 'parent',   label: 'Home',     icon: 'home' },
     { id: 'schedule', label: 'Schedule', icon: 'calendar' },
-    { id: 'arcade',   label: 'Arcade',   icon: 'bolt' },
-    { id: 'medical',  label: 'Medical',  icon: 'bolt' },
+    { id: 'family_forms', label: 'Forms', icon: 'skills' },
+    { id: 'billing',  label: 'Billing',  icon: 'billing' },
     { id: '__more',   label: 'More',     icon: 'skills' },
   ],
 };
@@ -828,6 +829,7 @@ function App() {
 
   return (
     <div className={'app-shell' + (isMobile ? ' app-shell--mobile' : '')}>
+      <a className="hz-skip-link" href="#hz-main" onClick={e => { e.preventDefault(); document.getElementById('hz-main')?.focus(); }}>Skip to content</a>
       {!isMobile && (
         <>
           <Sidebar
@@ -857,7 +859,7 @@ function App() {
         />
       )}
 
-      <div className="main hz-rise" key={isAthleteProfileRoute ? baseRoute : screenId}>
+      <main id="hz-main" tabIndex={-1} aria-label={screenLabel} className="main hz-rise" key={isAthleteProfileRoute ? baseRoute : screenId}>
         {isAthleteProfileRoute && snap ? (
           <ScreenErrorBoundary screenId="athlete" navigate={navigate}>
             <window.AthleteProfile
@@ -886,12 +888,13 @@ function App() {
         ) : (
           <SkeletonCard rows={5} style={{ margin: 40, maxWidth: 620 }} />
         )}
-      </div>
+      </main>
 
       {isMobile && (
         <MobileTabBar
           role={effectiveRole}
           active={screenId}
+          moreOpen={moreSheetOpen}
           badges={{ messages: unreadMessages }}
           onNav={(id) => {
             if (id === '__more') setMoreSheetOpen(true);
@@ -997,12 +1000,12 @@ function MobileAccountSheet({ session, snap, onClose, onSignOut, onWalkthrough }
 window.MobileAccountSheet = MobileAccountSheet;
 
 // ─── Mobile bottom tab bar ───
-function MobileTabBar({ role, active, onNav, badges = {} }) {
+function MobileTabBar({ role, active, onNav, moreOpen = false, badges = {} }) {
   const tabs = MOBILE_TABS[role] || MOBILE_TABS.coach;
   return (
     <nav className="mobile-tabbar hz-nosel" aria-label="Primary">
       {tabs.map(t => {
-        const isActive = active === t.id;
+        const isActive = active === t.id || (t.id === '__more' && !tabs.some(item => item.id === active));
         const badge = badges[t.id] || 0;
         return (
           <button
@@ -1010,6 +1013,8 @@ function MobileTabBar({ role, active, onNav, badges = {} }) {
             className={'mobile-tabbar__tab' + (isActive ? ' is-active' : '')}
             onClick={() => onNav(t.id)}
             aria-current={isActive ? 'page' : undefined}
+            aria-expanded={t.id === '__more' ? moreOpen : undefined}
+            aria-haspopup={t.id === '__more' ? 'dialog' : undefined}
           >
             <span className="mobile-tabbar__icon"><HZIcon name={t.icon} size={20}/></span>
             <span className="mobile-tabbar__label">{t.label}</span>
@@ -1025,16 +1030,35 @@ window.MobileTabBar = MobileTabBar;
 // ─── Mobile "More" bottom sheet (everything not in the tab bar) ───
 function MobileMoreSheet({ nav, active, tabIds, onNav, onClose, onSignOut }) {
   const tabSet = new Set(tabIds);
+  const dialogRef = React.useRef(null);
+  const closeRef = React.useRef(onClose);
+  closeRef.current = onClose;
+  React.useEffect(() => {
+    const previous = document.activeElement;
+    const dialog = dialogRef.current;
+    const focusable = () => [...dialog.querySelectorAll('button, a[href], input, select, textarea, [tabindex="0"]')].filter(el => !el.disabled);
+    focusable()[0]?.focus();
+    const handleKey = e => {
+      if (e.key === 'Escape') { e.preventDefault(); closeRef.current(); }
+      if (e.key !== 'Tab') return;
+      const nodes = focusable(); const first = nodes[0]; const last = nodes[nodes.length - 1];
+      if (e.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) { e.preventDefault(); last?.focus(); }
+      else if (!e.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) { e.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => { document.removeEventListener('keydown', handleKey); if (previous?.isConnected) previous.focus(); };
+  }, []);
   return (
     <div className="mobile-sheet-backdrop" onClick={onClose}>
-      <div className="mobile-sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="More">
+      <div ref={dialogRef} className="mobile-sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="More">
         <div className="mobile-sheet__handle"/>
-        <div className="mobile-sheet__title">More</div>
+        <div className="mobile-sheet__title" style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>More<button type="button" className="hz-btn hz-btn-sm" onClick={onClose}>Close</button></div>
         <div className="mobile-sheet__list">
           {nav.filter(it => it.id && !tabSet.has(it.id)).map(it => (
             <button
               key={it.id}
               className={'mobile-sheet__item' + (active === it.id ? ' is-active' : '')}
+              aria-current={active === it.id ? 'page' : undefined}
               onClick={() => onNav(it.id)}
             >
               <span className="mobile-sheet__item-icon"><HZIcon name={it.icon} size={18}/></span>
@@ -1045,7 +1069,7 @@ function MobileMoreSheet({ nav, active, tabIds, onNav, onClose, onSignOut }) {
           <div className="mobile-sheet__divider"/>
           <button className="mobile-sheet__item" onClick={onSignOut}>
             <span className="mobile-sheet__item-icon"><HZIcon name="logout" size={18}/></span>
-            <span className="mobile-sheet__item-label">Sign out</span>
+            <span className="mobile-sheet__item-label">My account</span>
           </button>
         </div>
       </div>
@@ -1099,19 +1123,21 @@ function Sidebar({ nav, active, session, onNav, open, snap, program }) {
           {programName}{programLocation ? ' · ' + programLocation : ''}
         </div>
       </div>
-      <nav style={{ flex: 1, overflowY: 'auto' }} className="hz-scroll">
+      <nav aria-label="Primary" style={{ flex: 1, overflowY: 'auto' }} className="hz-scroll">
         {nav.map((item, i) => item.group ? (
           <div key={'g'+i} className="nav-group-label">{item.group}</div>
         ) : (
-          <div
+          <a
             key={item.id}
+            href={'#' + item.id}
+            aria-current={active === item.id ? 'page' : undefined}
             className={`nav-item ${active === item.id ? 'active' : ''}`}
-            onClick={() => onNav(item.id)}
+            onClick={e => { e.preventDefault(); onNav(item.id); }}
           >
             <div className="nav-accent"></div>
             <HZIcon name={item.icon} size={17} />
             <span>{item.label}</span>
-          </div>
+          </a>
         ))}
       </nav>
       <div style={{ borderTop: '1px solid var(--hz-line)', paddingTop: 14, marginTop: 14 }}>

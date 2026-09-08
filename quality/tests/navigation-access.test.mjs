@@ -1,0 +1,25 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import {createRequire} from 'node:module';
+const require=createRequire(new URL('../../pwa/package.json',import.meta.url));
+const React=require('react');
+const {renderToStaticMarkup}=require('react-dom/server');
+const {transformSync}=require('esbuild');
+const context={React,window:{},HZIcon:()=>null,HZWordmark:()=>null,Avatar:()=>null};
+vm.createContext(context);
+vm.runInContext(transformSync(fs.readFileSync(new URL('../../pwa/hit_zero_web/components/HZShell.jsx',import.meta.url),'utf8'),{loader:'jsx'}).code,context);
+for(const role of ['owner','coach','parent','athlete'])test(`${role} navigation exposes keyboard links and every non-primary route in More`,()=>{
+ const nav=context.roleNav(role);
+ const html=renderToStaticMarkup(React.createElement(context.Sidebar,{nav,active:nav.find(x=>x.id).id,session:{profile:{id:'fixture',display_name:'Fixture user',role}},snap:{athletes:[]},onNav:()=>{}}));
+ assert.match(html,/<nav aria-label="Primary"/);
+ assert.equal((html.match(/aria-current="page"/g)||[]).length,1);
+ for(const item of nav.filter(x=>x.id))assert.ok(html.includes(`href="#${item.id}"`),item.id);
+ const tabs=vm.runInContext(`MOBILE_TABS.${role}`,context);
+ const more=renderToStaticMarkup(React.createElement(context.MobileMoreSheet,{nav,active:'medical',tabIds:tabs.map(x=>x.id),onNav:()=>{},onClose:()=>{},onSignOut:()=>{}}));
+ assert.match(more,/role="dialog" aria-modal="true" aria-label="More"/);
+ assert.match(more,/>Close<\/button>/);
+ for(const item of nav.filter(x=>x.id&&!tabs.some(t=>t.id===x.id)))assert.ok(more.includes(item.label),item.id);
+ if(role==='owner')assert.deepEqual(Array.from(tabs,x=>x.id),['today','registration','roster','billing','__more']);
+});
