@@ -1818,39 +1818,85 @@ function AnnouncementEditor({ announcement, disabled, onSave, onCancel, onDelete
 }
 window.Announcements = Announcements;
 
-function BirthdayCalendar({ snap }) {
-  const dobByName = new Map();
-  (snap.family_info_packets || []).forEach(packet => {
-    if (packet.athlete_name && packet.athlete_dob) dobByName.set(String(packet.athlete_name).toLowerCase(), packet.athlete_dob);
-  });
-  (snap.registrations || []).forEach(reg => {
-    if (reg.athlete_name && reg.athlete_dob && !dobByName.has(String(reg.athlete_name).toLowerCase())) {
-      dobByName.set(String(reg.athlete_name).toLowerCase(), reg.athlete_dob);
-    }
-  });
-  const today = new Date();
-  const rows = (snap.athletes || [])
-    .filter(a => !a.deleted_at)
-    .map(a => {
-      const dob = a.athlete_dob || a.date_of_birth || dobByName.get(String(a.display_name || '').toLowerCase());
-      if (!dob) return null;
-      const parsed = new Date(dob + 'T00:00:00');
-      if (Number.isNaN(parsed.getTime())) return null;
-      const next = new Date(today.getFullYear(), parsed.getMonth(), parsed.getDate());
-      if (next < new Date(today.getFullYear(), today.getMonth(), today.getDate())) next.setFullYear(today.getFullYear() + 1);
-      const turning = next.getFullYear() - parsed.getFullYear();
-      const days = Math.ceil((next - new Date(today.getFullYear(), today.getMonth(), today.getDate())) / 86400000);
-      return { athlete: a, dob: parsed, next, turning, days };
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.next - b.next);
+function BirthdayPartyOffer({ programId, canEdit }) {
+  const [state,setState]=React.useState({loading:true,offer:null,error:''});
+  const [draft,setDraft]=React.useState(null);
+  const [saving,setSaving]=React.useState(false);
+  const load=React.useCallback(async()=>{
+    if(!programId){setState({loading:false,offer:null,error:''});return;}
+    setState(s=>({...s,loading:true,error:''}));
+    const {data,error}=await window.HZsupa.from('public_program_resources').select('content,updated_at').eq('program_id',programId).eq('resource_key','birthday_party').maybeSingle();
+    setState({loading:false,offer:data?.content || null,error:error?'Birthday details could not load.':''});
+  },[programId]);
+  React.useEffect(()=>{load().catch(()=>setState({loading:false,offer:null,error:'Birthday details could not load.'}));},[load]);
+  async function publish() {
+    const price=Number(draft.price_cents);
+    if(!Number.isSafeInteger(price)||price<0||price>1000000||!/^https:\/\//.test(draft.request_url)||!/^https:\/\//.test(draft.image_url)) {setState(s=>({...s,error:'Use a valid price and secure request/image links.'}));return;}
+    setSaving(true);
+    try {
+      const {error}=await window.HZsupa.from('program_public_resources').upsert({program_id:programId,resource_key:'birthday_party',content:{...draft,price_cents:price},published:true,updated_at:new Date().toISOString()},{onConflict:'program_id,resource_key'});
+      if(error)throw error;
+      setDraft(null);await load();
+    } catch(error){setState(s=>({...s,error:error.message || 'Could not publish birthday details.'}));}
+    finally{setSaving(false);}
+  }
+  const offer=state.offer;
+  if(state.loading)return <div className="hz-card" role="status" style={{padding:20,marginBottom:20}}>Loading birthday package...</div>;
+  if(!offer&&!state.error)return null;
+  return <section className="hz-card" style={{padding:20,marginBottom:20}} aria-label="Birthday party package">
+    {state.error&&<div role="alert" style={{color:'var(--hz-red)',marginBottom:12}}>{state.error}<button className="hz-btn hz-btn-sm" onClick={()=>load().catch(()=>{})}>Retry</button></div>}
+    {offer&&<><div className="hz-eyebrow">Birthday party package</div><h2>{offer.title}</h2><div style={{fontSize:30,color:'var(--hz-teal)'}}>{centsToParentMoney(offer.price_cents)}</div><p>{offer.summary}</p>
+      <ul style={{paddingLeft:20,lineHeight:1.7}}>{(offer.details || []).map(item=><li key={item}>{item}</li>)}</ul><p style={{color:'var(--hz-dim)'}}>Parents provide: {offer.parents_provide}</p>
+      <a className="hz-btn hz-btn-primary" href={offer.request_url} target="_blank" rel="noreferrer">Request a birthday date</a>
+      <p style={{fontSize:12,color:'var(--hz-dim)'}}>MCA's request form opens in a new tab. A request is not a confirmed reservation.</p>
+      <details><summary style={{padding:'12px 0',cursor:'pointer'}}>View the full birthday package</summary><img src={offer.image_url} alt="MCA birthday party package" style={{display:'block',width:'100%',maxWidth:700,height:'auto'}} loading="lazy"/></details>
+      {canEdit&&!draft&&<button className="hz-btn" onClick={()=>setDraft({...offer})}>Edit birthday details</button>}
+    </>}
+    {canEdit&&draft&&<div style={{display:'grid',gap:12,marginTop:16}}>
+      <p>Publishing updates the package in Hit Zero and on the MCA public Programs page.</p>
+      {['title','summary','parents_provide','request_url','image_url'].map(key=><label key={key}>{({title:'Title',summary:'Summary',parents_provide:'Parents provide',request_url:'Request form link',image_url:'Package image link'})[key]}<input className="hz-input" value={draft[key] || ''} onChange={e=>setDraft({...draft,[key]:e.target.value})}/></label>)}
+      <label>Price in dollars<input className="hz-input" type="number" min="0" step="0.01" value={draft.price_cents/100} onChange={e=>setDraft({...draft,price_cents:Math.round(Number(e.target.value)*100)})}/></label>
+      <label>Included items, one per line<textarea className="hz-input" rows="6" value={(draft.details || []).join('\n')} onChange={e=>setDraft({...draft,details:e.target.value.split('\n').filter(Boolean)})}/></label>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button className="hz-btn hz-btn-primary" disabled={saving} onClick={publish}>{saving?'Publishing...':'Publish birthday details'}</button><button className="hz-btn" disabled={saving} onClick={()=>setDraft(null)}>Cancel</button></div>
+    </div>}
+  </section>;
+}
+window.BirthdayPartyOffer=BirthdayPartyOffer;
+
+function birthdayRows(snap, session, today=new Date()) {
+  const pid=(session?.actualProfile || session?.profile)?.program_id;
+  const teams=new Set((snap.teams || []).filter(t=>t.program_id===pid).map(t=>t.id));
+  const flagged=new Set((snap.medical_records || []).filter(r=>r.provenance_review_required).map(r=>r.athlete_id));
+  const dates=new Map();
+  for(const p of snap.family_info_packets || []) {
+    const aid=p.athlete_id || p.materialized_athlete_id;
+    if(!aid || flagged.has(aid) || p.completion_status!=='complete' || (p.athlete_id && p.materialized_athlete_id && p.athlete_id!==p.materialized_athlete_id))continue;
+    if(p.athlete_id ? (!p.confirmed_at || p.confirmed_by!==p.profile_id) : !p.materialized_at)continue;
+    if(!dates.has(aid))dates.set(aid,new Set());
+    if(p.athlete_dob)dates.get(aid).add(p.athlete_dob);
+  }
+  return (snap.athletes || []).filter(a=>!a.deleted_at && pid && (teams.has(a.team_id)||a.program_id===pid)).flatMap(a=>{
+    const options=dates.get(a.id);
+    if(!options || options.size!==1)return [];
+    const dob=[...options][0];const match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(dob);if(!match)return [];
+    const [year,month,day]=match.slice(1).map(Number);const parsed=new Date(year,month-1,day);
+    if(parsed.getFullYear()!==year || parsed.getMonth()!==month-1 || parsed.getDate()!==day || parsed>today)return [];
+    const next=new Date(today.getFullYear(),month-1,day);
+    if(next<new Date(today.getFullYear(),today.getMonth(),today.getDate()))next.setFullYear(next.getFullYear()+1);
+    const days=Math.round((Date.UTC(next.getFullYear(),next.getMonth(),next.getDate())-Date.UTC(today.getFullYear(),today.getMonth(),today.getDate()))/86400000);
+    return [{athlete:a,dob:parsed,next,turning:next.getFullYear()-year,days}];
+  }).sort((a,b)=>a.next-b.next);
+}
+function BirthdayCalendar({ snap, session }) {
+  const rows=birthdayRows(snap,session);
 
   return (
     <div>
       <SectionHeading eyebrow="Roster birthdays" title="Birthdays."/>
+      <BirthdayPartyOffer programId={(session?.actualProfile || session?.profile)?.program_id} canEdit={(session?.actualProfile || session?.profile)?.role==='owner'}/>
       <div className="hz-card" style={{ padding: 18, marginBottom: 18 }}>
         <div style={{ color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.55 }}>
-          Birthdays are calculated from linked family packets and registration records. Athletes without a DOB stay hidden here until staff links or collects that field.
+          Birthdays come from completed packets linked to the exact athlete. Unlinked, conflicting or flagged records stay hidden until the family confirms them.
         </div>
       </div>
       <div style={{ display: 'grid', gap: 12 }}>
