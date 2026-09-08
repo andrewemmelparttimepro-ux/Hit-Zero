@@ -29,43 +29,15 @@ async function loadTusClient() {
   return window.__hzTusLoader;
 }
 
-const SCORE_CALIBRATION_ANCHORS = [{
-  label: 'Known comp day anchor',
-  model_pct: 90.3,
-  official_pct: 93.65,
-  note: 'Single known day-of-competition score supplied by Andrew on 2026-04-23.',
-}];
-
-function clampProjectedScore(v) {
-  return Math.max(0, Math.min(99.5, Number.isFinite(v) ? v : 0));
-}
-
+// Show recorded model output without a score uplift from a single historical example.
+// Legacy adjusted rows are usable only when their raw model percentage was retained.
 function calibrateScorecard(sc) {
-  if (!sc || sc.calibration) return sc;
-  const rawPct = Number(sc.pct ?? sc.total ?? 0);
-  const possible = Number(sc.possible ?? 100) || 100;
-  const anchor = SCORE_CALIBRATION_ANCHORS[0];
-  const delta = anchor.official_pct - anchor.model_pct;
-  const influence = Math.exp(-Math.abs(rawPct - anchor.model_pct) / 16);
-  const adjustment = Number((delta * influence).toFixed(2));
-  const pct = clampProjectedScore(rawPct + adjustment);
-  return {
-    ...sc,
-    raw_pct: Number(rawPct.toFixed(2)),
-    raw_total: Number((Number(sc.total ?? rawPct) || rawPct).toFixed(2)),
-    pct: Number(pct.toFixed(2)),
-    total: Number((pct / 100 * possible).toFixed(2)),
-    calibration: {
-      applied: Math.abs(adjustment) >= 0.05,
-      basis: 'single_anchor_soft_offset',
-      adjustment,
-      raw_pct: Number(rawPct.toFixed(2)),
-      raw_total: Number((Number(sc.total ?? rawPct) || rawPct).toFixed(2)),
-      pct: Number(pct.toFixed(2)),
-      total: Number((pct / 100 * possible).toFixed(2)),
-      anchors: SCORE_CALIBRATION_ANCHORS,
-    },
-  };
+  if (!sc) return null;
+  const raw = sc.calibration?.applied ? (sc.raw_pct ?? sc.calibration.raw_pct) : sc.pct;
+  if (raw == null || !Number.isFinite(Number(raw)) || Number(raw)<0 || Number(raw)>100) return null;
+  const pct=Number(raw),possible=Number(sc.possible ?? 100);
+  if(!Number.isFinite(possible)||possible<=0) return null;
+  return {...sc,pct,total:pct/100*possible,possible,categories:Array.isArray(sc.categories)?sc.categories:[],calibration:{applied:false,basis:'unadjusted_model_output'}};
 }
 
 function AIJudge({ snap, session, navigate }) {
@@ -149,11 +121,11 @@ function AIJudge({ snap, session, navigate }) {
         <div>
           <div className="hz-eyebrow" style={{ color: 'var(--hz-pink)' }}>AI Routine Judge · Assistant Mode</div>
           <div className="hz-display" style={{ fontSize: 56, lineHeight: 1 }}>
-            24/7 coach in your <span className="hz-zero">pocket</span>.
+            Video feedback for <span className="hz-zero">coach review</span>.
           </div>
           <div style={{ color: 'var(--hz-dim)', fontSize: 14, marginTop: 8, maxWidth: 600 }}>
             {canUpload
-              ? 'Upload a full-out, get a USASF-style scorecard, element-by-element timeline, and actionable feedback for coaches, athletes, and parents - in under a minute.'
+              ? 'Upload a routine for AI-generated observations. Coaches must review the results; scores are unvalidated model estimates, not official competition scores. Processing time varies.'
               : 'Review scorecards, athlete feedback, and trend history released for your team.'}
           </div>
         </div>
@@ -173,7 +145,8 @@ function AIJudge({ snap, session, navigate }) {
           {analyses.length === 0 && <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>{canUpload ? 'No analyses yet. Upload your first full-out.' : 'No scorecards have been released yet.'}</div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {analyses.map(a => {
-              const pct = Number(calibrateScorecard(a.scorecard)?.pct ?? 0).toFixed(0);
+              const modelCard = a.status === 'complete' && !analysisIsGeminiFallback(a, window.HZsel.feedbackFor(a.id, 'coach')) ? calibrateScorecard(a.scorecard) : null;
+              const pct = modelCard ? Number(modelCard.pct).toFixed(0)+'%' : 'Unscored';
               const isActive = a.id === (active?.id);
               const degraded = String(a.engine_version || '').startsWith('heuristic') && analysisUsesStoredVideo(a);
               const retryNeeded = degraded || (a.status === 'failed' && analysisUsesStoredVideo(a));
@@ -194,7 +167,7 @@ function AIJudge({ snap, session, navigate }) {
                       <div style={{ fontWeight: 700, fontSize: 14, marginTop: 3 }}>{(a.division || 'Senior') + ' L' + (a.level ?? '—')}</div>
                     </div>
                     <div style={{ fontFamily: 'var(--hz-serif)', fontStyle: 'italic', fontWeight: 700, fontSize: 22 }}>
-                      {pct}<span style={{ color: 'var(--hz-dim)', fontSize: 11 }}>%</span>
+                      {pct}
                     </div>
                   </div>
                   <div style={{ fontSize: 10, color: 'var(--hz-dim)', marginTop: 6, letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700 }}>
@@ -207,7 +180,7 @@ function AIJudge({ snap, session, navigate }) {
         </aside>
 
         <section>
-          {view === 'upload' && canUpload && <NewAnalysis key={`${team?.id}:${team?.division}:${team?.level}:${draft?.key || 'fresh'}`} team={team} draft={draft} onDone={(id) => { setDraft(null); setActiveId(id); setView('results'); _bump(n => n + 1); }}/>}
+          {view === 'upload' && canUpload && <NewAnalysis key={`${team?.id}:${team?.division}:${team?.level}:${draft?.key || 'fresh'}`} team={team} draft={draft} live={session?.mode !== 'prototype'} onDone={(id) => { setDraft(null); setActiveId(id); setView('results'); _bump(n => n + 1); }}/>}
           {view === 'upload' && !canUpload && (
             <EmptyState
               icon="bolt"
@@ -269,6 +242,7 @@ const PREP_MAX_EDGE = 960;
 const PREP_FPS = 12;
 const PREP_VIDEO_BPS = 2_000_000;
 const ANALYSIS_SOURCE_CACHE_KEY = 'hz_ai_judge_sources_v1';
+try { localStorage.removeItem(ANALYSIS_SOURCE_CACHE_KEY); } catch {}
 
 function needsBrowserPrep(file) {
   if (!file) return false;
@@ -302,42 +276,6 @@ function storageSafeVideoMime(mime) {
   return 'video/mp4';
 }
 
-function readAnalysisSourceCache() {
-  try {
-    const raw = localStorage.getItem(ANALYSIS_SOURCE_CACHE_KEY);
-    return raw ? (JSON.parse(raw) || {}) : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeAnalysisSourceCache(cache) {
-  try { localStorage.setItem(ANALYSIS_SOURCE_CACHE_KEY, JSON.stringify(cache)); } catch {}
-}
-
-function rememberAnalysisSource(analysisId, source) {
-  if (!analysisId || !source) return;
-  const cache = readAnalysisSourceCache();
-  cache[analysisId] = {
-    ...(cache[analysisId] || {}),
-    ...source,
-    analysis_id: analysisId,
-    saved_at: new Date().toISOString(),
-  };
-  const ids = Object.keys(cache);
-  if (ids.length > 60) {
-    ids
-      .sort((a, b) => Date.parse(cache[b]?.saved_at || 0) - Date.parse(cache[a]?.saved_at || 0))
-      .slice(60)
-      .forEach(id => { delete cache[id]; });
-  }
-  writeAnalysisSourceCache(cache);
-}
-
-function cachedAnalysisSource(analysisId) {
-  if (!analysisId) return null;
-  return readAnalysisSourceCache()[analysisId] || null;
-}
 
 function coachFlagsFromPreflight(pf) {
   const src = pf?.coach_flags || pf || {};
@@ -366,8 +304,7 @@ function analysisGeminiError(feedback) {
 }
 
 function analysisIsGeminiFallback(a, feedback = []) {
-  return String(a?.engine_version || '').startsWith('heuristic') &&
-    (analysisUsesStoredVideo(a) || !!analysisGeminiError(feedback));
+  return String(a?.engine_version || '').startsWith('heuristic') || !!analysisGeminiError(feedback);
 }
 
 function friendlyGeminiFallback(errorText) {
@@ -400,54 +337,11 @@ function advisoryPreflight(pf, meta = {}) {
   return out;
 }
 
-async function guessStoredVideoSource(team, analysis) {
-  if (!team?.program_id || !team?.id || !window.HZ_FN_BASE || !window.HZ_ANON_KEY) return null;
-  const prefix = `${team.program_id}/${team.id}`;
-  const res = await fetch((window.HZ_FN_BASE || '') + '/storage/v1/object/list/videos', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + window.HZ_ANON_KEY,
-      'apikey': window.HZ_ANON_KEY,
-    },
-    body: JSON.stringify({
-      prefix,
-      limit: 30,
-      sortBy: { column: 'name', order: 'desc' },
-    }),
-  });
-  if (!res.ok) throw new Error('Could not look up the stored upload for this run.');
-  const items = await res.json();
-  if (!Array.isArray(items) || !items.length) return null;
-
-  const targetMs = Date.parse(analysis?.created_at || analysis?.queued_at || analysis?.started_at || '') || Date.now();
-  const ranked = items
-    .map(item => {
-      const name = String(item?.name || '');
-      const tsMatch = name.match(/^(\d{13})-/);
-      const stamp = tsMatch ? Number(tsMatch[1]) : Date.parse(item?.created_at || item?.updated_at || '') || 0;
-      return {
-        item,
-        name,
-        stamp,
-        delta: stamp ? Math.abs(stamp - targetMs) : Number.MAX_SAFE_INTEGER,
-      };
-    })
-    .sort((a, b) => a.delta - b.delta || String(b.name).localeCompare(String(a.name)));
-
-  const best = ranked[0];
-  if (!best || !Number.isFinite(best.delta) || best.delta > 30 * 60 * 1000) return null;
-  return {
-    video_path: `${prefix}/${best.name}`,
-    video_name: best.name,
-    video_mime: best.item?.metadata?.mimetype || null,
-    source_guess: true,
-  };
-}
 
 async function resolveAnalysisSource(team, analysis) {
   if (!analysis) return null;
   const pf = analysis.preflight || {};
+  if (pf.source_guess) return null;
   if (pf.source_video_path || pf.source_video_id) {
     const direct = {
       video_path: pf.source_video_path || null,
@@ -456,19 +350,13 @@ async function resolveAnalysisSource(team, analysis) {
       video_mime: pf.source_video_mime || null,
       source_guess: !!pf.source_guess,
     };
-    rememberAnalysisSource(analysis.id, direct);
     return direct;
   }
   if (analysis.video_id) {
     const direct = { video_id: analysis.video_id, video_name: pf.source_video_name || null };
-    rememberAnalysisSource(analysis.id, direct);
     return direct;
   }
-  const cached = cachedAnalysisSource(analysis.id);
-  if (cached) return cached;
-  const guessed = await guessStoredVideoSource(team, analysis);
-  if (guessed) rememberAnalysisSource(analysis.id, guessed);
-  return guessed;
+  return null;
 }
 
 function waitFor(el, ok, fail, failMsg) {
@@ -565,7 +453,7 @@ async function prepVideoForGemini(file, { onProgress } = {}) {
   }
 }
 
-function NewAnalysis({ team, onDone, draft }) {
+function NewAnalysis({ team, onDone, draft, live=true }) {
   const [division, setDivision] = _aiUS(draft?.division || team?.division || 'Senior Elite 4');
   const [level, setLevel] = _aiUS(draft?.level || team?.level || 4);
   const [teamSize, setTeamSize] = _aiUS(draft?.teamSize || 20);
@@ -584,24 +472,14 @@ function NewAnalysis({ team, onDone, draft }) {
     setProgress(0);
     setErr(null);
 
-    // Progress is a soft indicator — the real work happens server-side in the
-    // background. We tick up slowly to ~90% while polling, then snap to 100%
-    // when the analysis row flips to 'complete'.
-    let tick;
-    const startTicks = () => {
-      let i = 0;
-      tick = setInterval(() => { i += 1; setProgress(Math.min(90, Math.round(i * 1.5))); }, 1000);
-    };
-    const stopTicks = () => { if (tick) clearInterval(tick); tick = null; };
 
     try {
       const supa = window.HZsupa;           // set by index.html when credentials are available
 
-      // Prefer the real path whenever Supabase creds are wired — video is
-      // optional; without one we still get a USASF-scored run from the rubric
-      // engine (Gemini fallback), but we warn the coach so they're not
-      // surprised.
+      if(live && !supa) throw new Error('Analysis service is unavailable. Please sign in again.');
+      // Live analysis requires the exact uploaded video source.
       if (supa) {
+        if (!file && !source?.video_path && !source?.video_id) throw new Error('Upload a routine video before starting analysis.');
         let videoPath = source?.video_path || null;
         let videoId = source?.video_id || null;
         let uploadFile = file;
@@ -723,16 +601,7 @@ function NewAnalysis({ team, onDone, draft }) {
           }
         }
         if (!kick?.analysis_id) throw new Error('no analysis_id returned');
-        if (sourceMeta || videoId) {
-          rememberAnalysisSource(kick.analysis_id, {
-            video_path: sourceMeta?.video_path || null,
-            video_id: videoId || null,
-            video_name: sourceMeta?.video_name || null,
-            video_mime: sourceMeta?.video_mime || null,
-            reused_from_analysis_id: draft?.reusedFromAnalysisId || source?.analysis_id || null,
-            source_guess: !!sourceMeta?.source_guess,
-          });
-        }
+
 
         // Poll until the row flips to complete / failed / preflight_failed.
         // Gives us up to ~15 minutes of runway for long routines.
@@ -756,24 +625,20 @@ function NewAnalysis({ team, onDone, draft }) {
         // the mock-store UI to the real backend without a full rewrite.
         await window.HZmirror?.analysis(kick.analysis_id);
 
-        stopTicks();
         setProgress(100);
         setTimeout(() => { setStatus('done'); onDone(kick.analysis_id); }, 300);
       } else {
         // Demo / offline path — in-browser heuristic, resolves synchronously.
-        startTicks();
         const res = await window.HZdb.analyzeRoutine({
           team_id: team.id,
           video_id: file?.name ? 'v_' + file.name : null,
           division, level: Number(level), team_size: Number(teamSize),
           preflight: pf,
         });
-        stopTicks();
         setProgress(100);
         setTimeout(() => { setStatus('done'); onDone(res.analysis_id); }, 300);
       }
     } catch (e) {
-      stopTicks();
       setErr(e.message || String(e));
       setStatus('error');
     }
@@ -832,20 +697,20 @@ function NewAnalysis({ team, onDone, draft }) {
           {status === 'preparing'
             ? `Optimizing video... ${progress}%`
             : status === 'processing'
-            ? `Analyzing… ${progress}%`
+            ? 'Analyzing… Waiting for the saved result.'
             : source
             ? `Reevaluating the stored upload for this ${division} routine. No re-upload needed.`
-            : `${division} routines cap at ${maxFmt} (USASF 2025–26). Analysis runs in 1–3 minutes — you can close this tab, it'll finish in the background.`}
+            : 'Upload a real routine video. Processing time varies; wait for a saved result before leaving this screen.'}
         </div>
         <button
           className="hz-btn hz-btn-primary"
-          disabled={status === 'processing' || status === 'preparing' || !team}
+          disabled={status === 'processing' || status === 'preparing' || !team || (live && (!window.HZsupa || (!file && !source?.video_path && !source?.video_id)))}
           onClick={run}>
-          {(status === 'processing' || status === 'preparing') ? `${status === 'preparing' ? 'Optimizing' : 'Analyzing'}… ${progress}%` : 'Run AI Judge →'}
+          {(status === 'processing' || status === 'preparing') ? (status === 'preparing' ? `Optimizing… ${progress}%` : 'Analyzing…') : 'Run AI Judge →'}
         </button>
       </div>
 
-      {(status === 'processing' || status === 'preparing') && <ProgressBar pct={progress}/>}
+      {status === 'preparing' && <ProgressBar pct={progress}/>}
       {err && <div style={{ marginTop: 12, color: 'var(--hz-red)', fontSize: 13 }}>Error: {err}</div>}
     </div>
   );
@@ -937,7 +802,7 @@ function FileDrop({ file, onFile, maxFmt, division }) {
             {hot ? 'Drop it — we\u2019ll take it from here.' : 'Drop a video or click to pick'}
           </div>
           <div style={{ fontSize: 12, marginTop: 4 }}>
-            Full-mat wide shot. Clips up to <b style={{ color: '#fff' }}>3:30</b> supported — {division || 'Senior'} routines run to <b style={{ color: '#fff' }}>{maxFmt || '2:30'}</b> per USASF 2025–26. MP4 / MOV / WebM, up to 500MB. Large clips get optimized in-browser first so Gemini does not choke on giant phone exports. Skip for demo — we'll analyze with your roster.
+            Use a full-mat wide shot. This uploader supports clips up to <b style={{ color: '#fff' }}>3:30</b>, in MP4 / MOV / WebM, up to 500MB. Large clips may be optimized before upload. These are upload limits; confirm competition rules with your event organizer. A real video is required for live analysis.
           </div>
         </div>
       )}
@@ -973,7 +838,7 @@ function PreflightChecklist({ pf, onChange }) {
 // ─── Scorecard (results) ──────────────────────────────────────────────────
 function Scorecard({ analysis, me, snap, onReevaluate, reevaluating }) {
   const a = analysis;
-  const sc = calibrateScorecard(a.scorecard || { categories: [], total: 0, possible: 100, pct: 0, deductions: { total: 0, count: 0 } });
+  const sc = calibrateScorecard(a.scorecard);
   const elements = window.HZsel.elementsFor(a.id);
   const dedns = window.HZsel.deductionsFor(a.id);
   const audience = me.role === 'athlete' ? 'athlete' : me.role === 'parent' ? 'parent' : 'coach';
@@ -982,14 +847,14 @@ function Scorecard({ analysis, me, snap, onReevaluate, reevaluating }) {
   const coachFeedback = window.HZsel.feedbackFor(a.id, 'coach');
   const geminiError = analysisGeminiError(coachFeedback);
   const geminiFallback = analysisIsGeminiFallback(a, coachFeedback);
-  const failedVideoJudge = a.status === 'failed' && analysisUsesStoredVideo(a);
+  const failedVideoJudge = a.status === 'failed' || geminiFallback || !sc;
 
   if (a.status === 'processing' || a.status === 'queued') {
     return (
       <div className="hz-card" style={{ padding: 40, textAlign: 'center' }}>
         <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)' }}>Processing</div>
-        <div className="hz-display" style={{ fontSize: 28, marginTop: 8 }}>Crunching the numbers…</div>
-        <ProgressBar pct={80}/>
+        <div className="hz-display" style={{ fontSize: 28, marginTop: 8 }}>Waiting for the analysis result...</div>
+        <div role="status" style={{marginTop:12}}>Processing time varies. No score is available yet.</div>
       </div>
     );
   }
@@ -1035,33 +900,14 @@ function Scorecard({ analysis, me, snap, onReevaluate, reevaluating }) {
   }
 
   const durationSec = (a.duration_ms || 0) / 1000;
-  const calibration = sc.calibration;
   return (
     <div style={{ display: 'grid', gap: 18 }}>
-      {geminiFallback && (
-        <div className="hz-card" style={{ padding: 22, border: '1px solid rgba(255,184,77,0.35)', background: 'rgba(255,184,77,0.06)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-            <div>
-              <div className="hz-eyebrow" style={{ color: 'var(--hz-amber)' }}>Video judge unavailable</div>
-              <div className="hz-display" style={{ fontSize: 24, marginTop: 6 }}>This score is a fallback estimate, not a real Gemini judge result.</div>
-              <div style={{ color: 'var(--hz-dim)', fontSize: 13, marginTop: 10, maxWidth: 760 }}>
-                {friendlyGeminiFallback(geminiError)} Retry the stored upload to get a real video analysis.
-              </div>
-            </div>
-            {onReevaluate && (
-              <button className="hz-btn hz-btn-primary" disabled={!!reevaluating} onClick={onReevaluate}>
-                {reevaluating ? 'Finding upload…' : 'Retry Video Judge'}
-              </button>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Hero score */}
       <div className="hz-card" style={{ padding: 28 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 18, flexWrap: 'wrap' }}>
           <div>
-            <div className="hz-eyebrow">{geminiFallback ? 'Fallback estimate' : 'Projected score'}</div>
+            <div className="hz-eyebrow">Unvalidated model estimate</div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
               <div style={{ fontFamily: 'var(--hz-serif)', fontStyle: 'italic', fontWeight: 700, fontSize: 96, lineHeight: 1 }}>
                 {Number(sc.pct ?? 0).toFixed(1)}
@@ -1071,14 +917,7 @@ function Scorecard({ analysis, me, snap, onReevaluate, reevaluating }) {
             <div style={{ color: 'var(--hz-dim)', fontSize: 13, marginTop: 6 }}>
               {(a.division || '—')} · L{a.level ?? '—'} · engine {a.engine_version} · ran in {durationSec.toFixed(1)}s
             </div>
-            {calibration?.applied && (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10, color: 'var(--hz-dim)', fontSize: 12 }}>
-                <span className="hz-pill hz-pill-teal">Calibrated</span>
-                <span>
-                  Raw model {Number(calibration.raw_pct ?? sc.raw_pct ?? 0).toFixed(1)} · official anchor 90.3 → 93.65 · adjustment {Number(calibration.adjustment || 0) >= 0 ? '+' : ''}{Number(calibration.adjustment || 0).toFixed(1)}
-                </span>
-              </div>
-            )}
+
             {onReevaluate && (
               <div style={{ marginTop: 14 }}>
                 <button className="hz-btn hz-btn-ghost" disabled={!!reevaluating} onClick={onReevaluate}>
@@ -1088,12 +927,12 @@ function Scorecard({ analysis, me, snap, onReevaluate, reevaluating }) {
             )}
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div className="hz-eyebrow">Confidence</div>
+            <div className="hz-eyebrow">Model self-confidence</div>
             <div style={{ fontFamily: 'var(--hz-serif)', fontStyle: 'italic', fontWeight: 700, fontSize: 42 }}>
-              {Math.round((a.confidence || 0) * 100)}%
+              {a.confidence == null ? 'Unavailable' : Math.round(a.confidence * 100)+'%'}
             </div>
             <div style={{ color: 'var(--hz-dim)', fontSize: 12 }}>
-              {dedns.length} deductions · {elements.length} elements
+              Unvalidated · {dedns.length} deductions · {elements.length} elements
             </div>
           </div>
         </div>
@@ -1234,10 +1073,11 @@ function ElementsTable({ elements, snap }) {
 
 // ─── Trend view ───────────────────────────────────────────────────────────
 function TrendView({ snap, team }) {
-  const series = window.HZsel.scoreTrend(team?.id, 8).map(point => {
+  const series = window.HZsel.scoreTrend(team?.id, 8).flatMap(point => {
     const analysis = window.HZsel.analysisById(point.id);
-    const sc = calibrateScorecard(analysis?.scorecard || { pct: point.pct, total: point.pct, possible: 100 });
-    return { ...point, pct: Number(sc?.pct ?? point.pct ?? 0) };
+    if(!analysis || analysis.status!=='complete' || analysisIsGeminiFallback(analysis,window.HZsel.feedbackFor(analysis.id,'coach'))) return [];
+    const sc = calibrateScorecard(analysis.scorecard);
+    return sc ? [{...point,pct:sc.pct}] : [];
   });
   if (series.length === 0) {
     return <div className="hz-card" style={{ padding: 40, color: 'var(--hz-dim)', textAlign: 'center' }}>No completed analyses yet.</div>;
@@ -1251,7 +1091,7 @@ function TrendView({ snap, team }) {
     <div className="hz-card" style={{ padding: 28 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 16 }}>
         <div>
-          <div className="hz-eyebrow">Score trend · last {series.length} analyses</div>
+          <div className="hz-eyebrow">Unvalidated model estimates · last {series.length} analyses</div>
           <div className="hz-display" style={{ fontSize: 28, marginTop: 4 }}>
             {delta >= 0 ? 'Up ' : 'Down '}<span className="hz-zero">{Math.abs(delta).toFixed(1)}%</span>
           </div>
