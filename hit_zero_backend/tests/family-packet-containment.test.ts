@@ -16,7 +16,7 @@ Deno.test('linking an existing athlete only fills missing skill cells',async()=>
   if(url.includes('/skills'))return Response.json([{id:'skill'}]);
   if(url.includes('/athlete_skills')){const prefer=new Headers(init.headers).get('prefer')||'';if(!prefer.includes('resolution=ignore-duplicates'))throw new Error('Existing skills would be overwritten');seeded=true;return new Response(null,{status:201});}
   if(url.includes('/parent_links'))return Response.json({parent_id:parent.id,athlete_id:athlete.id});
-  if(url.includes('/family_info_packets'))return Response.json(null);
+  if(url.includes('/family_info_packets') || url.includes('/rpc/'))throw new Error('Link must not read or apply a guardian packet');
   if(url.includes('/billing_accounts'))return Response.json({id:'existing-account'});
   throw new Error('Unexpected request');
  };try{const res=await linkParentAthlete(staff,{parent_id:'parent',athlete_id:'athlete'});if(res.status!==200||!seeded)throw new Error('Existing link failed');}finally{fake=real;}

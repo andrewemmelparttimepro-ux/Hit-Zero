@@ -410,9 +410,9 @@ async function submitOwnerApplication(profile: any | null, body: any) {
   return json({ ok: true, application: data });
 }
 
-async function staffQueue(profile: any) {
+export async function staffQueue(profile: any) {
   if (!profile?.program_id || !['coach', 'owner'].includes(profile.role)) return json({ error: 'Staff access required.' }, 403);
-  const [requests, invites, teams, parents, parentLinks, packets, paidPendingRegistrations] = await Promise.all([
+  const [requests, invites, teams, parents, parentLinks, packets, paidPendingRegistrations, enrollments] = await Promise.all([
     supa
       .from('program_join_requests')
       .select('*')
@@ -438,10 +438,11 @@ async function staffQueue(profile: any) {
       .order('created_at', { ascending: false }),
     supa
       .from('parent_links')
-      .select('parent_id, athlete_id, athletes(id, display_name, team_id, teams(program_id))'),
+      .select('parent_id, athlete_id, athletes!inner(id, display_name, team_id, deleted_at, teams!inner(program_id))')
+      .eq('athletes.teams.program_id', profile.program_id).is('athletes.deleted_at', null),
     supa
       .from('family_info_packets')
-      .select('*')
+      .select('id,profile_id,athlete_id,athlete_name,athlete_age,completion_status,updated_at')
       .eq('program_id', profile.program_id)
       .order('updated_at', { ascending: false }),
     supa
@@ -452,7 +453,10 @@ async function staffQueue(profile: any) {
       .in('status', ['pending', 'new'])
       .order('paid_at', { ascending: false })
       .limit(25),
+    supa.from('class_enrollments').select('id,athlete_id,parent_id,parent_email,athlete_name,staff_status')
+      .eq('program_id',profile.program_id).eq('staff_status','accepted'),
   ]);
+  if (enrollments.error) throw enrollments.error;
   if (requests.error) throw requests.error;
   if (invites.error) throw invites.error;
   if (teams.error) throw teams.error;
@@ -472,6 +476,14 @@ async function staffQueue(profile: any) {
     : { data: [], error: null };
   if (athletes.error) throw athletes.error;
 
+  const families = (parents.data || []).map((parent:any) => {
+    const linked = (parentLinks.data || []).filter((link:any)=>link.parent_id===parent.id).map((link:any)=>link.athletes);
+    const linkedIds = new Set(linked.map((child:any)=>child.id));
+    const candidates = (enrollments.data || []).filter((row:any)=>
+      (row.parent_id===parent.id || (parent.email && normalizeEmail(row.parent_email)===normalizeEmail(parent.email)))
+      && row.athlete_id && !linkedIds.has(row.athlete_id) && (athletes.data || []).some((child:any)=>child.id===row.athlete_id));
+    return {...parent, linked_athletes:linked, enrollment_candidates:candidates};
+  });
   const linkedParentIds = new Set(
     (parentLinks.data || [])
       .filter((link: any) => link.athletes?.teams?.program_id === profile.program_id)
@@ -505,6 +517,8 @@ async function staffQueue(profile: any) {
     requests: requests.data || [],
     invites: invites.data || [],
     unlinked_parents: unlinkedParents,
+    families,
+    teams: teams.data || [],
     athletes: athletes.data || [],
     family_packets: packets.data || [],
     incomplete_packets: incompletePackets,
@@ -1371,7 +1385,9 @@ export async function linkParentAthlete(profile: any, body: any) {
     .single();
   if (linkError) throw linkError;
 
-  const packet = await materializeFamilyPacket(profile, parent, athlete);
+  // A staff access link never copies medical or waiver history to another child.
+  // Guardians confirm each child's packet through the separate Forms flow.
+  const packet = null;
 
   const { data: existingBilling, error: billingReadError } = await supa
     .from('billing_accounts')

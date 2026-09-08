@@ -948,7 +948,9 @@ function ParentDashboard({ snap, session, navigate, pushToast }) {
   const program = (snap.programs || []).find(p => p.id === programId) || (snap.programs || [])[0] || null;
   const programName = window.HZprogramDisplayName ? window.HZprogramDisplayName(program, 'your gym') : (program?.brand_name || program?.public_name || program?.name || 'your gym');
   const familyPacket = packetStatusForParent(snap, session, program?.id || programId);
-  const familyFormsComplete = familyPacket?.completion_status === 'complete';
+  const childFormsComplete = kid => !(snap.medical_records || []).some(row=>row.athlete_id===kid.id && row.provenance_review_required)
+    && (snap.family_info_packets || []).some(row=>row.profile_id===(session.actualProfile?.id || session.profile.id) && row.athlete_id===kid.id && row.completion_status==='complete');
+  const familyFormsComplete = myKids.length>0 && myKids.every(childFormsComplete);
   const moneySummary = parentBillingSummary(snap, session);
   const leadFirst = leadKid ? leadKid.display_name.split(' ')[0] : '';
   const leadHasWins = leadKid ? (snap.celebrations || []).some(c => c.athlete_id === leadKid.id) : false;
@@ -993,6 +995,7 @@ function ParentDashboard({ snap, session, navigate, pushToast }) {
         <div className="hz-eyebrow" style={{ marginBottom: 10 }}>{familyName} family · {programName}</div>
         <div className="hz-display" style={{ fontSize: 44, lineHeight: 0.95 }}>
           {!leadKid ? <>Add your <span className="hz-zero">athlete</span>.</>
+            : myKids.length > 1 ? <>Your family at <span className="hz-zero">a glance</span>.</>
             : leadHasWins ? <>{leadFirst}'s latest <span className="hz-zero">wins</span>.</>
             : <>{leadFirst} at <span className="hz-zero">a glance</span>.</>}
         </div>
@@ -1006,6 +1009,12 @@ function ParentDashboard({ snap, session, navigate, pushToast }) {
           </button>
         </div>
       </div>
+
+      {myKids.length > 0 && <section aria-label="Your linked children" className="hz-card" style={{marginBottom:20}}>
+        <div className="hz-eyebrow" style={{marginBottom:10}}>{myKids.length} linked {myKids.length===1?'child':'children'}</div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:10}}>{myKids.map(kid=><button key={kid.id} className="hz-btn" onClick={()=>navigate('athlete/'+kid.id)}>{kid.display_name} · {(snap.teams || []).find(t=>t.id===kid.team_id)?.name || 'View profile'}</button>)}</div>
+        <p style={{fontSize:12,color:'var(--hz-dim)',marginBottom:0}}>Choose a child to open their profile. Missing someone? Staff can review your family links in Program → Family setup.</p>
+      </section>}
 
       <FamilySetupChecklist session={session} kids={myKids} packet={familyPacket} packets={snap.family_info_packets} medicalRecords={snap.medical_records} enrollments={parentClassEnrollments} waiverSignatures={snap.waiver_signatures} navigate={navigate}/>
 
@@ -1022,7 +1031,7 @@ function ParentDashboard({ snap, session, navigate, pushToast }) {
         <MiniBox label="Schedule" value={parentClassEnrollments.length || upcomingSessions.length || 0} sub={parentClassEnrollments.length ? 'registered classes' : 'team sessions'} accent="var(--hz-teal)"/>
         <MiniBox label="Class payments" value={dollarsToParentMoney(moneySummary.classPaid)} sub="saved registration receipts" accent="var(--hz-green)"/>
         <MiniBox label="Season balance" value={moneySummary.owed > 0 ? dollarsToParentMoney(moneySummary.owed) : '$0'} sub={moneySummary.pendingCount ? `${moneySummary.pendingCount} pending item${moneySummary.pendingCount === 1 ? '' : 's'}` : 'posted ledger'} accent={moneySummary.owed > 0 ? 'var(--hz-amber)' : 'var(--hz-teal)'}/>
-        <MiniBox label="Forms" value={familyFormsComplete ? 'Done' : 'Needed'} sub={familyPacket ? 'packet saved' : 'waiver and medical'} accent={familyFormsComplete ? 'var(--hz-green)' : 'var(--hz-amber)'}/>
+        <MiniBox label="Forms" value={familyFormsComplete ? 'Done' : 'Needed'} sub={`${myKids.filter(childFormsComplete).length} of ${myKids.length} child packets`} accent={familyFormsComplete ? 'var(--hz-green)' : 'var(--hz-amber)'}/>
       </div>
 
       {!familyFormsComplete && (
@@ -1123,7 +1132,7 @@ function ParentDashboard({ snap, session, navigate, pushToast }) {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
                   <QuickChip icon="calendar" label={nextPracticeLabel} onClick={() => navigate('schedule')}/>
                   <QuickChip icon="billing" label={billingChipLabel} onClick={() => navigate('billing')}/>
-                  <QuickChip icon="skills" label={familyFormsComplete ? 'Forms complete' : 'Finish forms'} onClick={() => navigate('family_forms')}/>
+                  <QuickChip icon="skills" label={childFormsComplete(kid) ? 'Forms complete' : 'Finish forms'} onClick={() => navigate('family_forms')}/>
                   <QuickChip icon="skills" label="Skill progress" onClick={() => navigate('athlete/' + kid.id + '?tab=skills')}/>
                   <QuickChip icon="megaphone" label={latestWin ? 'Latest win' : 'Gym Feed'} onClick={() => latestWin ? navigate('athlete/' + kid.id) : navigate('announcements')}/>
                 </div>
@@ -2041,7 +2050,7 @@ function AdminConsole({ snap, navigate, session }) {
 window.AdminConsole = AdminConsole;
 
 function LaunchAccessManager({ snap, session }) {
-  const [queue, setQueue] = React.useState({ requests: [], invites: [], unlinked_parents: [], athletes: [], family_packets: [], incomplete_packets: [], paid_pending_registrations: [] });
+  const [queue, setQueue] = React.useState({ requests: [], invites: [], unlinked_parents: [], families: [], teams: [], athletes: [], family_packets: [], incomplete_packets: [], paid_pending_registrations: [] });
   const [loading, setLoading] = React.useState(true);
   const [busyId, setBusyId] = React.useState('');
   const [err, setErr] = React.useState('');
@@ -2049,6 +2058,8 @@ function LaunchAccessManager({ snap, session }) {
   const [createdInvite, setCreatedInvite] = React.useState(null);
   const [linkDrafts, setLinkDrafts] = React.useState({});
   const [linkTeams, setLinkTeams] = React.useState({});
+  const [familySearch, setFamilySearch] = React.useState('');
+  const [success, setSuccess] = React.useState('');
   const [showSetup, setShowSetup] = React.useState(false);
   const canManage = ['coach', 'owner'].includes(session?.actualProfile?.role || session?.profile?.role);
 
@@ -2062,6 +2073,8 @@ function LaunchAccessManager({ snap, session }) {
       requests: data?.requests || [],
       invites: data?.invites || [],
       unlinked_parents: data?.unlinked_parents || [],
+      families: data?.families || data?.unlinked_parents || [],
+      teams: data?.teams || window.HZsel.programTeams(),
       athletes: data?.athletes || (snap?.athletes || []),
       family_packets: data?.family_packets || [],
       incomplete_packets: data?.incomplete_packets || [],
@@ -2096,11 +2109,11 @@ function LaunchAccessManager({ snap, session }) {
     const { error } = await window.HZdb.auth.linkParentAthlete(parent.id, createAthlete ? '__create_from_packet__' : athleteId, 'parent', {
       create_athlete: createAthlete,
       team_id: linkTeams[parent.id] || null,
-      athlete_name: packet?.athlete_name || registration?.athlete_name || '',
-      athlete_age: packet?.athlete_age || registration?.athlete_age || '',
+      athlete_name: (createFromRegistration ? registration?.athlete_name : packet?.athlete_name) || '',
+      athlete_age: (createFromRegistration ? registration?.athlete_age : packet?.athlete_age) || '',
     });
     if (error) setErr(error.message || 'Could not link parent to athlete.');
-    else await load();
+    else { await load(); setLinkDrafts(d=>({...d,[parent.id]:''})); setSuccess(`Family access updated for ${parent.display_name || 'this parent'}. Existing children and forms are preserved.`); }
     setBusyId('');
   }
 
@@ -2122,6 +2135,7 @@ function LaunchAccessManager({ snap, session }) {
   if (!canManage) return null;
   const packetByProfile = new Map((queue.family_packets || []).filter(packet=>!packet.athlete_id).map(packet => [packet.profile_id, packet]));
   const healthItems = [
+    { label: 'Link reviews', value: queue.families.filter(p=>(p.enrollment_candidates || []).length).length, tone: 'amber' },
     { label: 'Pending requests', value: queue.requests.length, tone: queue.requests.length ? 'amber' : 'teal' },
     { label: 'Account-only parents', value: queue.unlinked_parents.length, tone: queue.unlinked_parents.length ? 'amber' : 'teal' },
     { label: 'Incomplete packets', value: queue.incomplete_packets.length, tone: queue.incomplete_packets.length ? 'pink' : 'teal' },
@@ -2134,8 +2148,8 @@ function LaunchAccessManager({ snap, session }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', marginBottom: 18 }}>
         <div>
           <div className="hz-eyebrow" style={{ marginBottom: 6 }}>Family setup</div>
-          <div style={{ fontSize: 17, fontWeight: 800 }}>Only open this when you need account access tasks.</div>
-          <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>Registrations and payments still run through Registration. This section only handles app account approval, optional invites, and parent-to-athlete linking.</div>
+          <div style={{ fontSize: 17, fontWeight: 800 }}>Manage every parent and every child.</div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>Registrations and payments still run through Registration. Approve accounts, review linked children, add another child, and create invitations here. Existing parents do not need a new invite for each child.</div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <button className="hz-btn" onClick={load} disabled={loading}>Refresh</button>
@@ -2144,7 +2158,8 @@ function LaunchAccessManager({ snap, session }) {
           </button>
         </div>
       </div>
-      {err && <div style={{ color: 'var(--hz-pink)', fontSize: 13, marginBottom: 12 }}>{err}</div>}
+      {success && <p role="status" style={{color:'var(--hz-teal)'}}>{success}</p>}
+      {err && <div role="alert" style={{ color: 'var(--hz-pink)', fontSize: 13, marginBottom: 12 }}>{err}</div>}
       <div className="hz-launch-health-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10, marginBottom: showSetup ? 18 : 0 }}>
         {healthItems.map(item => (
           <div key={item.label} style={{ padding: 12, borderRadius: 10, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.025)' }}>
@@ -2193,11 +2208,15 @@ function LaunchAccessManager({ snap, session }) {
               })}
             </div>
           )}
-          {!loading && queue.unlinked_parents.length > 0 && (
+          {!loading && queue.families.length > 0 && (
             <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--hz-line)' }}>
-              <div className="hz-eyebrow" style={{ fontSize: 10, marginBottom: 10 }}>Approved parents needing athlete link</div>
+              <div className="hz-eyebrow" style={{ fontSize: 10, marginBottom: 10 }}>All families · add or review children</div>
+              <label style={{display:'grid',gap:6,marginBottom:12}}>Find a parent or child
+                <input className="hz-input" type="search" value={familySearch} onChange={e=>setFamilySearch(e.target.value)} placeholder="Name or parent email"/>
+              </label>
+              <p style={{color:'var(--hz-dim)',fontSize:12}}>Review enrollment suggestions with the family before linking. Linking grants access to the selected child; it does not copy medical details or sign forms.</p>
               <div style={{ display: 'grid', gap: 10 }}>
-	                {queue.unlinked_parents.map(parent => {
+	                {queue.families.filter(parent=>[parent.display_name,parent.email,...(parent.linked_athletes || []).map(a=>a.display_name),...(parent.enrollment_candidates || []).map(a=>a.athlete_name)].join(' ').toLowerCase().includes(familySearch.trim().toLowerCase())).map(parent => {
 	                  const packet = packetByProfile.get(parent.id);
                     const packetAthleteName = String(packet?.athlete_name || '').trim();
                     const parentEmail = String(parent.email || '').trim().toLowerCase();
@@ -2206,22 +2225,25 @@ function LaunchAccessManager({ snap, session }) {
                       .filter(reg => String(reg.parent_email || '').trim().toLowerCase() === parentEmail)
                       .filter(reg => String(reg.athlete_name || '').trim())
                       .filter(reg => !rosterNames.has(String(reg.athlete_name || '').trim().toLowerCase()));
-	                  const selected = linkDrafts[parent.id] ?? (packetAthleteName ? '__create_from_packet__' : (registrationOptions[0] ? `__create_from_registration__:${registrationOptions[0].id}` : ''));
+	                  const selected = linkDrafts[parent.id] || '';
+                    const linkedIds = new Set((parent.linked_athletes || []).map(a=>a.id));
 	                  return (
 	                    <div key={parent.id} style={{ padding: 12, borderRadius: 10, border: '1px solid rgba(255,180,84,0.28)', background: 'rgba(255,180,84,0.06)' }}>
 	                      <div style={{ fontWeight: 800 }}>{parent.display_name || parent.email || 'Approved parent'}</div>
-	                      <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 3 }}>{parent.email || 'No email on profile'} · {packet?.completion_status === 'complete' ? 'packet complete' : 'packet missing'}</div>
+	                      <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 3 }}>{parent.email || 'No email on profile'} · {(parent.linked_athletes || []).length ? 'Review forms separately for each linked child' : packet?.completion_status === 'complete' ? 'onboarding packet complete' : 'onboarding packet missing'}</div>
+                        <div style={{fontSize:13,marginTop:8}}>Linked children: {(parent.linked_athletes || []).map(a=>a.display_name).join(', ') || 'None yet'}</div>
+                        {(parent.enrollment_candidates || []).length>0 && <div role="status" style={{color:'var(--hz-amber)',fontSize:12,marginTop:6}}>Enrollment needs link review: {[...new Set(parent.enrollment_candidates.map(r=>r.athlete_name))].join(', ')}</div>}
                         {packetAthleteName && (
                           <div style={{ color: 'var(--hz-amber)', fontSize: 12, marginTop: 6 }}>Packet athlete: {packetAthleteName}{packet?.athlete_age ? `, age ${packet.athlete_age}` : ''}</div>
                         )}
                         {String(selected).startsWith('__create_from_') && <label style={{ display: 'grid', gap: 6, marginTop: 10 }}>Athlete’s team
                           <select className="hz-input" aria-label="Team for new athlete" value={linkTeams[parent.id] || ''} onChange={e => setLinkTeams(d => ({...d,[parent.id]:e.target.value}))}>
                             <option value="">Choose the actual team…</option>
-                            {window.HZsel.programTeams().map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
+                            {queue.teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
                           </select>
                         </label>}
 	                      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, marginTop: 10 }}>
-	                        <select className="hz-input" value={selected} onChange={e => setLinkDrafts(d => ({ ...d, [parent.id]: e.target.value }))}>
+	                        <select className="hz-input" aria-label={`Child to link for ${parent.display_name || parent.email}`} value={selected} onChange={e => setLinkDrafts(d => ({ ...d, [parent.id]: e.target.value }))}>
 	                          <option value="">Choose existing athlete...</option>
                             {packetAthleteName && <option value="__create_from_packet__">Create/link from packet: {packetAthleteName}</option>}
                             {registrationOptions.map(reg => (
@@ -2229,8 +2251,8 @@ function LaunchAccessManager({ snap, session }) {
                                 Create/link from paid registration: {reg.athlete_name}
                               </option>
                             ))}
-	                          {(queue.athletes || []).map(a => (
-	                            <option key={a.id} value={a.id}>{a.display_name}{a.age ? ` · age ${a.age}` : ''}</option>
+	                          {(queue.athletes || []).filter(a=>!linkedIds.has(a.id)).map(a => (
+	                            <option key={a.id} value={a.id}>{a.display_name}{a.age ? ` · age ${a.age}` : ''} · {queue.teams.find(t=>t.id===a.team_id)?.name || 'Team not available'}</option>
 	                          ))}
 	                        </select>
 	                        <button className="hz-btn hz-btn-primary hz-btn-sm" disabled={!selected || (String(selected).startsWith('__create_from_') && !linkTeams[parent.id]) || busyId === parent.id + 'link'} onClick={() => linkParent(parent, selected, packet)}>
@@ -2259,6 +2281,7 @@ function LaunchAccessManager({ snap, session }) {
         </div>
         <div style={{ border: '1px solid var(--hz-line)', borderRadius: 12, padding: 14, background: 'rgba(255,255,255,0.02)' }}>
           <div className="hz-eyebrow" style={{ fontSize: 10, marginBottom: 10 }}>Create invite</div>
+          <p style={{color:'var(--hz-dim)',fontSize:12}}>Copy and share the generated link yourself. An unused link does not prove message delivery. For another child on an existing account, use the family list.</p>
           <form onSubmit={createInvite} style={{ display: 'grid', gap: 9 }}>
             <input className="hz-input" value={invite.label} onChange={e => setInvite({ ...invite, label: e.target.value })} placeholder="Label, e.g. Mini families" />
             <select className="hz-input" value={invite.role} onChange={e => setInvite({ ...invite, role: e.target.value })}>
@@ -2287,7 +2310,7 @@ function LaunchAccessManager({ snap, session }) {
               {queue.invites.slice(0, 5).map(inv => (
                 <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, color: 'var(--hz-dim)', padding: '8px 0', borderTop: '1px solid var(--hz-line)' }}>
                   <span>{inv.label || inv.email || (window.ROLE_LABELS || {})[inv.role] || inv.role}</span>
-                  <span>{inv.uses_count || 0}/{inv.max_uses || 1}</span>
+                  <span>{inv.revoked_at ? 'Revoked' : new Date(inv.expires_at)<new Date() ? 'Expired' : Number(inv.uses_count)>=Number(inv.max_uses) ? 'Used' : 'Available'} · {inv.uses_count || 0}/{inv.max_uses || 1} uses</span>
                 </div>
               ))}
             </div>
