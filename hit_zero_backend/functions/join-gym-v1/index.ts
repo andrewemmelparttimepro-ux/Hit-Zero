@@ -269,7 +269,7 @@ async function myFamilyPacket(profile: any, body: any) {
   return json({ ok: true, packet: data?.[0] || null });
 }
 
-async function submitFamilyPacket(profile: any, body: any) {
+export async function submitFamilyPacket(profile: any, body: any) {
   const programId = cleanText(body.program_id || profile.program_id, 80);
   if (!programId) return json({ error: 'Choose a gym before completing the family packet.' }, 400);
   const { data: program, error: programError } = await supa
@@ -280,10 +280,19 @@ async function submitFamilyPacket(profile: any, body: any) {
   if (programError) throw programError;
   if (!program?.id || program.deleted_at) return json({ error: 'Gym not found.' }, 404);
 
+  const requestId = cleanUuid(body.join_request_id);
+  if (requestId || program.id !== profile.program_id) {
+    let access = supa.from('program_join_requests').select('id').eq('program_id', program.id).eq('profile_id', profile.id).in('status', ['pending','approved']);
+    if (requestId) access = access.eq('id', requestId);
+    const { data: ownRequests, error: requestError } = await access.limit(1);
+    if (requestError) return json({ error: 'Could not verify your gym request. Please retry.' },503);
+    if (!ownRequests?.length) return json({ error: 'This packet must belong to your gym or your own open gym request.' },403);
+  }
+
   const payload: Record<string, any> = {
     program_id: program.id,
     profile_id: profile.id,
-    join_request_id: cleanText(body.join_request_id, 80) || null,
+    join_request_id: requestId,
     requested_role: cleanRole(body.requested_role || profile.role),
     parent_name: cleanText(body.parent_name || profile.display_name, 120) || null,
     parent_email: normalizeEmail(body.parent_email || profile.email) || null,
@@ -1132,7 +1141,7 @@ async function ensurePacketTemplates(programId: string, staffProfileId: string |
   return { waiverTemplateId: waiver.id, formTemplateId: form.id };
 }
 
-async function materializeFamilyPacket(staffProfile: any, parent: any, athlete: any) {
+export async function materializeFamilyPacket(staffProfile: any, parent: any, athlete: any) {
   const { data: packet, error: packetError } = await supa
     .from('family_info_packets')
     .select('*')
@@ -1140,7 +1149,16 @@ async function materializeFamilyPacket(staffProfile: any, parent: any, athlete: 
     .eq('profile_id', parent.id)
     .maybeSingle();
   if (packetError) throw packetError;
-  if (!packet?.id) return null;
+  if (!packet?.id || packet.completion_status !== 'complete') return null;
+  const sameName = (value: unknown) => cleanText(value,120).normalize('NFKC').toLocaleLowerCase('en-US');
+  if (!sameName(packet.athlete_name) || sameName(packet.athlete_name) !== sameName(athlete.display_name)) return null;
+  const {data: familyLinks,error: familyError} = await supa.from('parent_links')
+    .select('athlete_id, athletes(id, display_name, deleted_at, teams(program_id))').eq('parent_id',parent.id);
+  if (familyError) throw familyError;
+  const matches=(familyLinks || []).map((link:any)=>link.athletes).filter((child:any)=>child && !child.deleted_at && child.teams?.program_id===staffProfile.program_id && sameName(child.display_name)===sameName(packet.athlete_name));
+  // Parent ownership is already established; ambiguity still requires an explicit child packet.
+  if (matches.length!==1 || matches[0].id!==athlete.id) return null;
+
 
   const health = packet.health_safety || {};
   const { error: medError } = await supa
@@ -1411,7 +1429,7 @@ async function approveRequest(profile: any, body: any) {
   return json({ ok: true, request: updated, profile: linkedProfile });
 }
 
-async function linkParentAthlete(profile: any, body: any) {
+export async function linkParentAthlete(profile: any, body: any) {
   if (!profile?.program_id || !['coach', 'owner'].includes(profile.role)) return json({ error: 'Staff access required.' }, 403);
   const parentId = cleanText(body.parent_id, 80);
   const athleteId = cleanText(body.athlete_id, 80);
@@ -1443,7 +1461,8 @@ async function linkParentAthlete(profile: any, body: any) {
     const ageNumber = Number(body.athlete_age ?? packet?.athlete_age);
     const age = Number.isFinite(ageNumber) ? Math.max(4, Math.min(25, Math.round(ageNumber))) : null;
 
-    const requestedTeamId = cleanText(body.team_id, 80);
+    const requestedTeamId = cleanUuid(body.team_id);
+    if (!requestedTeamId) return json({ error: 'Choose the athlete’s actual team before creating their roster record.' },400);
     let teamQuery = supa
       .from('teams')
       .select('id, program_id')
@@ -1460,14 +1479,14 @@ async function linkParentAthlete(profile: any, body: any) {
       .from('athletes')
       .select('id, display_name, team_id, teams(program_id)')
       .eq('team_id', team.id)
-      .ilike('display_name', displayName)
+      .eq('display_name', displayName)
       .is('deleted_at', null)
       .limit(1)
       .maybeSingle();
     if (existingError) throw existingError;
 
     if (existingAthlete?.id) {
-      athlete = existingAthlete;
+      return json({ error: 'An athlete with that name already exists. Choose the correct existing athlete explicitly before linking.' },409);
     } else {
       const { data: inserted, error: insertAthleteError } = await supa
         .from('athletes')
@@ -1511,7 +1530,7 @@ async function linkParentAthlete(profile: any, body: any) {
         skill_id: skill.id,
         status: 'none',
         updated_at: new Date().toISOString(),
-      })), { onConflict: 'athlete_id,skill_id' });
+      })), { onConflict: 'athlete_id,skill_id', ignoreDuplicates: true });
     if (skillSeedError) throw skillSeedError;
   }
 

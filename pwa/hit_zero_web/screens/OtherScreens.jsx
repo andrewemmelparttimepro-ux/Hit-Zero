@@ -941,7 +941,7 @@ function ParentDashboard({ snap, session, navigate, pushToast }) {
 
   async function linkPaidRegistration(row) {
     const name = String(row.athlete_name || '').trim();
-    if (!name) return;
+    if (!name || !row.class?.team_id) return;
     setLinkingRegistrationId(row.id);
     try {
       const age = ageFromDobOrNumber(row.metadata?.athlete_dob || row.athlete_dob, row.metadata?.athlete_age);
@@ -949,7 +949,7 @@ function ParentDashboard({ snap, session, navigate, pushToast }) {
         display_name: name,
         age,
         relation: 'parent',
-        team_id: row.class?.team_id || snap.teams?.[0]?.id || '',
+        team_id: row.class.team_id,
         position: 'all-around',
         photo_color: '#F97FAC',
         registration_id: row.registration_id || row.id,
@@ -1028,9 +1028,9 @@ function ParentDashboard({ snap, session, navigate, pushToast }) {
                 <div style={{ textAlign: 'right', whiteSpace: 'nowrap', display: 'grid', gap: 8, justifyItems: 'end' }}>
                   <div style={{ color: 'var(--hz-green)', fontWeight: 800 }}>{centsToParentMoney(row.amount_paid_cents)}</div>
                   {row.receipt_url && <a href={row.receipt_url} target="_blank" rel="noreferrer" style={{ color: 'var(--hz-teal)', fontSize: 11 }}>Receipt</a>}
-                  <button className="hz-btn hz-btn-primary hz-btn-sm" disabled={linkingRegistrationId === row.id} onClick={() => linkPaidRegistration(row)}>
+                  {row.class?.team_id && <button className="hz-btn hz-btn-primary hz-btn-sm" disabled={linkingRegistrationId === row.id} onClick={() => linkPaidRegistration(row)}>
                     {linkingRegistrationId === row.id ? 'Linking...' : 'Link to family'}
-                  </button>
+                  </button>}
                 </div>
               </div>
             ))}
@@ -1978,6 +1978,7 @@ function LaunchAccessManager({ snap, session }) {
   const [invite, setInvite] = React.useState({ label: '', role: 'parent', email: '', max_uses: 1, expires_in_days: 14 });
   const [createdInvite, setCreatedInvite] = React.useState(null);
   const [linkDrafts, setLinkDrafts] = React.useState({});
+  const [linkTeams, setLinkTeams] = React.useState({});
   const [showSetup, setShowSetup] = React.useState(false);
   const canManage = ['coach', 'owner'].includes(session?.actualProfile?.role || session?.profile?.role);
 
@@ -2019,10 +2020,12 @@ function LaunchAccessManager({ snap, session }) {
       : null;
     const createAthlete = createFromPacket || createFromRegistration;
     if (!athleteId) { setErr('Choose an athlete to link, or use Create from packet/registration when the child is not on the roster yet.'); return; }
+    if (createAthlete && !linkTeams[parent.id]) { setErr('Choose the athlete’s team before creating the roster record.'); return; }
     setBusyId(parent.id + 'link');
     setErr('');
     const { error } = await window.HZdb.auth.linkParentAthlete(parent.id, createAthlete ? '__create_from_packet__' : athleteId, 'parent', {
       create_athlete: createAthlete,
+      team_id: linkTeams[parent.id] || null,
       athlete_name: packet?.athlete_name || registration?.athlete_name || '',
       athlete_age: packet?.athlete_age || registration?.athlete_age || '',
     });
@@ -2141,6 +2144,12 @@ function LaunchAccessManager({ snap, session }) {
                         {packetAthleteName && (
                           <div style={{ color: 'var(--hz-amber)', fontSize: 12, marginTop: 6 }}>Packet athlete: {packetAthleteName}{packet?.athlete_age ? `, age ${packet.athlete_age}` : ''}</div>
                         )}
+                        {String(selected).startsWith('__create_from_') && <label style={{ display: 'grid', gap: 6, marginTop: 10 }}>Athlete’s team
+                          <select className="hz-input" aria-label="Team for new athlete" value={linkTeams[parent.id] || ''} onChange={e => setLinkTeams(d => ({...d,[parent.id]:e.target.value}))}>
+                            <option value="">Choose the actual team…</option>
+                            {window.HZsel.programTeams().map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
+                          </select>
+                        </label>}
 	                      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, marginTop: 10 }}>
 	                        <select className="hz-input" value={selected} onChange={e => setLinkDrafts(d => ({ ...d, [parent.id]: e.target.value }))}>
 	                          <option value="">Choose existing athlete...</option>
@@ -2154,7 +2163,7 @@ function LaunchAccessManager({ snap, session }) {
 	                            <option key={a.id} value={a.id}>{a.display_name}{a.age ? ` · age ${a.age}` : ''}</option>
 	                          ))}
 	                        </select>
-	                        <button className="hz-btn hz-btn-primary hz-btn-sm" disabled={!selected || busyId === parent.id + 'link'} onClick={() => linkParent(parent, selected, packet)}>
+	                        <button className="hz-btn hz-btn-primary hz-btn-sm" disabled={!selected || (String(selected).startsWith('__create_from_') && !linkTeams[parent.id]) || busyId === parent.id + 'link'} onClick={() => linkParent(parent, selected, packet)}>
 	                          {busyId === parent.id + 'link' ? 'Working...' : String(selected).startsWith('__create_from_') ? 'Create / link' : 'Link'}
 	                        </button>
 	                      </div>
