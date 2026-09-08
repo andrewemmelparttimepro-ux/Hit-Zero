@@ -3,8 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node build.mjs && node ../quality/check-performance-build.mjs",
-    "check": "node ../quality/check-performance-build.mjs"
+    "build": "npm run check:critical && node build.mjs && node ../quality/check-performance-build.mjs",
+    "check": "node ../quality/check-performance-build.mjs",
+    "check:critical": "node --test ../quality/tests/dashboard-render.test.mjs ../quality/tests/dashboard-evidence.test.mjs ../quality/tests/live-hydration.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.57.4",

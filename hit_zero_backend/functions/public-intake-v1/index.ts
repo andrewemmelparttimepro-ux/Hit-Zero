@@ -29,6 +29,11 @@
 // always succeeds whether the email goes out or not.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import {
+  DiscountCodeError,
+  normalizeDiscountCode,
+  quoteClassDiscount,
+} from '../_shared/discounts.ts';
 
 const SB_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SB_SR  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -135,53 +140,20 @@ async function sendIntakeEmail(opts: {
   }
 }
 
-// ── Rate limiting ──────────────────────────────────────────────────────────
-// Backed by public.public_intake_events (service-role only). Caps abusive
-// submissions per IP and per email over a rolling window. Fails OPEN: if the
-// throttle store itself errors, a real family can still book.
-const THROTTLE_WINDOW_MIN = 10;
-const MAX_PER_IP = 8;     // submissions per IP per window
-const MAX_PER_EMAIL = 5;  // submissions per email per window
-
-function clientIp(req: Request): string | null {
-  const xff = req.headers.get('x-forwarded-for') || '';
-  const first = xff.split(',')[0]?.trim();
-  if (first) return first.slice(0, 64);
-  return req.headers.get('x-real-ip')?.trim().slice(0, 64) || null;
-}
-
-// Returns a 429 Response if the caller is over the limit, otherwise null.
-async function throttle(req: Request, kind: string, programId: string | null, email: string | null): Promise<Response | null> {
-  const ip = clientIp(req);
-  const normEmail = email ? email.trim().toLowerCase() : null;
-  const since = new Date(Date.now() - THROTTLE_WINDOW_MIN * 60_000).toISOString();
+// Atomic service-only budget. Database errors stop before any intake or email work.
+export async function throttle(req: Request, kind: string, programId: string | null, email: string | null): Promise<Response | null> {
+  const ip = (req.headers.get('x-forwarded-for') || '').split(',')[0]?.trim().slice(0,64)
+    || req.headers.get('x-real-ip')?.trim().slice(0,64) || null;
   try {
-    if (ip) {
-      const { count } = await supa
-        .from('public_intake_events')
-        .select('id', { count: 'exact', head: true })
-        .eq('ip', ip)
-        .gte('created_at', since);
-      if ((count || 0) >= MAX_PER_IP) {
-        return bad(429, 'rate_limited', 'Too many submissions from this connection. Please wait a few minutes and try again.');
-      }
-    }
-    if (normEmail) {
-      const { count } = await supa
-        .from('public_intake_events')
-        .select('id', { count: 'exact', head: true })
-        .eq('email', normEmail)
-        .gte('created_at', since);
-      if ((count || 0) >= MAX_PER_EMAIL) {
-        return bad(429, 'rate_limited', 'This email has submitted several times recently. Please wait a few minutes and try again.');
-      }
-    }
-    // Record the attempt. Non-blocking on failure.
-    await supa.from('public_intake_events').insert({ ip, email: normEmail, kind, program_id: programId });
-  } catch (err) {
-    console.warn('[intake] throttle check failed, allowing through', err);
+    const { data, error } = await supa.rpc('claim_public_intake_attempt', {
+      p_ip: ip, p_email: email?.trim().toLowerCase() || null, p_kind: kind, p_program_id: programId,
+    });
+    if (error || typeof data !== 'boolean') throw new Error('intake_budget_unavailable');
+    if (!data) return bad(429, 'rate_limited', 'Too many submissions recently. Please wait a few minutes and try again.');
+    return null;
+  } catch {
+    return bad(503, 'intake_temporarily_unavailable', 'Signup is temporarily unavailable. Please try again shortly. Your registration has not been submitted.');
   }
-  return null;
 }
 
 function row(label: string, value: string) {
@@ -213,6 +185,55 @@ function assertAgeEligible(classRow: any, athleteDob: unknown) {
   return { ok: true, athleteAge, min, max };
 }
 
+function normalizeIdentity(value: unknown) {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+async function findReusableCheckout(args: {
+  programId: string;
+  classId: string;
+  athleteName: string;
+  parentEmail: string;
+}) {
+  // Keep this lookup aligned with registrations_one_open_public_checkout_idx:
+  // an unpaid public checkout remains reusable until it is paid or cancelled,
+  // regardless of when it was originally started.
+  const { data, error } = await supa
+    .from('registrations')
+    .select('id, athlete_name, athlete_dob, parent_email, discount_code_id, discount_code, list_amount_cents, discount_amount_cents, final_amount_cents, intake_metadata, created_at')
+    .eq('program_id', args.programId)
+    .eq('class_id', args.classId)
+    .eq('source', 'hit_zero_public_booking')
+    .eq('status', 'pending')
+    .in('payment_status', ['none', 'pending', 'failed'])
+    .is('external_payment_id', null)
+    .ilike('parent_email', args.parentEmail)
+    .ilike('athlete_name', args.athleteName)
+    .order('created_at', { ascending: true })
+    .limit(25);
+  if (error) throw error;
+
+  const match = (data || []).find((row: any) => {
+    return normalizeIdentity(row.athlete_name) === normalizeIdentity(args.athleteName)
+      && normalizeIdentity(row.parent_email) === normalizeIdentity(args.parentEmail);
+  });
+  if (!match) return null;
+
+  const intakeMetadata = {
+    ...(match.intake_metadata && typeof match.intake_metadata === 'object' ? match.intake_metadata : {}),
+    payment_required: true,
+    payment_gate_required: true,
+    payment_gate_state: 'checkout_started',
+    checkout_last_reopened_at: new Date().toISOString(),
+  };
+  const { error: updateError } = await supa
+    .from('registrations')
+    .update({ intake_metadata: intakeMetadata })
+    .eq('id', match.id);
+  if (updateError) throw updateError;
+  return { ...match, intake_metadata: intakeMetadata };
+}
+
 type ProgramResolveResult = { program: any; error?: never } | { program?: never; error: Response };
 
 async function resolveProgram(programSlug: string | undefined, programId: string | undefined): Promise<ProgramResolveResult> {
@@ -233,6 +254,44 @@ async function resolveProgram(programSlug: string | undefined, programId: string
   if (program.deleted_at) return { error: bad(410, 'program_archived', 'program is archived') };
   if (!program.is_public) return { error: bad(403, 'program_not_public', 'program is not public') };
   return { program };
+}
+
+function discountErrorResponse(err: unknown) {
+  if (err instanceof DiscountCodeError) return bad(err.status, err.code, err.message);
+  console.warn('[intake] discount lookup failed', err);
+  return bad(500, 'discount_lookup_failed', 'Could not check that discount code. Please try again.');
+}
+
+async function handleDiscountQuote(body: any): Promise<Response> {
+  const resolved = await resolveProgram(body.program_slug, body.program_id);
+  if (resolved.error) return resolved.error;
+  const { program } = resolved;
+  if (typeof body.class_id !== 'string' || !UUID_RE.test(body.class_id)) {
+    return bad(400, 'bad_class_id', 'class_id must be a valid uuid');
+  }
+  const { data: classRow, error } = await supa
+    .from('program_classes')
+    .select('id, program_id, is_public, registration_open, price_cents')
+    .eq('id', body.class_id)
+    .maybeSingle();
+  if (error) return bad(500, 'class_lookup_failed', error.message);
+  if (!classRow || classRow.program_id !== program.id || !classRow.is_public) {
+    return bad(404, 'class_not_found', 'class not found');
+  }
+  if (!classRow.registration_open) {
+    return bad(403, 'class_closed', 'this class is not open for sign-ups right now');
+  }
+  try {
+    const quote = await quoteClassDiscount(supa, {
+      programId: program.id,
+      classId: classRow.id,
+      code: body.discount_code,
+      listAmountCents: Number(classRow.price_cents || 0),
+    });
+    return json({ ok: true, pricing: quote });
+  } catch (err) {
+    return discountErrorResponse(err);
+  }
 }
 
 async function handleLead(body: any): Promise<Response> {
@@ -318,6 +377,7 @@ async function handleRegistration(body: any): Promise<Response> {
   if (!parentEmail || !EMAIL_RE.test(parentEmail)) {
     return bad(400, 'bad_parent_email', 'parent_email is required and must be valid');
   }
+  const requestedDiscountCode = normalizeDiscountCode(body.discount_code);
 
   let windowId: string | null = null;
   if (body.window_id) {
@@ -345,7 +405,7 @@ async function handleRegistration(body: any): Promise<Response> {
     }
     const { data: c } = await supa
       .from('program_classes')
-      .select('id, program_id, is_public, registration_open, name, capacity, age_range_min, age_range_max, schedule_summary, starts_at, ends_at, price_cents, price_unit, price_unit_label')
+      .select('id, program_id, is_public, registration_open, name, capacity, age_range_min, age_range_max, schedule_summary, starts_at, ends_at, price_cents, price_unit, price_unit_label, recurring_billing_enabled, recurring_billing_amount_cents, recurring_billing_dates, recurring_billing_end_date, recurring_billing_terms_version')
       .eq('id', body.class_id)
       .maybeSingle();
     if (!c) return bad(404, 'class_not_found', 'class not found');
@@ -363,18 +423,90 @@ async function handleRegistration(body: any): Promise<Response> {
         { athlete_age: ageCheck.athleteAge, age_range_min: ageCheck.min, age_range_max: ageCheck.max }
       );
     }
-    if (c.capacity != null) {
-      const { count } = await supa
-        .from('registrations')
-        .select('id', { count: 'exact', head: true })
-        .eq('class_id', c.id)
-        .in('status', ['pending', 'accepted']);
-      if ((count || 0) >= c.capacity) {
-        return bad(409, 'class_full', 'this class is full — try the waitlist');
-      }
-    }
     classId = c.id;
     classRow = c;
+  }
+
+  const { data: paymentSettings } = await supa
+    .from('program_payment_settings')
+    .select('public_checkout_enabled')
+    .eq('program_id', program.id)
+    .maybeSingle();
+  const paymentGateRequired = body.payment_required === true
+    && Boolean(paymentSettings?.public_checkout_enabled)
+    && Boolean(classId)
+    && Number(classRow?.price_cents || 0) > 0;
+
+  if (paymentGateRequired && classId) {
+    try {
+      const existing = await findReusableCheckout({
+        programId: program.id,
+        classId,
+        athleteName,
+        parentEmail,
+      });
+      if (existing) {
+        return json({
+          ok: true,
+          existing: true,
+          registration_id: existing.id,
+          class: classRow ? { id: classRow.id, name: classRow.name } : null,
+          pricing: {
+            code_id: existing.discount_code_id ?? null,
+            code: existing.discount_code ?? null,
+            label: existing.intake_metadata?.discount?.label ?? null,
+            list_amount_cents: existing.list_amount_cents,
+            discount_amount_cents: existing.discount_amount_cents || 0,
+            final_amount_cents: existing.final_amount_cents,
+          },
+        });
+      }
+    } catch (err) {
+      console.warn('[intake] reusable checkout lookup failed', err);
+    }
+  }
+
+  if (classRow?.capacity != null) {
+    const { data: occupiedRows, error: occupiedError } = await supa
+      .from('registrations')
+      .select('status, payment_status, intake_metadata')
+      .eq('class_id', classRow.id)
+      .in('status', ['pending', 'accepted']);
+    if (occupiedError) return bad(500, 'capacity_lookup_failed', occupiedError.message);
+    const occupied = (occupiedRows || []).filter((row: any) => {
+      if (row.status === 'accepted') return true;
+      const metadata = row.intake_metadata && typeof row.intake_metadata === 'object'
+        ? row.intake_metadata
+        : {};
+      const checkoutHold = !['paid', 'comped'].includes(String(row.payment_status || 'none'))
+        && (metadata.payment_gate_required === true || metadata.payment_gate_state === 'checkout_started');
+      return !checkoutHold;
+    }).length;
+    if (occupied >= classRow.capacity) {
+      return bad(409, 'class_full', 'this class is full — try the waitlist');
+    }
+  }
+
+  let pricing: any = classRow ? {
+    code_id: null,
+    code: null,
+    label: null,
+    list_amount_cents: Number(classRow.price_cents || 0),
+    discount_amount_cents: 0,
+    final_amount_cents: Number(classRow.price_cents || 0),
+  } : null;
+  if (requestedDiscountCode) {
+    if (!classRow) return bad(400, 'discount_requires_class', 'discount codes require a class registration');
+    try {
+      pricing = await quoteClassDiscount(supa, {
+        programId: program.id,
+        classId: classRow.id,
+        code: requestedDiscountCode,
+        listAmountCents: Number(classRow.price_cents || 0),
+      });
+    } catch (err) {
+      return discountErrorResponse(err);
+    }
   }
 
   const levelInterest = body.level_interest != null ? Number(body.level_interest) : null;
@@ -395,6 +527,11 @@ async function handleRegistration(body: any): Promise<Response> {
     source: body.source ? String(body.source).slice(0, 100) : 'public_website',
     status: 'pending',
     payment_status: 'none',
+    discount_code_id: pricing?.code_id ?? null,
+    discount_code: pricing?.code ?? null,
+    list_amount_cents: pricing?.list_amount_cents ?? null,
+    discount_amount_cents: pricing?.discount_amount_cents ?? 0,
+    final_amount_cents: pricing?.final_amount_cents ?? null,
     intake_metadata: {
       ...(typeof body.metadata === 'object' && body.metadata ? body.metadata : {}),
       athlete_age: ageFromDob(body.athlete_dob),
@@ -402,6 +539,23 @@ async function handleRegistration(body: any): Promise<Response> {
       schedule_summary: classRow?.schedule_summary ?? null,
       age_range_min: classRow?.age_range_min ?? null,
       age_range_max: classRow?.age_range_max ?? null,
+      payment_gate_required: paymentGateRequired,
+      payment_gate_state: paymentGateRequired ? 'checkout_started' : null,
+      checkout_started_at: paymentGateRequired ? new Date().toISOString() : null,
+      recurring_billing: classRow?.recurring_billing_enabled ? {
+        enabled: true,
+        amount_cents: classRow.recurring_billing_amount_cents,
+        billing_dates: classRow.recurring_billing_dates,
+        end_date: classRow.recurring_billing_end_date,
+        terms_version: classRow.recurring_billing_terms_version,
+      } : null,
+      discount: pricing?.code ? {
+        code: pricing.code,
+        label: pricing.label,
+        list_amount_cents: pricing.list_amount_cents,
+        discount_amount_cents: pricing.discount_amount_cents,
+        final_amount_cents: pricing.final_amount_cents,
+      } : null,
       public_intake_kind: 'registration',
     },
   };
@@ -411,7 +565,43 @@ async function handleRegistration(body: any): Promise<Response> {
   }
 
   const { data, error } = await supa.from('registrations').insert(insertRow).select('id').single();
-  if (error) return bad(500, 'insert_failed', error.message);
+  if (error) {
+    if (error.code === '23505' && paymentGateRequired && classId) {
+      try {
+        const existing = await findReusableCheckout({
+          programId: program.id,
+          classId,
+          athleteName,
+          parentEmail,
+        });
+        if (existing) {
+          return json({
+            ok: true,
+            existing: true,
+            registration_id: existing.id,
+            class: classRow ? { id: classRow.id, name: classRow.name } : null,
+            pricing: {
+              code_id: existing.discount_code_id ?? null,
+              code: existing.discount_code ?? null,
+              label: existing.intake_metadata?.discount?.label ?? null,
+              list_amount_cents: existing.list_amount_cents,
+              discount_amount_cents: existing.discount_amount_cents || 0,
+              final_amount_cents: existing.final_amount_cents,
+            },
+          });
+        }
+      } catch (lookupError) {
+        console.warn('[intake] checkout conflict recovery failed', lookupError);
+      }
+      return bad(
+        409,
+        'checkout_already_started',
+        'A checkout is already in progress for this athlete. Please reopen the existing checkout or contact the gym for help.'
+      );
+    }
+    console.error('[intake] registration insert failed', error);
+    return bad(500, 'insert_failed', 'We could not start checkout. Please try again.');
+  }
 
   // Best-effort email backup so a booking can't get lost. Doesn't block.
   let windowTitle: string | null = null;
@@ -436,7 +626,12 @@ async function handleRegistration(body: any): Promise<Response> {
     source: insertRow.source as string | null,
   }).catch(() => {});
 
-  return json({ ok: true, registration_id: data.id, class: classRow ? { id: classRow.id, name: classRow.name } : null });
+  return json({
+    ok: true,
+    registration_id: data.id,
+    class: classRow ? { id: classRow.id, name: classRow.name } : null,
+    pricing,
+  });
 }
 
 async function handleOpenGym(body: any): Promise<Response> {
@@ -556,7 +751,7 @@ async function handleOpenGym(body: any): Promise<Response> {
   });
 }
 
-Deno.serve(async (req: Request) => {
+export async function handleRequest(req: Request) {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return bad(405, 'method_not_allowed', 'POST only');
 
@@ -569,16 +764,18 @@ Deno.serve(async (req: Request) => {
 
   const kind = String(body?.kind || '').toLowerCase();
   try {
-    if (kind !== 'lead' && kind !== 'registration' && kind !== 'open_gym') {
-      return bad(400, 'bad_kind', "kind must be 'lead', 'registration', or 'open_gym'");
+    if (kind !== 'lead' && kind !== 'registration' && kind !== 'open_gym' && kind !== 'discount_quote') {
+      return bad(400, 'bad_kind', "kind must be 'lead', 'registration', 'open_gym', or 'discount_quote'");
     }
     const email = body?.parent_email ? String(body.parent_email) : null;
     const limited = await throttle(req, kind, null, email);
     if (limited) return limited;
     if (kind === 'lead') return await handleLead(body);
     if (kind === 'registration') return await handleRegistration(body);
+    if (kind === 'discount_quote') return await handleDiscountQuote(body);
     return await handleOpenGym(body);
   } catch (err) {
     return bad(500, 'unexpected', err instanceof Error ? err.message : String(err));
   }
-});
+}
+if (import.meta.main) Deno.serve(handleRequest);

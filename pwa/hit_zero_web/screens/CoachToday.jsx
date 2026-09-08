@@ -220,6 +220,7 @@ function CoachToday({ snap, openAthlete, navigate, pushToast, session }) {
         </div>
       </div>
 
+      <div className="hz-eyebrow" style={{ marginBottom: 10 }}>Gym-wide administration · attendance uses selected team</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 12, marginBottom: 24 }}>
         <StatTile label="Practice plans" value={practicePlans.length} sub="coach-built" size="md" accent="var(--hz-teal)"/>
         <StatTile label="Class enrollments" value={classEnrollments.length} sub={`${classEnrollments.filter(r => r.payment_status === 'paid').length} paid`} size="md"/>
