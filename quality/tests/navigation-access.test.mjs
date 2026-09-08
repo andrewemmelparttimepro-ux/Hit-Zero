@@ -33,3 +33,10 @@ test('financial screens never render zero balances while initial records are loa
  const stale=render({status:'error',viewerId:'owner',programId:'gym',loadedAt:'2026-09-08'});
  assert.match(stale,/Showing the last loaded records/);assert.match(stale,/SAVED_TOTAL/);
 });
+
+test('live shell identifies the exact gym including MCA and never borrows another gym',()=>{
+ const mca={id:'11111111-1111-1111-1111-111111111111',name:'MCA'},other={id:'other',name:'Foreign gym'};
+ assert.equal(context.activeProgramFromSnap({programs:[other,mca]},{mode:'live',profile:{program_id:mca.id}}),mca);
+ assert.equal(context.activeProgramFromSnap({programs:[other]},{mode:'live',profile:{program_id:mca.id}}),null);
+ assert.equal(context.activeProgramFromSnap({programs:[other]},{mode:'live',profile:{}}),null);
+});

@@ -126,7 +126,7 @@ const WALKTHROUGH_VERSION = 'v4';
 const PLACEHOLDER_PROGRAM_ID = '11111111-1111-1111-1111-111111111111';
 
 function isPlaceholderProgramId(id) {
-  return !id || id === PLACEHOLDER_PROGRAM_ID;
+  return !id;
 }
 window.HZisPlaceholderProgramId = isPlaceholderProgramId;
 
@@ -144,6 +144,7 @@ function activeProgramFromSnap(snap, session) {
   const rawProgramId = session?.actualProfile?.program_id || session?.profile?.program_id || null;
   const programId = isPlaceholderProgramId(rawProgramId) ? null : rawProgramId;
   const programs = snap?.programs || [];
+  if(session?.mode === 'live') return programId ? programs.find(p => p.id === programId) || null : null;
   return (programId ? programs.find(p => p.id === programId) : null)
     || programs.find(p => !isPlaceholderProgramId(p.id))
     || programs.find(Boolean)
@@ -449,6 +450,7 @@ function App() {
   const [accountSheetOpen, setAccountSheetOpen] = useState(false);
   const [walkthroughRole, setWalkthroughRole] = useState(null);
   const [screenAssetError, setScreenAssetError] = useState('');
+  const [screenRetry, setScreenRetry] = useState(0);
   const [, setScreenAssetVersion] = useState(0);
   const drawerHistoryRef = useRef(false);
   const snapshotFrameRef = useRef(null);
@@ -587,7 +589,7 @@ function App() {
       .then(() => { if (active) setScreenAssetVersion(version => version + 1); })
       .catch((err) => { if (active) setScreenAssetError(err?.message || 'Could not load this screen.'); });
     return () => { active = false; };
-  }, [requestedScreenAsset]);
+  }, [requestedScreenAsset, screenRetry]);
 
   useEffect(() => {
     if (!session?.profile || walkthroughRole) return;
@@ -903,7 +905,7 @@ function App() {
           </ScreenErrorBoundary>
         ) : screenAssetError ? (
           <div style={{ padding: 40, color: 'var(--hz-pink)' }} role="alert">
-            {screenAssetError} <button className="hz-btn" onClick={() => location.reload()}>Retry</button>
+            {screenAssetError} <button className="hz-btn" onClick={() => setScreenRetry(value => value + 1)}>Retry</button>
           </div>
         ) : (
           <SkeletonCard rows={5} style={{ margin: 40, maxWidth: 620 }} />

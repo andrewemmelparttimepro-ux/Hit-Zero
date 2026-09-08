@@ -87,7 +87,7 @@ function replaceOnce(input, pattern, replacement, label) {
 await rm(outputRoot, { recursive: true, force: true });
 await mkdir(assetRoot, { recursive: true });
 
-const excluded = new Set(['node_modules', 'public', 'package.json', 'package-lock.json', 'build.mjs', 'vercel.json', 'middleware.ts']);
+const excluded = new Set(['node_modules', 'public', 'package.json', 'package-lock.json', 'build.mjs', 'vercel.json', 'middleware.ts', 'screen-loader.js']);
 for (const entry of await readdir(root, { withFileTypes: true })) {
   if (excluded.has(entry.name) || entry.name.startsWith('.')) continue;
   await cp(path.join(root, entry.name), path.join(outputRoot, entry.name), { recursive: true, filter: source => !path.basename(source).startsWith('.') });
@@ -147,24 +147,11 @@ const dataAssets = [
   runtimeAsset,
 ];
 const criticalUiAssets = criticalUiSources.map(source => compiledAssets.get(source));
-const lazyLoader = `<script>
-  window.HZ_SCREEN_ASSETS=${JSON.stringify(screenAssets)};
-  window.HZloadScreenAsset=(name)=>{
-    if(window[name]) return Promise.resolve(window[name]);
-    const src=window.HZ_SCREEN_ASSETS[name];
-    if(!src) return Promise.reject(new Error('No compiled screen asset for '+name));
-    window.__hzScreenPromises=window.__hzScreenPromises||{};
-    if(window.__hzScreenPromises[src]) return window.__hzScreenPromises[src];
-    window.__hzScreenPromises[src]=new Promise((resolve,reject)=>{
-      const el=document.createElement('script');
-      el.src=src;
-      el.onload=()=>resolve(window[name]);
-      el.onerror=()=>{delete window.__hzScreenPromises[src];el.remove();reject(new Error('Could not load '+name));};
-      document.head.appendChild(el);
-    });
-    return window.__hzScreenPromises[src];
-  };
-<\/script>`;
+const lazyLoaderAsset = await compileVirtual('screen-loader', `
+  import {installScreenLoader} from './screen-loader.js';
+  installScreenLoader(window, document, ${JSON.stringify(screenAssets)});
+`);
+const lazyLoader = script(lazyLoaderAsset);
 
 let html = sourceHtml;
 html = replaceOnce(html, /<link rel="stylesheet" href="hit_zero_web\/styles\/web\.css(?:\?[^\"]*)?"\/>/, `<link rel="stylesheet" href="${cssAsset}"/>`, 'application stylesheet');
@@ -195,7 +182,7 @@ const precacheUrls = [
   compiledAssets.get('hit_zero_web/db/client.js'),
   compiledAssets.get('hit_zero_web/db/selectors.js'),
   ...criticalUiAssets,
-  bootAsset,
+  lazyLoaderAsset, bootAsset,
 ];
 let serviceWorker = await readFile(path.join(root, 'sw.js'), 'utf8');
 // Lazy screens and inline loader changes must also invalidate the installed shell.
@@ -222,7 +209,7 @@ await writeFile(path.join(outputRoot, 'build-meta.json'), `${JSON.stringify({
   sourceCommit,
   staticAssets,
   releaseHash,
-  assets: { cssAsset, analyticsAsset, vendorAsset, runtimeAsset, tusAsset, bootAsset, app: Object.fromEntries(compiledAssets) },
+  assets: { cssAsset, analyticsAsset, vendorAsset, runtimeAsset, tusAsset, bootAsset, lazyLoaderAsset, app: Object.fromEntries(compiledAssets) },
 }, null, 2)}\n`);
 
 console.log(JSON.stringify({ releaseHash, outputRoot, assetCount: precacheUrls.length, entry: bootAsset }));
