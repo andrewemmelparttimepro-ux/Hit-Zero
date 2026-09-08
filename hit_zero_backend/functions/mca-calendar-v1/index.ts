@@ -12,6 +12,7 @@ const CACHE_KEY = 'mca-google-calendar';
 
 let cachedIcs = '';
 let cachedIcsAt = 0;
+let refreshInFlight: Promise<any> | null = null;
 
 const supa = createClient(
   Deno.env.get('SUPABASE_URL') || '',
@@ -90,10 +91,10 @@ function serializeOccurrence(event: any, startValue: any, endValue: any, recurri
   };
 }
 
-function expandCalendar(ics: string, from: Date, to: Date) {
+export function expandCalendar(ics: string, from: Date, to: Date) {
   const calendar = new ICAL.Component(ICAL.parse(ics));
   for (const timezone of calendar.getAllSubcomponents('vtimezone')) {
-    const tzid = timezone.getFirstPropertyValue('tzid');
+    const tzid = String(timezone.getFirstPropertyValue('tzid') || '');
     if (!tzid || ICAL.TimezoneService.has(tzid)) continue;
     ICAL.TimezoneService.register(timezone);
   }
@@ -146,7 +147,9 @@ async function refreshCalendarSource() {
       });
       if (!response.ok) throw new Error(`Google Calendar returned ${response.status}.`);
       const ics = await response.text();
-      if (!ics.includes('BEGIN:VCALENDAR')) throw new Error('Google Calendar returned an invalid feed.');
+      if (!ics.includes('BEGIN:VCALENDAR') || !ics.includes('END:VCALENDAR')) throw new Error('Google Calendar returned an invalid feed.');
+      // Reject malformed source before replacing the last usable copy.
+      new ICAL.Component(ICAL.parse(ics));
       cachedIcs = ics;
       cachedIcsAt = Date.now();
       const { error: sharedWriteError } = await supa.from('external_calendar_cache').upsert({
@@ -167,39 +170,24 @@ async function refreshCalendarSource() {
   throw lastError || new Error('Google Calendar could not be reached.');
 }
 
-async function fetchCalendarSource() {
-  if (cachedIcs && Date.now() - cachedIcsAt < SOURCE_CACHE_MS) {
-    return { ics: cachedIcs, fetchedAt: new Date(cachedIcsAt).toISOString(), stale: false };
+async function fetchCalendarSource(force=false) {
+  const maxAge=force ? 10000 : SOURCE_CACHE_MS;
+  if(cachedIcs && Date.now()-cachedIcsAt<maxAge)return {ics:cachedIcs,fetchedAt:new Date(cachedIcsAt).toISOString(),stale:false};
+  const {data:shared,error}=await supa.from('external_calendar_cache').select('ics_text, source_fetched_at').eq('cache_key',CACHE_KEY).maybeSingle();
+  if(error)console.warn('[mca-calendar-v1] cache read failed',error.message);
+  const sharedAt=shared?.source_fetched_at ? new Date(shared.source_fetched_at).getTime() : 0;
+  if(shared?.ics_text && Number.isFinite(sharedAt) && sharedAt>cachedIcsAt){cachedIcs=shared.ics_text;cachedIcsAt=sharedAt;}
+  if(cachedIcs && Date.now()-cachedIcsAt<maxAge)return {ics:cachedIcs,fetchedAt:new Date(cachedIcsAt).toISOString(),stale:false};
+  // A requested refresh awaits the source instead of returning the same stale copy.
+  if(!refreshInFlight)refreshInFlight=refreshCalendarSource().finally(()=>{refreshInFlight=null;});
+  try{return await refreshInFlight;}
+  catch(error){
+    if(cachedIcs)return {ics:cachedIcs,fetchedAt:new Date(cachedIcsAt).toISOString(),stale:true,refreshError:'Google Calendar could not be refreshed. Showing the last saved source.'};
+    throw error;
   }
-
-  const { data: shared, error: sharedReadError } = await supa
-    .from('external_calendar_cache')
-    .select('ics_text, source_fetched_at')
-    .eq('cache_key', CACHE_KEY)
-    .maybeSingle();
-  if (sharedReadError) console.warn('[mca-calendar-v1] shared cache read failed', sharedReadError.message);
-  const sharedAt = shared?.source_fetched_at ? new Date(shared.source_fetched_at).getTime() : 0;
-  if (shared?.ics_text && Number.isFinite(sharedAt)) {
-    cachedIcs = shared.ics_text;
-    cachedIcsAt = sharedAt;
-    if (Date.now() - sharedAt < SOURCE_CACHE_MS) {
-      return { ics: cachedIcs, fetchedAt: new Date(cachedIcsAt).toISOString(), stale: false };
-    }
-  }
-
-  if (cachedIcs) {
-    const refresh = refreshCalendarSource().catch(error => {
-      console.warn('[mca-calendar-v1] background refresh failed', error);
-    });
-    const waitUntil = (globalThis as any).EdgeRuntime?.waitUntil;
-    if (typeof waitUntil === 'function') waitUntil(refresh);
-    return { ics: cachedIcs, fetchedAt: new Date(cachedIcsAt).toISOString(), stale: true };
-  }
-
-  return await refreshCalendarSource();
 }
 
-Deno.serve(async (req) => {
+export async function handleRequest(req: Request) {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'GET') return json({ error: 'Method not allowed.' }, 405);
 
@@ -215,7 +203,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const source = await fetchCalendarSource();
+    const forced=url.searchParams.has('refresh');
+    const source = await fetchCalendarSource(forced);
     const expanded = expandCalendar(source.ics, from, to);
     return json({
       calendar: expanded.name,
@@ -223,12 +212,15 @@ Deno.serve(async (req) => {
       fetchedAt: new Date().toISOString(),
       sourceFetchedAt: source.fetchedAt,
       stale: source.stale,
+      refreshError: source.refreshError || null,
       source: 'Magic City Athletics Google Calendar',
       sourceUrl: MCA_CALENDAR_EMBED_URL,
       events: expanded.events,
-    }, 200, true);
+    }, 200, !source.stale && !forced);
   } catch (error) {
     console.error('[mca-calendar-v1] mirror failed', error);
     return json({ error: 'The MCA calendar could not be refreshed right now.' }, 502);
   }
-});
+}
+
+if(import.meta.main)Deno.serve(handleRequest);

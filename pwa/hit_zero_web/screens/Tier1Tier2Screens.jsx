@@ -518,6 +518,7 @@ function Schedule({ snap, session, pushToast }) {
     mcaCalendarAbort.current?.abort?.();
     const controller = new AbortController();
     mcaCalendarAbort.current = controller;
+    const timeout=window.setTimeout(()=>controller.abort(),25000);
     setMcaCalendarLoading(true);
     if (force) setMcaCalendarError('');
     try {
@@ -538,10 +539,11 @@ function Schedule({ snap, session, pushToast }) {
       };
       setMcaCalendar(nextCalendar);
       try { localStorage.setItem(MCA_CALENDAR_CACHE_KEY, JSON.stringify(nextCalendar)); } catch {}
-      setMcaCalendarError('');
+      setMcaCalendarError(payload.refreshError || '');
     } catch (error) {
-      if (error?.name !== 'AbortError') setMcaCalendarError(error?.message || 'The live MCA calendar did not load.');
+      if(mcaCalendarAbort.current===controller)setMcaCalendarError(error?.name==='AbortError'?'Calendar refresh timed out. Showing the last saved dates.':error?.message || 'The live MCA calendar did not load.');
     } finally {
+      window.clearTimeout(timeout);
       if (mcaCalendarAbort.current === controller) setMcaCalendarLoading(false);
     }
   }
@@ -684,7 +686,7 @@ function Schedule({ snap, session, pushToast }) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 12, flexWrap: 'wrap', fontSize: 11, color: 'var(--hz-dim)' }}>
-          <span style={{ width: 8, height: 8, borderRadius: 8, background: mcaCalendarError ? 'var(--hz-amber)' : 'var(--hz-teal)', boxShadow: mcaCalendarError ? 'none' : '0 0 12px rgba(39,207,215,.7)' }}/>
+          <span style={{ width: 8, height: 8, borderRadius: 8, background: mcaCalendarError || mcaCalendar.stale ? 'var(--hz-amber)' : 'var(--hz-teal)', boxShadow: mcaCalendarError || mcaCalendar.stale ? 'none' : '0 0 12px rgba(39,207,215,.7)' }}/>
           {mcaCalendarError
             ? <span>{mcaCalendarError}{mcaCalendar.events.length ? ' Showing the last successful MCA update.' : ' Hit Zero sessions remain available below.'}</span>
             : mcaCalendar.fetchedAt
