@@ -369,6 +369,18 @@ function SkillsTab({ a, snap, session }) {
   const selectedSkillRow = selectedSkillId ? skillRowMap[selectedSkillId] || null : null;
   const selectedSkillStatus = selectedSkillId ? statusFor(selectedSkillId) : 'none';
   const selectedSkillNote = selectedSkillRow?.note || '';
+  const [skillHistory, setSkillHistory] = React.useState([]);
+  const [historyError, setHistoryError] = React.useState('');
+  React.useEffect(() => {
+    let active = true;
+    setSkillHistory([]); setHistoryError('');
+    if (!selectedSkillId || !window.HZsupa || window.HZdb?.auth?._mode?.() !== 'live') return;
+    window.HZsupa.from('athlete_skill_history').select('id,actor_role,changed_at,before_value,after_value')
+      .eq('athlete_id', a.id).eq('skill_id', selectedSkillId).order('changed_at', { ascending: false }).limit(10)
+      .then(({ data, error }) => { if (active) { setSkillHistory(data || []); if (error) setHistoryError('History could not load. Reopen this skill to retry.'); } });
+    return () => { active = false; };
+  }, [a.id, selectedSkillId, selectedSkillRow?.updated_at]);
+
 
   React.useEffect(() => {
     if (!selectedSkillId) {
@@ -573,7 +585,7 @@ function SkillsTab({ a, snap, session }) {
             />
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
               <div style={{ color: 'var(--hz-dim)', fontSize: 12 }}>
-                Notes stay attached to this athlete + skill pairing and follow the saved status.
+                Staff saves retain the previous status and note in skill history.
               </div>
               <button
                 type="button"
@@ -583,6 +595,17 @@ function SkillsTab({ a, snap, session }) {
               >
                 {savingNote ? 'Saving note...' : 'Save note'}
               </button>
+            </div>
+            <div style={{ marginTop: 16 }}>
+              <div className="hz-eyebrow">Saved history</div>
+              {historyError && <p role="alert">{historyError}</p>}
+              {!historyError && !skillHistory.length && <p style={{ color: 'var(--hz-dim)', fontSize: 12 }}>No changes recorded since history tracking began.</p>}
+              {skillHistory.map(entry => <div key={entry.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--hz-line)', fontSize: 12 }}>
+                <strong>{entry.actor_role}</strong> · {new Date(entry.changed_at).toLocaleString()}
+                <div>Assessment: {entry.before_value?.status || 'none'} → {entry.after_value?.status || 'none'}</div>
+                {entry.after_value?.self_report_status && <div>Practice report: {entry.after_value.self_report_status}</div>}
+                {entry.after_value?.note && <div>{entry.after_value.note}</div>}
+              </div>)}
             </div>
           </div>
         </div>

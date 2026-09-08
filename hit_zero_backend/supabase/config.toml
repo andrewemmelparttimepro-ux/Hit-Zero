@@ -70,3 +70,7 @@ entrypoint = "../functions/mca-calendar-v1/index.ts"
 [functions.calendar-ics]
 verify_jwt = false
 entrypoint = "../functions/calendar-ics/index.ts"
+
+# Dedicated database-only secret is verified in the handler.
+[functions.on-skill-mastered]
+verify_jwt = false

@@ -589,7 +589,7 @@ function SkillTree({ snap, session }) {
   };
   const STATUS_TONES = { none: 'rgba(255,255,255,0.04)', working: 'rgba(255,180,84,0.16)', got_it: 'rgba(39,207,215,0.18)', mastered: 'linear-gradient(135deg, rgba(39,207,215,0.3), rgba(249,127,172,0.3))' };
   const statusMap = {};
-  (snap.athlete_skills || []).filter(r => r.athlete_id === athleteId).forEach(r => { statusMap[r.skill_id] = r.status; });
+  (snap.athlete_skills || []).filter(r => r.athlete_id === athleteId).forEach(r => { statusMap[r.skill_id] = viewerRole === 'athlete' ? (r.self_report_status || 'none') : r.status; });
   const skillRowMap = {};
   (snap.athlete_skills || []).filter(r => r.athlete_id === athleteId).forEach(r => { skillRowMap[r.skill_id] = r; });
   const [localStatus, setLocalStatus] = React.useState({});
@@ -607,7 +607,7 @@ function SkillTree({ snap, session }) {
     const row = {
       athlete_id: myAthlete.id,
       skill_id: skill.id,
-      status,
+      ...(viewerRole === 'athlete' ? { self_report_status: status } : { status }),
       // actualProfile first: in kid-login mode the signed-in auth user is the
       // parent, and RLS requires updated_by = auth.uid().
       updated_by: session?.actualProfile?.id || session?.profile?.id || session?.user?.id || null,
@@ -719,7 +719,7 @@ function SkillTree({ snap, session }) {
           <div className="hz-eyebrow" style={{ color: 'var(--hz-teal)', marginBottom: 8 }}>Self tracker</div>
           <div className="hz-display" style={{ fontSize: 32, marginBottom: 8 }}>Tap what is true today.</div>
           <div style={{ color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.55, maxWidth: 760 }}>
-            This updates your profile so coaches and parents can see where you are. Pick honestly: Working is still a win.
+            This saves your practice report. Your coach’s assessment stays separate. Pick honestly: Working is still a win.
           </div>
           {progressBlock}
           {error && <div style={{ color: 'var(--hz-pink)', fontSize: 13, marginTop: 12 }}>{error}</div>}
@@ -756,6 +756,11 @@ function SkillTree({ snap, session }) {
             {isParentViewer ? `${firstName} is currently marked as ${STATUS_PARENT_HELP[selectedSkillStatus]}.` : STATUS_HELP[selectedSkillStatus]}
           </div>
           <div style={{ marginTop: 14 }}>
+            <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginBottom: 12 }}>
+              Saved assessment: {STATUS_LABEL[skillRowMap[selectedSkill.id]?.status || 'none']}.
+              {skillRowMap[selectedSkill.id]?.assessed_at ? ` Verified by staff ${new Date(skillRowMap[selectedSkill.id].assessed_at).toLocaleDateString()}.` : ' Staff verification has not been recorded.'}
+              {skillRowMap[selectedSkill.id]?.self_report_status && ` Practice report: ${STATUS_LABEL[skillRowMap[selectedSkill.id].self_report_status]}.`}
+            </div>
             <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Coach note</div>
             <div style={{
               padding: 14,

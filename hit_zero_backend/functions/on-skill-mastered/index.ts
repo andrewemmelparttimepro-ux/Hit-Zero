@@ -1,35 +1,17 @@
-// ═══════════════════════════════════════════════════════════════════════════
 // on-skill-mastered — Supabase Edge Function (Deno)
+// Fires when athlete_skills.status transitions to 'mastered'. Fans out
+// push notifications (APNs + FCM) to athlete + linked parents + coaches,
+// and writes a row to `celebrations` so the live ticker surfaces it.
 //
-// Triggered by a database webhook whenever athlete_skills.status transitions
-// to 'mastered'. Fans out a push notification to:
-//   · the athlete themself  (iOS/Android/web)
-//   · every linked parent   (same)
-//   · the team's coaches    (same)
-//
-// Also writes a row to `celebrations` so the live ticker surfaces it.
-//
-// Trigger wiring (dashboard → Database → Webhooks):
-//   Table: athlete_skills
-//   Events: UPDATE
-//   HTTP method: POST
-//   URL: <function invoke URL>
-//   Condition (in supabase sql): old.status is distinct from new.status
-//                                 and new.status = 'mastered'
-//
-// Secrets required:
-//   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (auto-injected by Supabase)
-//   APNS_KEY_ID, APNS_TEAM_ID, APNS_BUNDLE_ID, APNS_P8
-//   FCM_KEY
-// ═══════════════════════════════════════════════════════════════════════════
+// Called only by the database trigger with a dedicated managed secret.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { create as createJwt, getNumericDate } from 'https://deno.land/x/djwt@v2.9.1/mod.ts';
 
 type WebhookPayload = {
   type: 'UPDATE' | 'INSERT' | 'DELETE';
   table: string;
-  record: { athlete_id: string; skill_id: string; status: string; updated_by?: string };
+  record: { athlete_id: string; skill_id: string; status: string; updated_by?: string; updated_at?: string };
   old_record?: { status: string } | null;
 };
 
@@ -39,23 +21,15 @@ const supa = createClient(
   { auth: { persistSession: false } }
 );
 
-// ─── APNs ───────────────────────────────────────────────────────────────────
 async function apnsJwt(): Promise<string> {
   const keyId = Deno.env.get('APNS_KEY_ID')!;
   const teamId = Deno.env.get('APNS_TEAM_ID')!;
   const p8 = Deno.env.get('APNS_P8')!;
-
-  // Convert PEM → CryptoKey
   const pem = p8.replace(/-----\w+ PRIVATE KEY-----/g, '').replace(/\s+/g, '');
   const der = Uint8Array.from(atob(pem), (c) => c.charCodeAt(0));
   const key = await crypto.subtle.importKey(
-    'pkcs8',
-    der,
-    { name: 'ECDSA', namedCurve: 'P-256' },
-    false,
-    ['sign']
+    'pkcs8', der, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']
   );
-
   return await createJwt(
     { alg: 'ES256', kid: keyId, typ: 'JWT' },
     { iss: teamId, iat: getNumericDate(0) },
@@ -64,6 +38,7 @@ async function apnsJwt(): Promise<string> {
 }
 
 async function sendApns(token: string, title: string, body: string, data: Record<string, unknown>) {
+  if (!Deno.env.get('APNS_KEY_ID')) return;
   const jwt = await apnsJwt();
   const bundle = Deno.env.get('APNS_BUNDLE_ID')!;
   const res = await fetch(`https://api.push.apple.com/3/device/${token}`, {
@@ -82,7 +57,6 @@ async function sendApns(token: string, title: string, body: string, data: Record
   if (!res.ok) console.warn('apns', res.status, await res.text());
 }
 
-// ─── FCM ────────────────────────────────────────────────────────────────────
 async function sendFcm(token: string, title: string, body: string, data: Record<string, unknown>) {
   const key = Deno.env.get('FCM_KEY');
   if (!key) return;
@@ -98,21 +72,28 @@ async function sendFcm(token: string, title: string, body: string, data: Record<
   if (!res.ok) console.warn('fcm', res.status, await res.text());
 }
 
-// ─── Web Push (PWA) via VAPID ─ skipped for v0; native only. ────────────────
-
-// ─── Main handler ──────────────────────────────────────────────────────────
-Deno.serve(async (req) => {
+export async function handleRequest(req: Request) {
   if (req.method !== 'POST') return new Response('method not allowed', { status: 405 });
 
-  let payload: WebhookPayload;
-  try {
-    payload = await req.json();
-  } catch {
-    return new Response('bad json', { status: 400 });
-  }
+  const expected = Deno.env.get('SKILL_WEBHOOK_SECRET') || '';
+  const provided = req.headers.get('x-hz-webhook-key') || '';
+  if (!expected) return new Response('webhook not configured', { status: 503 });
+  const a = new TextEncoder().encode(expected), b = new TextEncoder().encode(provided);
+  let difference = a.length ^ b.length;
+  for (let i = 0; i < a.length; i++) difference |= a[i] ^ (b[i] || 0);
+  if (difference !== 0) return new Response('unauthorized', { status: 401 });
 
-  // Guard: only fire on UPDATE where status flipped to 'mastered'
-  if (payload.type !== 'UPDATE') return new Response('ignored', { status: 200 });
+  let payload: WebhookPayload;
+  try { payload = await req.json(); } catch { return new Response('bad json', { status: 400 }); }
+
+  if (payload.type !== 'UPDATE' && payload.type !== 'INSERT') {
+    return new Response('ignored', { status: 200 });
+  }
+  if (payload.table !== 'athlete_skills' || !payload.record?.updated_at) return new Response('invalid event', { status: 400 });
+  const { data: current, error: currentError } = await supa.from('athlete_skills')
+    .select('status,updated_at').eq('athlete_id',payload.record.athlete_id).eq('skill_id',payload.record.skill_id).maybeSingle();
+  if (currentError) return new Response('event lookup unavailable', { status: 503 });
+  if (!current || current.status !== 'mastered' || Date.parse(current.updated_at) !== Date.parse(payload.record.updated_at)) return new Response('stale event', { status: 409 });
   const newStatus = payload.record?.status;
   const oldStatus = payload.old_record?.status;
   if (newStatus !== 'mastered' || oldStatus === 'mastered') {
@@ -122,23 +103,20 @@ Deno.serve(async (req) => {
   const athleteId = payload.record.athlete_id;
   const skillId = payload.record.skill_id;
 
-  // Look up athlete + skill + team
   const { data: athlete } = await supa
     .from('athletes')
     .select('id, display_name, team_id, profile_id')
-    .eq('id', athleteId)
-    .single();
+    .eq('id', athleteId).single();
   if (!athlete) return new Response('athlete not found', { status: 404 });
 
   const { data: skill } = await supa
     .from('skills')
     .select('id, name, level')
-    .eq('id', skillId)
-    .single();
+    .eq('id', skillId).single();
   if (!skill) return new Response('skill not found', { status: 404 });
 
-  // Write a celebration row — powers the live ticker via realtime
-  await supa.from('celebrations').insert({
+  const { error: celebrationError } = await supa.from('celebrations').insert({
+    source_event_key: [payload.record.athlete_id, payload.record.skill_id, new Date(payload.record.updated_at!).toISOString()].join(':'),
     team_id: athlete.team_id,
     athlete_id: athlete.id,
     kind: 'skill_progress',
@@ -149,32 +127,32 @@ Deno.serve(async (req) => {
     body: `Level ${skill.level}`
   });
 
-  // Collect push targets: athlete + linked parents + team coaches/owner
+  if (celebrationError?.code === '23505') return new Response('already processed', { status: 200 });
+  if (celebrationError) return new Response('event persistence unavailable', { status: 503 });
+
   const targets = new Set<string>();
   if (athlete.profile_id) targets.add(athlete.profile_id);
 
   const { data: parents } = await supa
-    .from('parent_links')
-    .select('parent_id')
-    .eq('athlete_id', athlete.id);
+    .from('parent_links').select('parent_id').eq('athlete_id', athlete.id);
   parents?.forEach((p) => targets.add(p.parent_id));
 
-  const { data: coaches } = await supa
-    .from('profiles')
-    .select('id')
-    .in('role', ['coach', 'owner'])
-    .eq(
-      'program_id',
-      (await supa.from('teams').select('program_id').eq('id', athlete.team_id).single()).data
-        ?.program_id
-    );
-  coaches?.forEach((c) => targets.add(c.id));
+  const { data: team } = await supa
+    .from('teams').select('program_id').eq('id', athlete.team_id).single();
+  if (team?.program_id) {
+    const { data: coaches } = await supa
+      .from('profiles').select('id')
+      .in('role', ['coach', 'owner'])
+      .eq('program_id', team.program_id);
+    coaches?.forEach((c) => targets.add(c.id));
+  }
 
-  if (targets.size === 0) return new Response('no targets', { status: 200 });
+  if (targets.size === 0) {
+    return new Response(JSON.stringify({ sent: 0 }), { headers: { 'content-type': 'application/json' } });
+  }
 
   const { data: tokens } = await supa
-    .from('push_tokens')
-    .select('platform, token, profile_id')
+    .from('push_tokens').select('platform, token, profile_id')
     .in('profile_id', Array.from(targets));
 
   const title = `${athlete.display_name} hit zero.`;
@@ -196,4 +174,6 @@ Deno.serve(async (req) => {
   return new Response(JSON.stringify({ sent: tokens?.length ?? 0 }), {
     headers: { 'content-type': 'application/json' }
   });
-});
+}
+
+if (import.meta.main) Deno.serve(handleRequest);
