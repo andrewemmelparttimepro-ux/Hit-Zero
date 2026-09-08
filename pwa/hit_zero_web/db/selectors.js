@@ -193,14 +193,14 @@
   }
 
   function athleteReadiness(aid) {
-    const t = team();
-    if (!t) return 0;
+    const t = (cache?.teams || []).find(t => t.id === athleteById(aid)?.team_id);
+    if (!t) return null;
     const map = athleteSkills(aid);
     let sum = 0, n = 0;
     (cache.skills || []).forEach(s => {
       if (s.level <= t.level) { sum += STATUS_PCT[map[s.id] || 'none']; n++; }
     });
-    return n ? sum/n : 0;
+    return n ? sum/n : null;
   }
 
   function teamReadiness() {
@@ -231,31 +231,61 @@
   function athleteAttendance(aid) {
     const athlete = athleteById(aid);
     const now = Date.now();
-    const done = (cache.sessions || []).filter(s => {
-      if (athlete?.team_id && s.team_id && s.team_id !== athlete.team_id) return false;
+    const doneIds = new Set((cache.sessions || []).filter(s => {
+      if (!athlete || (s.team_id && s.team_id !== athlete.team_id)) return false;
       if (s.scheduled === false) return true;
       const when = new Date(s.scheduled_at || s.date || 0).getTime();
       return Number.isFinite(when) && when <= now;
-    });
-    const presentIds = new Set((cache.attendance || []).filter(a => a.athlete_id === aid && a.status === 'present').map(a => a.session_id));
-    const attended = done.filter(s => presentIds.has(s.id)).length;
-    return { attended, total: done.length, pct: done.length ? attended/done.length : null, empty: done.length === 0 };
+    }).map(s => s.id));
+    // An unmarked session is unknown, never an inferred absence.
+    const recorded = new Map();
+    (cache.attendance || []).filter(a => a.athlete_id === aid && doneIds.has(a.session_id)
+      && ['present', 'late', 'absent'].includes(a.status)).forEach(a => recorded.set(a.session_id, a.status));
+    const attended = [...recorded.values()].filter(status => status !== 'absent').length;
+    return { attended, total: recorded.size, pct: recorded.size ? attended/recorded.size : null, empty: recorded.size === 0 };
   }
 
-  function teamAttendance() {
-    const now = Date.now();
-    const done = (cache.sessions || []).filter(s => {
-      if (s.scheduled === false) return true;
-      const when = new Date(s.scheduled_at || s.date || 0).getTime();
-      return Number.isFinite(when) && when <= now;
+  function teamAttendance(teamId = team()?.id) {
+    const rows = programAthletes().filter(a => teamId === 'all' || a.team_id === teamId).map(a => athleteAttendance(a.id));
+    const total = rows.reduce((sum, r) => sum + r.total, 0);
+    return total ? rows.reduce((sum, r) => sum + r.attended, 0) / total : null;
+  }
+
+  // Explicit visible IDs keep dashboard cards on the same viewer/team scope.
+  function dashboardMetrics(athleteIds, teamIds) {
+    const ids = new Set(athleteIds);
+    const teams = new Set(teamIds);
+    const athletes = programAthletes().filter(a => ids.has(a.id));
+    const progress = athletes.map(a => athleteReadiness(a.id)).filter(v => v != null);
+    const attendance = athletes.map(a => athleteAttendance(a.id));
+    const total = attendance.reduce((sum, r) => sum + r.total, 0);
+    const queue = {};
+    athletes.forEach(a => {
+      const t = (cache.teams || []).find(t => t.id === a.team_id);
+      const statuses = athleteSkills(a.id);
+      (cache.skills || []).filter(s => t && s.level <= t.level).forEach(skill => {
+        const row = queue[skill.id] ||= { skill, working: 0, notStarted: 0, gotIt: 0, mastered: 0 };
+        const status = statuses[skill.id] || 'none';
+        if (status === 'working') row.working++;
+        else if (status === 'got_it') row.gotIt++;
+        else if (status === 'mastered') row.mastered++;
+        else row.notStarted++;
+      });
     });
-    const nAthletes = (cache.athletes || []).length;
-    let sum = 0;
-    done.forEach(s => {
-      const present = (cache.attendance || []).filter(a => a.session_id === s.id && a.status === 'present').length;
-      sum += present / Math.max(1, nAthletes);
-    });
-    return done.length ? sum/done.length : 0;
+    const runs = (cache.score_runs || []).filter(r => teams.has(r.team_id) && r.total != null && Number.isFinite(Number(r.total)))
+      .slice().sort((a,b) => new Date(b.run_at) - new Date(a.run_at));
+    const lastRun = runs[0] || null;
+    const previousRun = lastRun ? runs.find(r => r.id !== lastRun.id && r.team_id === lastRun.team_id) : null;
+    const nextComp = (cache.sessions || []).filter(s => teams.has(s.team_id) && s.is_competition && new Date(s.scheduled_at).getTime() >= Date.now())
+      .sort((a,b) => new Date(a.scheduled_at) - new Date(b.scheduled_at))[0];
+    return {
+      readiness: progress.length ? progress.reduce((sum,v) => sum+v,0)/progress.length : null,
+      attendance: total ? attendance.reduce((sum,r) => sum+r.attended,0)/total : null,
+      needsWork: Object.values(queue).filter(r => r.working + r.notStarted >= 3)
+        .sort((a,b) => (b.working+b.notStarted*.8)-(a.working+a.notStarted*.8)).slice(0,8),
+      lastRun, previousRun,
+      comp: nextComp ? { session: nextComp, days: Math.ceil((new Date(nextComp.scheduled_at)-Date.now())/86400000) } : null,
+    };
   }
 
   function athleteSkillsSummary(aid) {
@@ -853,7 +883,7 @@
     team, athleteById, skillById, routine,
     programTeams, programAthletes, athletesForTeam,
     athleteSkills, athleteReadiness, teamReadiness, categoryReadiness,
-    athleteAttendance, teamAttendance, athleteSkillsSummary,
+    athleteAttendance, teamAttendance, athleteSkillsSummary, dashboardMetrics,
     predictedScore, daysToComp, needsWorkQueue, programProfile, programPaymentSettings, programBilling, athleteBilling,
     classById, classEnrollmentTimeline, classEnrollmentIsPast, classEnrollmentsForAthlete, classEnrollmentsForParent,
     classEnrollmentsForProgram, openGymRegistrationsForProgram,

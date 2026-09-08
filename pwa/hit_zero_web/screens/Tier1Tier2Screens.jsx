@@ -2497,6 +2497,7 @@ function RegistrationInbox({ snap, session }) {
             </div>
           )}
         </div>
+        {unpaidRegs.length > 0 && (
         <button
           className="hz-btn hz-btn-primary"
           disabled={!unpaidRegs.length || !!reminderBusy}
@@ -2504,6 +2505,7 @@ function RegistrationInbox({ snap, session }) {
         >
           {reminderBusy === 'all' ? 'Preparing...' : `Send ${unpaidRegs.length} eligible failure follow-ups`}
         </button>
+        )}
       </div>
 
       {checkoutHolds.length > 0 && (

@@ -1863,8 +1863,9 @@ function AdminConsole({ snap, navigate, session }) {
   const program = window.HZsel.programProfile?.() || (snap.programs || [])[0] || {};
   const paymentSettings = window.HZsel.programPaymentSettings?.() || (snap.program_payment_settings || [])[0] || {};
   const bill = window.HZsel.programBilling();
-  const readiness = window.HZsel.teamReadiness();
-  const attendance = window.HZsel.teamAttendance();
+  const metrics = window.HZsel.dashboardMetrics(window.HZsel.programAthletes().map(a => a.id), window.HZsel.programTeams().map(t => t.id));
+  const readiness = metrics.readiness;
+  const attendance = metrics.attendance;
   const leads = window.HZsel.leadSummary();
   const regs = window.HZsel.registrationSummary();
   const cashPct = bill.total ? Math.max(0, Math.min(100, (bill.paid / bill.total) * 100)) : 0;
@@ -1884,7 +1885,7 @@ function AdminConsole({ snap, navigate, session }) {
       }/>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
         <StatTile label="Athletes" value={snap.athletes.length} sub="across all teams"/>
-        <StatTile label="Ready" value={`${Math.round(readiness*100)}%`} accent="var(--hz-teal)"/>
+        <StatTile label="Recorded progress" value={readiness == null ? 'No evidence' : `${Math.round(readiness*100)}%`} accent="var(--hz-teal)"/>
         <StatTile label="Leads Open" value={leads.active} sub={`${leads.converted} converted`} accent="var(--hz-pink)"/>
         <StatTile label="Admissions" value={regs.pending} sub={`${regs.accepted} accepted`} accent={regs.pending ? 'var(--hz-amber)' : 'var(--hz-green)'}/>
       </div>
@@ -1907,7 +1908,7 @@ function AdminConsole({ snap, navigate, session }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 18 }}>
             <div style={{ padding: '12px 14px', borderRadius: 12, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.03)' }}>
               <div className="hz-eyebrow" style={{ marginBottom: 6 }}>Attendance</div>
-              <div style={{ fontSize: 24, fontWeight: 700 }}>{Math.round(attendance*100)}%</div>
+              <div style={{ fontSize: 24, fontWeight: 700 }}>{attendance == null ? 'No logs' : `${Math.round(attendance*100)}%`}</div>
               <div style={{ color: 'var(--hz-dim)', fontSize: 11, marginTop: 4 }}>program average</div>
             </div>
             <div style={{ padding: '12px 14px', borderRadius: 12, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.03)' }}>
