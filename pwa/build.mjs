@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -88,8 +89,8 @@ await mkdir(assetRoot, { recursive: true });
 
 const excluded = new Set(['node_modules', 'public', 'package.json', 'package-lock.json', 'build.mjs', 'vercel.json', 'middleware.ts']);
 for (const entry of await readdir(root, { withFileTypes: true })) {
-  if (excluded.has(entry.name)) continue;
-  await cp(path.join(root, entry.name), path.join(outputRoot, entry.name), { recursive: true });
+  if (excluded.has(entry.name) || entry.name.startsWith('.')) continue;
+  await cp(path.join(root, entry.name), path.join(outputRoot, entry.name), { recursive: true, filter: source => !path.basename(source).startsWith('.') });
 }
 
 const sourceHtml = await readFile(path.join(root, 'index.html'), 'utf8');
@@ -197,7 +198,14 @@ const precacheUrls = [
 ];
 let serviceWorker = await readFile(path.join(root, 'sw.js'), 'utf8');
 // Lazy screens and inline loader changes must also invalidate the installed shell.
-const releaseHash = digest(Buffer.from(JSON.stringify({ precacheUrls, html, serviceWorker })));
+const staticAssets = {};
+for (const name of ['mca-all-star-welcome-packet.pdf','mca-magic-merch-order-form.pdf','ndelite/index.html','ndelite/app/App.jsx','ndelite/app/api.js','ndelite/styles/site.css']) {
+  staticAssets[name] = createHash('sha256').update(await readFile(path.join(outputRoot,name))).digest('hex');
+}
+let sourceCommit=process.env.HZ_SOURCE_COMMIT || process.env.VERCEL_GIT_COMMIT_SHA || null;
+if(!sourceCommit){try{sourceCommit=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim();}catch{}}
+if(sourceCommit && !/^[0-9a-f]{40}$/i.test(sourceCommit))throw new Error('Invalid source commit metadata');
+const releaseHash = digest(Buffer.from(JSON.stringify({ precacheUrls, html, serviceWorker, staticAssets })));
 
 serviceWorker = serviceWorker
   .replace('__HZ_CACHE_VERSION__', `hz-${releaseHash}`)
@@ -210,6 +218,8 @@ await writeFile(path.join(outputRoot, 'index.html'), html);
 await writeFile(path.join(outputRoot, 'sw.js'), serviceWorker);
 await writeFile(path.join(outputRoot, 'build-meta.json'), `${JSON.stringify({
   builtAt: new Date().toISOString(),
+  sourceCommit,
+  staticAssets,
   releaseHash,
   assets: { cssAsset, analyticsAsset, vendorAsset, runtimeAsset, tusAsset, bootAsset, app: Object.fromEntries(compiledAssets) },
 }, null, 2)}\n`);
