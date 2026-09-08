@@ -283,14 +283,18 @@
         if (!uniformItems.error) d.uniform_items = uniformItems.data || [];
       }
       if (isStaff) {
-        const [registrations, leads, leadTouches, packets, assignmentEvents] = await Promise.all([
+        const [registrations, leads, leadTouches, packets, assignmentEvents, reconciliation] = await Promise.all([
           s.from('registrations').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
           s.from('leads').select('*').in('program_id', programIds).order('created_at', { ascending: false }),
           s.from('lead_touches').select('*').order('created_at', { ascending: false }).limit(200),
           s.from('family_info_packets').select('*').in('program_id', programIds).order('updated_at', { ascending: false }),
           s.from('team_assignment_events').select('*').in('program_id', programIds).order('created_at', { ascending: false }).limit(100),
+          s.from('registration_reconciliation').select('*').in('program_id', programIds),
         ]);
-        if (!registrations.error) d.registrations = registrations.data || [];
+        if (!registrations.error) {
+          const reviews = new Map((reconciliation.data || []).map(row => [row.id, row]));
+          d.registrations = (registrations.data || []).map(row => ({ ...row, reconciliation: reviews.get(row.id) || { disposition: 'unavailable', next_action: 'Payment reconciliation could not load. Refresh before contacting a family.' } }));
+        }
         if (!leads.error) d.leads = leads.data || [];
         const leadIds = new Set((d.leads || []).map(row => row.id));
         if (!leadTouches.error) d.lead_touches = (leadTouches.data || []).filter(row => leadIds.has(row.lead_id));

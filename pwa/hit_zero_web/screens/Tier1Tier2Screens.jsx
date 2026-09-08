@@ -2218,7 +2218,8 @@ function RegistrationInbox({ snap, session }) {
     return !isSettledRegistrationPayment(row?.payment_status)
       && (meta.payment_gate_required === true || meta.payment_gate_state === 'checkout_started');
   });
-  const checkoutHolds = (snap.registrations || []).filter(isCheckoutHold);
+  const recoveredHolds = (snap.registrations || []).filter(r => isCheckoutHold(r) && r.reconciliation?.disposition === 'recovered_retry');
+  const checkoutHolds = (snap.registrations || []).filter(r => isCheckoutHold(r) && r.reconciliation?.disposition !== 'recovered_retry');
   const allRegs = (snap.registrations || []).filter(r => !isCheckoutHold(r)).slice().sort((a,b) => {
     if (isSettledRegistrationPayment(a.payment_status) && !isSettledRegistrationPayment(b.payment_status)) return -1;
     if (!isSettledRegistrationPayment(a.payment_status) && isSettledRegistrationPayment(b.payment_status)) return 1;
@@ -2300,7 +2301,8 @@ function RegistrationInbox({ snap, session }) {
     if (r.payment_status === 'paid') out.paid += 1;
     return out;
   }, { pending: 0, accepted: 0, waitlist: 0, rejected: 0, withdrawn: 0, paid: 0 });
-  const unpaidRegs = allRegs.filter(r => ['none', 'pending', 'failed', null, undefined].includes(r.payment_status) && ['pending', 'accepted'].includes(r.status));
+  const reviewRegs = allRegs.filter(r => !isSettledRegistrationPayment(r.payment_status) && ['pending','accepted'].includes(r.status));
+  const unpaidRegs = reviewRegs.filter(r => r.reconciliation?.disposition === 'active_failure');
   const staffMissingScope = isStaff && !hasStaffProgram && !allRegs.length;
   const staffScopedEmpty = isStaff && hasStaffProgram && !allRegs.length;
 
@@ -2457,11 +2459,11 @@ function RegistrationInbox({ snap, session }) {
   return (
     <div>
       <div className="hz-eyebrow">Registration · Admissions desk</div>
-      <div className="hz-display" style={{ fontSize: 48, lineHeight: 1, marginBottom: 20 }}>
+      <div className="hz-display" style={{ fontSize: 'clamp(30px, 7vw, 48px)', lineHeight: 1.1, marginBottom: 20 }}>
         New families, <span className="hz-zero">properly handled</span>.
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: 12, marginBottom: 20 }}>
         <MiniStat label="Pending" value={counts.pending} accent="var(--hz-amber)"/>
         <MiniStat label="Paid" value={counts.paid} accent="var(--hz-green)"/>
         <MiniStat label="Accepted" value={counts.accepted} accent="var(--hz-green)"/>
@@ -2472,8 +2474,8 @@ function RegistrationInbox({ snap, session }) {
       <div className="hz-card" style={{ padding: 16, marginBottom: 20, display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
         <div>
           <div className="hz-eyebrow" style={{ marginBottom: 5 }}>Unpaid registrations</div>
-          <div style={{ fontSize: 18, fontWeight: 900 }}>{unpaidRegs.length} need payment follow-up.</div>
-          <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>Only submitted/manual registrations appear in the main queue. Checkout starts that stopped before payment are listed below for owner follow-up.</div>
+          <div style={{ fontSize: 18, fontWeight: 900 }}>{reviewRegs.length} accepted or submitted records need payment review.</div>
+          <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>Check manual payments, assisted acceptance and comps before requesting money. Recovered retries are excluded from reminders.</div>
           {checkoutHolds.length > 0 && (
             <div style={{ color: 'var(--hz-amber)', fontSize: 12, marginTop: 5 }}>
               {checkoutHolds.length} checkout {checkoutHolds.length === 1 ? 'start is' : 'starts are'} waiting on parent follow-up.
@@ -2498,18 +2500,18 @@ function RegistrationInbox({ snap, session }) {
         <button
           className="hz-btn hz-btn-primary"
           disabled={!unpaidRegs.length || !!reminderBusy}
-          onClick={() => sendPaymentReminders([], 'all')}
+          onClick={() => sendPaymentReminders(unpaidRegs.map(r => r.id), 'all')}
         >
-          {reminderBusy === 'all' ? 'Preparing...' : 'Send payment follow-ups'}
+          {reminderBusy === 'all' ? 'Preparing...' : `Send ${unpaidRegs.length} eligible failure follow-ups`}
         </button>
       </div>
 
       {checkoutHolds.length > 0 && (
-        <div className="hz-card" style={{ padding: 18, marginBottom: 20 }}>
+        <details className="hz-card" style={{ padding: 18, marginBottom: 20 }}><summary style={{ cursor: 'pointer', fontWeight: 800 }}>Review {checkoutHolds.length} checkout attempts · {recoveredHolds.length} recovered retries excluded</summary>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 14 }}>
             <div>
               <div className="hz-eyebrow" style={{ marginBottom: 5 }}>Owner-only checkout follow-up</div>
-              <div style={{ fontSize: 18, fontWeight: 900 }}>{visibleCheckoutHolds.length} family{visibleCheckoutHolds.length === 1 ? '' : 'ies'} started registration and stopped before payment.</div>
+              <div style={{ fontSize: 18, fontWeight: 900 }}>{visibleCheckoutHolds.length} {visibleCheckoutHolds.length === 1 ? 'family' : 'families'} started registration and stopped before payment.</div>
               <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>Use this to reach out only when the parent already entered contact info.</div>
             </div>
             <div style={{ color: 'var(--hz-dim)', fontSize: 12 }}>
@@ -2545,8 +2547,10 @@ function RegistrationInbox({ snap, session }) {
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10, fontSize: 11, color: 'var(--hz-dim)' }}>
                   <span>{row.source || 'Unknown source'}</span>
                   {row.level_interest ? <span>· Level {row.level_interest}</span> : null}
-                  <span>· Started checkout</span>
+                  <span>· {row.reconciliation?.disposition?.replaceAll('_',' ') || 'Review required'}</span>
                 </div>
+                {row.reconciliation?.next_action && <p style={{ fontSize: 12 }}>{row.reconciliation.next_action}</p>}
+                {row.reconciliation?.disposition === 'active_failure' && <button className="hz-btn hz-btn-sm" disabled={!!reminderBusy} onClick={() => sendPaymentReminders([row.id], row.id)}>Send payment follow-up</button>}
                 {row.notes && (
                   <div style={{ marginTop: 10, color: 'var(--hz-dim)', fontSize: 12, lineHeight: 1.5 }}>
                     {row.notes}
@@ -2558,9 +2562,10 @@ function RegistrationInbox({ snap, session }) {
               <div style={{ color: 'var(--hz-dim)', fontSize: 13 }}>No checkout-start follow-ups match the current search.</div>
             )}
           </div>
-        </div>
+        </details>
       )}
 
+<details className="hz-card" style={{ marginBottom: 20, padding: 18 }}><summary style={{ cursor: 'pointer', fontWeight: 800 }}>Register a family in person</summary>
       <form className="hz-card" onSubmit={createAssisted} style={{ padding: 18, marginBottom: 20 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'flex-start', marginBottom: 14 }}>
           <div>
@@ -2601,6 +2606,7 @@ function RegistrationInbox({ snap, session }) {
           </div>
         )}
       </form>
+</details>
 
       <div className="hz-card" style={{ padding: 14, marginBottom: 18, display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: 10 }}>
         <input className="hz-input" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search athlete, parent, email, phone, class..." />
@@ -2710,7 +2716,7 @@ function RegistrationInbox({ snap, session }) {
               {decisionError && <div style={{ marginTop: 10, color: 'var(--hz-pink)', fontSize: 13 }}>{decisionError}</div>}
 
               <div style={{ marginTop: 18 }}>
-                <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Decision notes</div>
+                <p role="status" style={{ fontSize: 13 }}>{active?.reconciliation?.next_action || active?.reconciliation?.disposition?.replaceAll('_',' ')}</p><div className="hz-eyebrow" style={{ marginBottom: 8 }}>Decision notes</div>
                 <textarea className="hz-input" rows="6" placeholder="What stood out? Who follows up next? Any placement notes?" value={notes} onChange={(e) => setNotes(e.target.value)}/>
                 <div style={{ marginTop: 10 }}>
                   <button className="hz-btn" disabled={!!busyDecision} onClick={saveNotes}>{busyDecision === 'notes' ? 'Saving...' : 'Save notes'}</button>
