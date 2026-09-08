@@ -131,10 +131,11 @@
   function activeProgramId() {
     const session = currentSession();
     const raw = session?.actualProfile?.program_id || session?.profile?.program_id || null;
-    return window.HZisPlaceholderProgramId?.(raw) ? null : raw;
+    return session?.mode === 'live' ? raw : (window.HZisPlaceholderProgramId?.(raw) ? null : raw);
   }
   function programProfile() {
     const pid = activeProgramId();
+    if (currentSession()?.mode === 'live') return pid ? cache?.programs?.find(p => p.id === pid) || null : null;
     return (pid ? cache?.programs?.find(p => p.id === pid) : null)
       || cache?.programs?.find(p => !window.HZisPlaceholderProgramId?.(p.id))
       || cache?.programs?.[0]
@@ -142,17 +143,17 @@
   }
   function programPaymentSettings() {
     const pid = programProfile()?.id;
-    return (pid ? cache?.program_payment_settings?.find(p => p.program_id === pid) : null) || cache?.program_payment_settings?.[0] || null;
+    return (pid ? cache?.program_payment_settings?.find(p => p.program_id === pid) : null) || (currentSession()?.mode === 'live' ? null : cache?.program_payment_settings?.[0]) || null;
   }
   function team() {
     const pid = programProfile()?.id;
-    return (pid ? cache?.teams?.find(t => t.program_id === pid) : null) || cache?.teams?.[0];
+    return (pid ? cache?.teams?.find(t => t.program_id === pid) : null) || (currentSession()?.mode === 'live' ? null : cache?.teams?.[0]);
   }
 
   function programTeams() {
     const pid = programProfile()?.id;
     return (cache?.teams || [])
-      .filter(t => !t.deleted_at && (!pid || t.program_id === pid))
+      .filter(t => !t.deleted_at && (pid ? t.program_id === pid : currentSession()?.mode !== 'live'))
       .sort((a, b) => (a.display_order ?? 100) - (b.display_order ?? 100) || (a.name || '').localeCompare(b.name || ''));
   }
 
@@ -160,7 +161,7 @@
     const teamIds = new Set(programTeams().map(t => t.id));
     const pid = programProfile()?.id;
     return (cache?.athletes || [])
-      .filter(a => !a.deleted_at && ((!pid && !teamIds.size) || teamIds.has(a.team_id) || a.program_id === pid))
+      .filter(a => !a.deleted_at && ((currentSession()?.mode !== 'live' && !pid && !teamIds.size) || teamIds.has(a.team_id) || (pid && a.program_id === pid)))
       .sort((a, b) => (a.display_name || '').localeCompare(b.display_name || ''));
   }
 
@@ -173,7 +174,7 @@
   function programTracks() {
     const programId = programProfile()?.id;
     return (cache?.program_tracks || [])
-      .filter(t => !programId || t.program_id === programId)
+      .filter(t => programId ? t.program_id === programId : currentSession()?.mode !== 'live')
       .slice()
       .sort((a, b) => (a.display_order ?? 100) - (b.display_order ?? 100) || (a.name || '').localeCompare(b.name || ''));
   }
@@ -181,7 +182,7 @@
   function programClasses(trackId) {
     const programId = programProfile()?.id;
     return (cache?.program_classes || [])
-      .filter(c => (!programId || c.program_id === programId) && (!trackId || c.track_id === trackId))
+      .filter(c => (programId ? c.program_id === programId : currentSession()?.mode !== 'live') && (!trackId || c.track_id === trackId))
       .slice()
       .sort((a, b) => (a.display_order ?? 100) - (b.display_order ?? 100) || (a.name || '').localeCompare(b.name || ''));
   }
@@ -208,7 +209,7 @@
     const t = team();
     if (!t) return 0;
     let sum = 0, n = 0;
-    (cache.athletes || []).forEach(a => {
+    athletesForTeam(t.id).forEach(a => {
       const m = athleteSkills(a.id);
       (cache.skills || []).forEach(s => {
         if (s.level <= t.level) { sum += STATUS_PCT[m[s.id] || 'none']; n++; }
@@ -222,7 +223,7 @@
     if (!t) return 0;
     const skillsInCat = (cache.skills || []).filter(s => s.category === cat && s.level <= t.level);
     let sum = 0, n = 0;
-    (cache.athletes || []).forEach(a => {
+    athletesForTeam(t.id).forEach(a => {
       const m = athleteSkills(a.id);
       skillsInCat.forEach(s => { sum += STATUS_PCT[m[s.id] || 'none']; n++; });
     });
@@ -303,8 +304,9 @@
     return { got, mastered, working, assessed, total, empty: total === 0, notAssessed: total > 0 && assessed === 0 };
   }
 
-  function routine() {
-    const r = (cache.routines || [])[0];
+  function routine(teamId = team()?.id) {
+    const allowed = new Set(programTeams().map(t => t.id));
+    const r = (cache.routines || []).find(r => teamId && allowed.has(teamId) && r.team_id === teamId);
     if (!r) return null;
     const secs = (cache.routine_sections || []).filter(s => s.routine_id === r.id).sort((a,b) => a.start_count - b.start_count);
     const audioAssets = (cache.routine_audio_assets || []).filter(a => a.routine_id === r.id);
@@ -325,7 +327,7 @@
     return { ...r, sections: secs, audioAssets, countMaps, licenses, events, formations, positions, assignments, aiSuggestions, exports, versions, comments, audioJobs, remixRequests, complianceChecks };
   }
 
-  // USASF score sheet rows — same weights as iOS version
+  // Internal practice rubric. These weights are not an official competition ruleset.
   const SHEET = [
     { id: 'standing_tumbling', label: 'Standing Tumbling',   max: 12, category: 'standing_tumbling' },
     { id: 'running_tumbling',  label: 'Running Tumbling',    max: 12, category: 'running_tumbling' },
@@ -337,50 +339,17 @@
     { id: 'routine',           label: 'Routine Composition', max: 8,  category: null },
   ];
 
-  function predictedScore(extraDeductions) {
-    const r = routine();
-    if (!r) return { rows: [], subtotal: 0, deductions: 0, total: 0, max: 100 };
-    const sectionsByType = {};
-    r.sections.forEach(s => { sectionsByType[s.section_type] = (sectionsByType[s.section_type] || 0) + (s.end_count - s.start_count + 1); });
-
-    const rows = SHEET.map(row => {
-      let readiness = null;
-      if (row.category) readiness = categoryReadiness(row.category);
-      else if (row.id === 'dance') readiness = 0.82;
-      else if (row.id === 'routine') {
-        const keyTypes = ['standing_tumbling','running_tumbling','jumps','stunts','pyramid','dance'];
-        const present = keyTypes.filter(t => sectionsByType[t] > 0).length / keyTypes.length;
-        readiness = 0.6 + 0.35 * present;
-      }
-      let boost = 1;
-      if (row.category) {
-        const typeKey =
-          row.category === 'standing_tumbling' ? 'standing_tumbling' :
-          row.category === 'running_tumbling'  ? 'running_tumbling'  :
-          row.category === 'stunts'            ? 'stunts'            :
-          row.category === 'pyramids'          ? 'pyramid'           :
-          row.category === 'baskets'           ? 'baskets'           :
-          row.category === 'jumps'             ? 'jumps'             : null;
-        if (typeKey) {
-          const counts = sectionsByType[typeKey] || 0;
-          boost = counts === 0 ? 0.35 : counts < 4 ? 0.8 : 1;
-        }
-      }
-      const score = Math.max(0, Math.min(row.max, row.max * readiness * boost));
-      return { ...row, readiness, boost, score };
-    });
-    const subtotal = rows.reduce((s,r) => s + r.score, 0);
-    const deductions = (extraDeductions || []).reduce((s,d) => s + d.value, 0);
-    const total = Math.max(0, subtotal - deductions);
-    return { rows, subtotal, deductions, total, max: 100 };
+  // Skill completion and planned sections are not observed execution scores.
+  function predictedScore() {
+    return { available: false, rows: [], subtotal: null, deductions: null, total: null, max: 100,
+      reason: 'Enter observed category scores in Mock Score. Planning data cannot predict a competition score.' };
   }
 
-  function daysToComp() {
-    // Next competition session
-    const comp = (cache.sessions || []).find(s => s.is_competition);
+  function daysToComp(teamId = team()?.id) {
+    const comp = (cache.sessions || []).filter(s => teamId && s.team_id === teamId && s.is_competition && new Date(s.scheduled_at).getTime() >= Date.now())
+      .sort((a,b) => new Date(a.scheduled_at)-new Date(b.scheduled_at))[0];
     if (!comp) return null;
-    const ms = new Date(comp.scheduled_at).getTime() - Date.now();
-    return { days: Math.max(0, Math.ceil(ms / (1000*60*60*24))), session: comp };
+    return { days: Math.ceil((new Date(comp.scheduled_at).getTime()-Date.now())/86400000), session: comp };
   }
 
   // Needs-work queue: skills that multiple athletes are still 'working' on at team level
@@ -585,7 +554,7 @@
   function classEnrollmentsForProgram(programId) {
     const pid = programId || programProfile()?.id;
     return (cache.class_enrollments || [])
-      .filter(row => !pid || row.program_id === pid)
+      .filter(row => pid ? row.program_id === pid : currentSession()?.mode !== 'live')
       .map(decorateClassEnrollment)
       .sort((a, b) => new Date(a.starts_at || a.created_at || 0) - new Date(b.starts_at || b.created_at || 0));
   }

@@ -916,7 +916,7 @@ function CoachRoutineWorkspace({ routine, team, snap, navigate, pushToast }) {
   }, [audioPlaying]);
 
   const predicted = window.HZsel.predictedScore();
-  const comp = window.HZsel.daysToComp();
+  const comp = window.HZsel.daysToComp(team?.id);
   const audio = activeAudio;
   const license = routine.licenses?.find(l => !audio || l.audio_asset_id === audio.id) || routine.licenses?.[0] || null;
   const countMap = routine.countMaps?.find(m => !audio || m.audio_asset_id === audio.id) || routine.countMaps?.[0] || { bpm: routine.bpm || 144, first_count_seconds: 0, confidence: 0 };
@@ -2307,8 +2307,7 @@ function CoachRoutineWorkspace({ routine, team, snap, navigate, pushToast }) {
     audio_analysis_report: { title: 'Planned timing report', exportType: 'audio_analysis_report', body: analysisReport },
   };
   const activeArtifact = outputMap[activeOutput] || outputMap.count_sheet;
-  const scoreLow = Math.max(0, predicted.total - validationIssues.length * 0.25 - (license?.proof_status === 'competition_ready' ? 0 : 0.75));
-  const scoreHigh = Math.min(100, predicted.total + designReadiness / 100 * 2.4);
+
 
   return (
     <div>
@@ -2334,8 +2333,8 @@ function CoachRoutineWorkspace({ routine, team, snap, navigate, pushToast }) {
           </div>
         </div>
         <div>
-          <div className="hz-eyebrow">Score window</div>
-          <div className="hz-mono" style={{ fontSize: 16, fontWeight: 800 }}>{scoreLow.toFixed(1)}–{scoreHigh.toFixed(1)}</div>
+          <div className="hz-eyebrow">Execution score</div>
+          <div className="hz-mono" style={{ fontSize: 16, fontWeight: 800 }}>Not scored</div>
         </div>
         {comp && (
           <div>
@@ -3143,10 +3142,10 @@ function CoachRoutineWorkspace({ routine, team, snap, navigate, pushToast }) {
           </div>
 
           <div className="hz-card">
-            <div className="hz-eyebrow">Rules, safety, and score simulation</div>
+            <div className="hz-eyebrow">Planning checks</div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 8 }}>
-              <div className="hz-display" style={{ fontSize: 42 }}>{scoreLow.toFixed(1)}-{scoreHigh.toFixed(1)}</div>
-              <div style={{ color: 'var(--hz-dim)', fontSize: 12 }}>projected if execution is clean</div>
+              <div className="hz-display" style={{ fontSize: 42 }}>Not scored</div>
+              <div style={{ color: 'var(--hz-dim)', fontSize: 12 }}>Record observed execution in Mock Score.</div>
             </div>
             <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
               {validationIssues.slice(0, 5).map((issue, i) => (
@@ -3225,7 +3224,7 @@ function CoachRoutineWorkspace({ routine, team, snap, navigate, pushToast }) {
               </div>
             ))}
             <div style={{ marginTop: 14, color: 'var(--hz-dim)', fontSize: 11, lineHeight: 1.5 }}>
-              Prediction blends team skill readiness with the section coverage built here.
+              Section coverage describes the plan. It does not predict execution or a competition score.
               {comp && <> Next floor moment is in <span style={{ color: 'var(--hz-teal)', fontWeight: 700 }}>{comp.days} days</span>.</>}
             </div>
           </div>

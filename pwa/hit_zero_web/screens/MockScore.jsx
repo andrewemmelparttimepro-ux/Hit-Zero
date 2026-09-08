@@ -2,7 +2,7 @@
 // HIT ZERO WEB — Mock Score
 // A usable mock-competition tool, in two parts:
 //   1. The SHEET — editable category scores (the coach owns the number;
-//      team readiness is a hint and a seed, never the driver).
+//      each category starts unscored and is entered by the coach).
 //   2. RUN MODE — fullscreen mat-side view: routine clock + giant deduction
 //      buttons. Every tap is stamped at its moment in the run.
 // Saves the full story: score_runs + one score_deductions row per event
@@ -75,7 +75,7 @@ async function persistScoreRun(payload, events) {
 }
 
 // press-and-hold stepper button (tap = one step, hold = repeat)
-function StepBtn({ dir, onStep, disabled }) {
+function StepBtn({ dir, onStep, disabled, label }) {
   const timer = React.useRef(null);
   const stop = () => { clearInterval(timer.current); clearTimeout(timer.current); timer.current = null; };
   const start = () => {
@@ -88,6 +88,9 @@ function StepBtn({ dir, onStep, disabled }) {
   return (
     <button
       className="hz-btn hz-btn-ghost"
+      type="button"
+      aria-label={(dir > 0 ? 'Increase ' : 'Decrease ') + (label || 'score')}
+      onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) {e.preventDefault();onStep(dir);} }}
       disabled={disabled}
       style={{ width: 40, height: 40, padding: 0, justifyContent: 'center', fontSize: 18, fontWeight: 800, touchAction: 'none' }}
       onPointerDown={(e) => { e.preventDefault(); start(); }}
@@ -102,37 +105,22 @@ function MockScore({ session, snap, pushToast }) {
   const teams = window.HZsel.programTeams?.() || snap.teams || [];
   // smart default: remember the last team you scored
   const [teamId, setTeamId] = useState(() => { try { return localStorage.getItem('hz_mockscore_team') || null; } catch { return null; } });
-  const pickTeam = (id) => { setTeamId(id); try { localStorage.setItem('hz_mockscore_team', id); } catch { /* fine */ } };
+  const pickTeam = (id) => { if(id!==team?.id){setScores({});setEvents([]);setNote('');resetClock();} setTeamId(id); try { localStorage.setItem('hz_mockscore_team', id); } catch { /* fine */ } };
   const team = teams.find(t => t.id === teamId) || teams.find(Boolean) || null;
   const teamLabel = team
     ? `${team.name || 'Team'}${team.level ? ` · L${team.level}` : ''}`
     : 'Team';
-  const routine = window.HZsel.routine?.() || (snap.routines || []).find(r => !team?.id || r.team_id === team.id) || null;
+  const routine = window.HZsel.routine?.(team?.id) || (snap.routines || []).find(r => team?.id && r.team_id === team.id) || null;
 
   const sheet = window.HZsel.SHEET || [];
-  const prediction = useMemo(() => {
-    try { return window.HZsel.predictedScore([]); } catch { return { rows: [] }; }
-  }, [snap, teamId]);
-  const hintFor = (rowId) => prediction.rows?.find(r => r.id === rowId) || null;
-
-  // Editable category scores. Fresh sheet opens at a neutral solid-run
-  // default (86% of max) so it always reads like a real scoresheet; the
-  // readiness seed is an explicit action. The coach owns the numbers.
-  const seedValue = (row) => {
-    const hint = hintFor(row.id);
-    const v = hint ? hint.score : row.max * 0.86;
-    return Math.round(v * 10) / 10;
-  };
-  const [scores, setScores] = useState(() => Object.fromEntries(sheet.map(r => [r.id, Math.round(r.max * 0.86 * 10) / 10])));
+  // Every category starts unscored. Only the coach's entered values count.
+  const [scores, setScores] = useState({});
+  const setScore = (row, value) => setScores(prev => ({...prev,[row.id]: value === '' ? null : Math.max(0,Math.min(row.max,Number(value)))}));
   const stepScore = (rowId, dir) => setScores(prev => {
     const row = sheet.find(r => r.id === rowId);
-    const next = Math.max(0, Math.min(row.max, Math.round(((prev[rowId] || 0) + dir * 0.1) * 10) / 10));
-    return { ...prev, [rowId]: next };
+    const next = Math.max(0,Math.min(row.max,Math.round(((prev[rowId] || 0)+dir*0.1)*10)/10));
+    return {...prev,[rowId]:next};
   });
-  const seedAll = () => {
-    setScores(Object.fromEntries(sheet.map(r => [r.id, seedValue(r)])));
-    pushToast?.({ title: 'Sheet seeded', body: 'Scores set from team readiness — adjust as you judge.' });
-  };
 
   // deduction events (from run mode or quick-tap on the sheet)
   const [events, setEvents] = useState([]);
@@ -188,6 +176,7 @@ function MockScore({ session, snap, pushToast }) {
   const removeEvent = (id) => setEvents(prev => prev.filter(e => e._id !== id));
 
   // ── totals ──
+  const allScored = sheet.length > 0 && sheet.every(r => typeof scores[r.id] === 'number' && Number.isFinite(scores[r.id]) && scores[r.id] >= 0 && scores[r.id] <= r.max);
   const subtotal = sheet.reduce((s, r) => s + (scores[r.id] || 0), 0);
   const dedTotal = events.reduce((s, e) => s + e.value, 0);
   const total = Math.max(0, subtotal - dedTotal);
@@ -195,6 +184,7 @@ function MockScore({ session, snap, pushToast }) {
 
   const saveRun = async () => {
     if (!team?.id || saving) return;
+    if (!allScored) {setError('Enter every category score before saving this run.');return;}
     setSaving(true);
     setError('');
     const { error: saveError } = await persistScoreRun({
@@ -216,6 +206,7 @@ function MockScore({ session, snap, pushToast }) {
     window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table: 'score_runs', action: 'insert' } }));
     pushToast?.({ title: 'Run saved', body: `${total.toFixed(2)} — ${events.length} deduction${events.length === 1 ? '' : 's'} logged` });
     setEvents([]);
+    setScores({});
     setNote('');
     resetClock();
     setSaving(false);
@@ -224,7 +215,7 @@ function MockScore({ session, snap, pushToast }) {
   // history with deltas (oldest → newest for delta math)
   const history = useMemo(() => {
     const runs = [...(snap.score_runs || [])]
-      .filter(r => !team?.id || r.team_id === team.id)
+      .filter(r => team?.id && r.team_id === team.id)
       .sort((a, b) => new Date(a.run_at) - new Date(b.run_at));
     return runs.map((r, i) => ({
       ...r,
@@ -234,7 +225,7 @@ function MockScore({ session, snap, pushToast }) {
 
   // Real progress only — every number below comes from saved runs.
   const progress = useMemo(() => {
-    const all = (snap.score_runs || []).filter(r => !team?.id || r.team_id === team.id);
+    const all = (snap.score_runs || []).filter(r => team?.id && r.team_id === team.id);
     const best = all.reduce((m, r) => Math.max(m, r.total || 0), 0);
     // HIT ZERO streak: consecutive most-recent runs with no deductions
     const newestFirst = [...all].sort((a, b) => new Date(b.run_at) - new Date(a.run_at));
@@ -245,7 +236,7 @@ function MockScore({ session, snap, pushToast }) {
     }
     return { count: all.length, best, streak };
   }, [snap.score_runs, team?.id]);
-  const comp = window.HZsel.daysToComp?.() || null;
+  const comp = window.HZsel.daysToComp?.(team?.id) || null;
 
   const totalColor = total >= maxTotal * 0.9 ? 'var(--hz-green)' : total >= maxTotal * 0.8 ? 'var(--hz-teal)' : 'var(--hz-amber)';
 
@@ -256,7 +247,7 @@ function MockScore({ session, snap, pushToast }) {
           <button className="hz-btn hz-btn-primary" onClick={() => { setRunOpen(true); resetClock(); }}>
             <HZIcon name="bolt" size={13}/> Run the routine
           </button>
-          <button className="hz-btn" onClick={saveRun} disabled={saving || !team?.id}>
+          <button className="hz-btn" onClick={saveRun} disabled={saving || !team?.id || !allScored}>
             <HZIcon name="check" size={13}/> {saving ? 'Saving…' : 'Save run'}
           </button>
         </div>
@@ -320,36 +311,29 @@ function MockScore({ session, snap, pushToast }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
             <div>
               <div className="hz-eyebrow">Judging sheet — tap +/− to score</div>
-              {prediction.rows?.length > 0 && (
-                <button className="hz-btn hz-btn-ghost hz-btn-xs" style={{ marginTop: 6 }} onClick={seedAll}>
-                  <HZIcon name="bolt" size={11}/> Seed from team readiness
-                </button>
-              )}
+              <p style={{fontSize:12,color:'var(--hz-dim)',marginTop:6}}>Internal practice rubric. Enter observed scores; no automatic prediction.</p>
             </div>
             <div style={{ textAlign: 'right' }}>
               <div className="hz-eyebrow">Total</div>
-              <div className="hz-display" style={{ fontSize: 58, lineHeight: 1, color: totalColor }}>{total.toFixed(2)}</div>
+              <div className="hz-display" style={{ fontSize: allScored ? 58 : 30, lineHeight: 1, color: totalColor }}>{allScored ? total.toFixed(2) : 'Unscored'}</div>
               <div style={{ fontSize: 11, color: 'var(--hz-dim)' }}>/ {maxTotal} · −{dedTotal.toFixed(2)} deductions</div>
             </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {sheet.map(row => {
-              const hint = hintFor(row.id);
-              const val = scores[row.id] || 0;
+              const val = scores[row.id];
               return (
                 <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 10, background: 'rgba(255,255,255,0.03)' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13.5, fontWeight: 600 }}>{row.label}</div>
                     <div style={{ fontSize: 10.5, color: 'var(--hz-dim)', fontFamily: 'var(--hz-mono)' }}>
-                      max {row.max}{hint && hint.readiness != null ? ` · readiness ${Math.round(hint.readiness * 100)}%` : ''}
+                      max {row.max}
                     </div>
                   </div>
-                  <StepBtn dir={-1} onStep={(d) => stepScore(row.id, d)} disabled={val <= 0}/>
-                  <div className="hz-mono" style={{ width: 52, textAlign: 'center', fontSize: 18, fontWeight: 800, color: val >= row.max * 0.9 ? 'var(--hz-green)' : '#fff' }}>
-                    {val.toFixed(1)}
-                  </div>
-                  <StepBtn dir={1} onStep={(d) => stepScore(row.id, d)} disabled={val >= row.max}/>
+                  <StepBtn dir={-1} label={row.label} onStep={(d) => stepScore(row.id, d)} disabled={val <= 0}/>
+                  <input type="number" inputMode="decimal" min="0" max={row.max} step="0.1" aria-label={row.label + ' score'} placeholder="—" value={val ?? ''} onChange={e=>setScore(row,e.target.value)} className="hz-input hz-mono" style={{width:72,textAlign:'center',fontSize:16,padding:'8px 4px'}}/>
+                  <StepBtn dir={1} label={row.label} onStep={(d) => stepScore(row.id, d)} disabled={val >= row.max}/>
                 </div>
               );
             })}
