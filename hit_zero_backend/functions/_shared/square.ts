@@ -352,21 +352,6 @@ export async function loadLocations(connection: SquareConnection, accessToken: s
   return data.locations ?? [];
 }
 
-async function listCustomers(connection: SquareConnection, accessToken: string) {
-  const rows: any[] = [];
-  let cursor: string | undefined;
-  do {
-    const data = await squareFetch('/v2/customers', {
-      accessToken,
-      env: connection.environment,
-      query: { limit: 100, cursor },
-    });
-    rows.push(...(data.customers ?? []));
-    cursor = data.cursor ?? undefined;
-  } while (cursor);
-  return rows;
-}
-
 async function listPayments(connection: SquareConnection, accessToken: string) {
   const rows: any[] = [];
   let cursor: string | undefined;
@@ -405,21 +390,6 @@ function centsToDollars(cents: number) {
 
 function round2(v: number) {
   return Math.round(v * 100) / 100;
-}
-
-function customerDisplayName(customer: any) {
-  return [customer.given_name, customer.family_name].filter(Boolean).join(' ').trim()
-    || customer.company_name
-    || customer.nickname
-    || customer.email_address
-    || 'Square customer';
-}
-
-function invoiceCustomerId(invoice: any) {
-  return invoice?.primary_recipient?.customer_id
-    || invoice?.invoice_recipient?.customer_id
-    || invoice?.recipient?.customer_id
-    || null;
 }
 
 function invoiceAmounts(invoice: any) {
@@ -464,162 +434,34 @@ export async function runSquareSync(connection: SquareConnection, options: {
 
   try {
     const { connection: fresh, accessToken } = await getUsableAccessToken(connection);
-    const [locations, customers, payments] = await Promise.all([
-      loadLocations(fresh, accessToken),
-      listCustomers(fresh, accessToken),
-      listPayments(fresh, accessToken),
+    const [locations, allPayments] = await Promise.all([
+      loadLocations(fresh, accessToken), listPayments(fresh, accessToken),
     ]);
-    const location = locations.find((l: any) => l.id === fresh.external_location_id) || locations[0] || null;
-    const invoices = await listInvoices(fresh, accessToken, location?.id ?? fresh.external_location_id ?? null);
-
-    const { data: teams } = await supa
-      .from('teams')
-      .select('id')
-      .eq('program_id', fresh.program_id);
-    const teamIds = (teams ?? []).map((t: any) => t.id).filter(Boolean);
-    const { data: athleteRows } = teamIds.length
-      ? await supa.from('athletes').select('id, display_name').in('team_id', teamIds)
-      : { data: [] as any[] };
-    const athleteIds = (athleteRows ?? []).map((a: any) => a.id).filter(Boolean);
-    const { data: accounts } = athleteIds.length
-      ? await supa.from('billing_accounts').select('id, athlete_id, season_total, paid, owed, autopay').in('athlete_id', athleteIds)
-      : { data: [] as any[] };
-
-    const accountRows = accounts ?? [];
-    const athleteMap = new Map((athleteRows ?? []).map((a: any) => [a.id, a]));
-    const { data: links } = athleteIds.length
-      ? await supa.from('parent_links').select('athlete_id, parent_id, is_primary').in('athlete_id', athleteIds)
-      : { data: [] as any[] };
-    const parentIds = Array.from(new Set((links ?? []).map((l: any) => l.parent_id).filter(Boolean)));
-    const { data: profiles } = parentIds.length
-      ? await supa.from('profiles').select('id, display_name, email').in('id', parentIds)
-      : { data: [] as any[] };
-    const profileMap = new Map((profiles ?? []).map((p: any) => [p.id, p]));
-    const parentsByAthlete = new Map<string, any[]>();
-    for (const link of links ?? []) {
-      const arr = parentsByAthlete.get(link.athlete_id) || [];
-      arr.push(link);
-      parentsByAthlete.set(link.athlete_id, arr);
-    }
-
-    const customersByEmail = new Map<string, any>();
-    for (const customer of customers) {
-      const email = String(customer.email_address || '').trim().toLowerCase();
-      if (email && !customersByEmail.has(email)) customersByEmail.set(email, customer);
-    }
-
-    const paymentsByCustomer = new Map<string, any[]>();
-    for (const payment of payments) {
-      const cid = payment.customer_id;
-      if (!cid) continue;
-      const arr = paymentsByCustomer.get(cid) || [];
-      arr.push(payment);
-      paymentsByCustomer.set(cid, arr);
-    }
-
-    const invoicesByCustomer = new Map<string, any[]>();
-    for (const invoice of invoices) {
-      const cid = invoiceCustomerId(invoice);
-      if (!cid) continue;
-      const arr = invoicesByCustomer.get(cid) || [];
-      arr.push(invoice);
-      invoicesByCustomer.set(cid, arr);
-    }
-
-    const summaries: any[] = [];
-    const unmatched: any[] = [];
-
-    for (const account of accountRows) {
-      const athlete = athleteMap.get(account.athlete_id);
-      const parents = (parentsByAthlete.get(account.athlete_id) || [])
-        .slice()
-        .sort((a, b) => Number(Boolean(b.is_primary)) - Number(Boolean(a.is_primary)));
-      const primaryParent = parents.map((p: any) => profileMap.get(p.parent_id)).find(Boolean) || null;
-      const email = String(primaryParent?.email || '').trim().toLowerCase();
-      const customer = email ? customersByEmail.get(email) || null : null;
-      if (!customer) {
-        unmatched.push({
-          athlete_id: account.athlete_id,
-          athlete_name: athlete?.display_name || 'Unknown athlete',
-          parent_email: primaryParent?.email || null,
-        });
-        await supa.from('billing_accounts').update({
-          payment_provider: 'square',
-          external_customer_id: null,
-          external_customer_name: null,
-          external_customer_email: null,
-          sync_status: email ? 'unmatched' : 'missing_parent_email',
-          synced_paid: 0,
-          synced_open_amount: 0,
-          synced_open_invoice_count: 0,
-          synced_last_payment_at: null,
-        }).eq('id', account.id);
-        continue;
-      }
-
-      const customerPayments = (paymentsByCustomer.get(customer.id) || []).filter((p: any) => p.status === 'COMPLETED');
-      const customerInvoices = invoicesByCustomer.get(customer.id) || [];
-      const paidTotal = round2(customerPayments.reduce((sum: number, p: any) => sum + centsToDollars(Number(p.amount_money?.amount ?? 0)), 0));
-      const lastPaymentAt = customerPayments
-        .map((p: any) => p.updated_at || p.created_at)
-        .filter(Boolean)
-        .sort()
-        .slice(-1)[0] || null;
-      const open = customerInvoices
-        .map((invoice: any) => ({ invoice, amounts: invoiceAmounts(invoice) }))
-        .filter((row: any) => row.amounts.open > 0);
-      const openAmount = round2(open.reduce((sum: number, row: any) => sum + row.amounts.open, 0));
-
-      await supa.from('billing_accounts').update({
-        payment_provider: 'square',
-        external_customer_id: customer.id,
-        external_customer_name: customerDisplayName(customer),
-        external_customer_email: customer.email_address || null,
-        sync_status: 'matched',
-        synced_paid: paidTotal,
-        synced_open_amount: openAmount,
-        synced_open_invoice_count: open.length,
-        synced_last_payment_at: lastPaymentAt,
-      }).eq('id', account.id);
-
-      summaries.push({
-        account_id: account.id,
-        athlete_id: account.athlete_id,
-        athlete_name: athlete?.display_name || 'Unknown athlete',
-        parent_name: primaryParent?.display_name || null,
-        parent_email: primaryParent?.email || null,
-        square_customer_id: customer.id,
-        square_customer_name: customerDisplayName(customer),
-        synced_paid: paidTotal,
-        open_invoice_amount: openAmount,
-        open_invoice_count: open.length,
-        last_payment_at: lastPaymentAt,
-      });
-    }
-
+    const location = locations.find((row: any) => row.id === fresh.external_location_id);
+    if (!location) throw new Error('The configured Square location is unavailable. Review the connection before syncing.');
+    const payments = [...new Map(allPayments.filter((row: any) => row.location_id === location.id).map((row: any) => [row.id, row])).values()];
+    const invoices = [...new Map((await listInvoices(fresh, accessToken, location.id)).filter((row: any) => row.location_id === location.id).map((row: any) => [row.id, row])).values()];
+    const completed = payments.filter((row: any) => row.status === 'COMPLETED' && row.amount_money?.currency === 'USD');
+    const invoiceHasUsdAmounts=(row: any)=>{const money=(row.payment_requests || []).flatMap((r: any)=>[r.computed_amount_money,r.requested_amount_money,r.total_completed_amount_money]).filter(Boolean);if(row.sale_or_service_amount_money)money.push(row.sale_or_service_amount_money);return money.length>0 && money.every((m: any)=>m.currency==='USD');};
+    const open = invoices.filter((row: any) => !['PAID','CANCELED','FAILED','DRAFT'].includes(row.status) && invoiceHasUsdAmounts(row)).map((invoice: any) => ({ invoice, amounts: invoiceAmounts(invoice) })).filter((row: any) => row.amounts.open > 0);
+    // A Square customer can pay for multiple children and unrelated purchases.
+    // Store one location snapshot, never copy its total onto each child's ledger.
     const summary = {
-      merchant_id: fresh.external_account_id,
-      business_name: location?.business_name || fresh.external_business_name || null,
-      location_id: location?.id || fresh.external_location_id || null,
-      counts: {
-        accounts: accountRows.length,
-        matched_accounts: summaries.length,
-        unmatched_accounts: unmatched.length,
-        customers: customers.length,
-        payments: payments.length,
-        invoices: invoices.length,
-      },
+      basis: 'square_location_snapshot', allocation_status: 'unallocated', currency: 'USD', payment_window_days: 365,
+      merchant_id: fresh.external_account_id, business_name: location.business_name || fresh.external_business_name || null,
+      location_id: location.id,
+      counts: { payments: payments.length, completed_payments: completed.length, invoices: invoices.length, open_invoices: open.length, excluded_invoice_currencies: invoices.filter((row: any)=>!invoiceHasUsdAmounts(row)).length, excluded_payment_currencies: payments.filter((row: any) => row.amount_money?.currency !== 'USD').length },
       totals: {
-        synced_paid: round2(summaries.reduce((sum, row) => sum + Number(row.synced_paid || 0), 0)),
-        open_invoice_amount: round2(summaries.reduce((sum, row) => sum + Number(row.open_invoice_amount || 0), 0)),
-        open_invoice_count: summaries.reduce((sum, row) => sum + Number(row.open_invoice_count || 0), 0),
+        provider_paid_amount: round2(completed.reduce((sum: number, row: any) => sum + centsToDollars(Number(row.amount_money?.amount || 0)), 0)),
+        provider_refunded_amount: round2(completed.reduce((sum: number, row: any) => sum + centsToDollars(Number(row.refunded_money?.amount || 0)), 0)),
+        open_invoice_amount: round2(open.reduce((sum: number, row: any) => sum + row.amounts.open, 0)),
       },
-      accounts: summaries,
-      unmatched_accounts: unmatched,
+      accounts: [], unmatched_accounts: [],
+      notice: 'Provider totals cover this Square location. They are not allocated to children, registrations or season balances.',
       synced_at: new Date().toISOString(),
     };
 
-    await supa.from('billing_provider_connections').update({
+    const {error:connectionWriteError}=await supa.from('billing_provider_connections').update({
       external_location_id: location?.id || fresh.external_location_id || null,
       external_business_name: location?.business_name || fresh.external_business_name || null,
       last_sync_completed_at: summary.synced_at,
@@ -630,12 +472,14 @@ export async function runSquareSync(connection: SquareConnection, options: {
         last_sync_summary: summary,
       },
     }).eq('id', fresh.id);
+    if(connectionWriteError)throw connectionWriteError;
 
-    await supa.from('billing_provider_sync_runs').update({
+    const {error:runWriteError}=await supa.from('billing_provider_sync_runs').update({
       status: 'success',
       summary,
       completed_at: summary.synced_at,
     }).eq('id', runRow.id);
+    if(runWriteError)throw runWriteError;
 
     return summary;
   } catch (error) {

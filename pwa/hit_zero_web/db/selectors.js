@@ -403,62 +403,32 @@
     return items;
   }
 
-  // Billing summary across all athletes
+  // Posted season accounts and registration receipts are separate ledgers.
+  // Never choose the largest competing total or infer debt from today's catalog.
   function programBilling() {
-    const pid = programProfile()?.id;
-    const athletesInProgram = new Set((cache.athletes || [])
-      .filter(a => {
-        const t = (cache.teams || []).find(team => team.id === a.team_id);
-        return !pid || t?.program_id === pid || a.program_id === pid;
-      })
-      .map(a => a.id));
-    const accounts = (cache.billing_accounts || []).filter(a => !pid || athletesInProgram.has(a.athlete_id));
-    const accountIds = new Set(accounts.map(a => a.id));
-    const charges = (cache.billing_charges || []).filter(c => accountIds.has(c.account_id));
-    const enrollments = (cache.class_enrollments || []).filter(row => !pid || row.program_id === pid);
-    const registrations = (cache.registrations || []).filter(row => !pid || row.program_id === pid);
-    const accountPaid = accounts.reduce((s,a) => s + Number(a.paid || 0), 0);
-    const accountTotal = accounts.reduce((s,a) => s + Number(a.season_total || 0), 0);
-    const chargePaid = charges.reduce((s,c) => s + ((c.paid_at || c.external_status === 'paid') ? Number(c.amount || 0) : 0), 0);
-    const chargeTotal = charges.reduce((s,c) => s + Number(c.amount || 0), 0);
-    const enrollmentPaid = enrollments.reduce((s,row) => s + (row.payment_status === 'paid' ? Number(row.amount_paid_cents || 0) / 100 : 0), 0);
-    const registrationPaid = registrations.reduce((s,row) => s + (row.payment_status === 'paid' ? Number(row.amount_paid_cents || 0) / 100 : 0), 0);
-    const estimatedRegistrationTotal = registrations.reduce((sum, row) => {
-      const klass = classById(row.class_id);
-      const priced = Number(klass?.price_cents || 0) / 100;
-      const paid = Number(row.amount_paid_cents || 0) / 100;
-      return sum + Math.max(priced, paid);
-    }, 0);
-    const paid = round2(Math.max(accountPaid, chargePaid, enrollmentPaid, registrationPaid));
-    const total = round2(Math.max(accountTotal, chargeTotal, estimatedRegistrationTotal, enrollmentPaid, registrationPaid, paid));
-    const owed = round2(Math.max(0, total - paid));
-    const delinquent = accounts.filter(a => (a.owed || 0) > 0).length;
-    const pendingRegistrations = registrations.filter(row => !isSettledRegistrationPayment(row.payment_status) && row.payment_status !== 'refunded').length;
-    const syncedPaid = accounts.reduce((s,a) => s + Number(a.synced_paid || 0), 0);
-    const syncedOpen = accounts.reduce((s,a) => s + Number(a.synced_open_amount || 0), 0);
-    const syncedOpenInvoices = accounts.reduce((s,a) => s + Number(a.synced_open_invoice_count || 0), 0);
-    const syncedAccounts = accounts.filter(a => a.sync_status === 'matched').length;
-    const linkedAccounts = accounts.filter(a => a.payment_provider || a.external_customer_id).length;
-    return {
-      paid,
-      owed,
-      delinquent,
-      total,
-      nAccounts: accounts.length,
-      nCharges: charges.length,
-      registrations: registrations.length,
-      paidRegistrations: registrations.filter(row => row.payment_status === 'paid').length,
-      pendingRegistrations,
-      classEnrollments: enrollments.length,
-      classRevenue: round2(enrollmentPaid),
-      registrationRevenue: round2(registrationPaid),
-      syncedPaid: round2(syncedPaid),
-      syncedOpen: round2(syncedOpen),
-      syncedOpenInvoices,
-      syncedAccounts,
-      linkedAccounts,
-      hasSquareData: syncedAccounts > 0 || linkedAccounts > 0,
-    };
+    const session=window.HZdb?.auth?._getSession?.();
+    const pid=(session?.actualProfile || session?.profile)?.program_id;
+    const athleteIds = new Set((cache.athletes || []).filter(a => pid && ((cache.teams || []).some(t => t.id===a.team_id && t.program_id===pid) || a.program_id===pid)).map(a=>a.id));
+    const accounts=(cache.billing_accounts || []).filter(a=>athleteIds.has(a.athlete_id));
+    const accountIds=new Set(accounts.map(a=>a.id));
+    const charges=(cache.billing_charges || []).filter(c=>accountIds.has(c.account_id));
+    const enrollments=(cache.class_enrollments || []).filter(r=>pid && r.program_id===pid);
+    const registrations=(cache.registrations || []).filter(r=>pid && r.program_id===pid);
+    const paid=round2(accounts.reduce((sum,a)=>sum+Number(a.paid || 0),0));
+    const total=round2(accounts.reduce((sum,a)=>sum+Number(a.season_total || 0),0));
+    const owed=round2(accounts.reduce((sum,a)=>sum+Math.max(0,Number(a.season_total || 0)-Number(a.paid || 0)),0));
+    const delinquent=accounts.filter(a=>Number(a.season_total || 0)>Number(a.paid || 0)).length;
+    const pendingRegistrations=registrations.filter(r=>['pending','accepted','waitlisted'].includes(r.status) && !['paid','comped','refunded'].includes(r.payment_status)).length;
+    const registrationRevenue=round2(registrations.reduce((sum,r)=>sum+(r.payment_status==='paid'?Number(r.amount_paid_cents || 0)/100:0),0));
+    const seen=new Set();
+    const classRevenue=round2(enrollments.reduce((sum,r)=>{const id=r.registration_id || r.id;if(seen.has(id))return sum;seen.add(id);return sum+(r.payment_status==='paid'?Number(r.amount_paid_cents || 0)/100:0);},0));
+    return {paid,total,owed,delinquent,basis:'posted_season_accounts',nAccounts:accounts.length,nCharges:charges.length,
+      registrations:registrations.length,paidRegistrations:registrations.filter(r=>r.payment_status==='paid').length,pendingRegistrations,
+      classEnrollments:enrollments.length,classRevenue,registrationRevenue,
+      syncedPaid:0,syncedOpen:0,syncedOpenInvoices:0,syncedAccounts:0,
+      linkedAccounts:accounts.filter(a=>a.payment_provider || a.external_customer_id).length,
+      unallocatedSquareAccounts:accounts.filter(a=>a.payment_provider==='square' || a.sync_status==='matched').length,
+      hasSquareData:false};
   }
 
   function athleteBilling(aid) {

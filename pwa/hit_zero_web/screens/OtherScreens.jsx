@@ -67,22 +67,14 @@ function parentBillingSummary(snap, session) {
   const accountIds = new Set(accounts.map(acc => acc.id));
   const charges = (snap.billing_charges || []).filter(charge => accountIds.has(charge.account_id));
   const enrollments = window.HZsel?.classEnrollmentsForParent ? window.HZsel.classEnrollmentsForParent(session) : [];
-  const accountPaid = accounts.reduce((sum, acc) => sum + Number(acc.paid || 0), 0);
-  const accountTotal = accounts.reduce((sum, acc) => sum + Number(acc.season_total || 0), 0);
-  const chargeTotal = charges.reduce((sum, charge) => sum + Number(charge.amount || 0), 0);
-  const chargePaid = charges.reduce((sum, charge) => sum + ((charge.paid_at || charge.external_status === 'paid') ? Number(charge.amount || 0) : 0), 0);
-  const enrollmentPaid = enrollments.reduce((sum, row) => sum + (row.payment_status === 'paid' ? Number(row.amount_paid_cents || 0) / 100 : 0), 0);
-  const enrollmentTotal = enrollments.reduce((sum, row) => {
-    const classPrice = Number(row.class?.price_cents || row.metadata?.expected_price_cents || 0) / 100;
-    const paid = Number(row.amount_paid_cents || 0) / 100;
-    return sum + Math.max(classPrice, paid);
-  }, 0);
-  const paid = Math.round(Math.max(accountPaid, chargePaid, enrollmentPaid) * 100) / 100;
-  const total = Math.round(Math.max(accountTotal, chargeTotal, enrollmentTotal, paid) * 100) / 100;
-  const owed = Math.max(0, Math.round((total - paid) * 100) / 100);
-  const pendingCount = charges.filter(charge => !(charge.paid_at || charge.external_status === 'paid')).length
-    + enrollments.filter(row => row.payment_status !== 'paid' || row.staff_status !== 'accepted').length;
-  return { accounts, charges, enrollments, paid, total, owed, pendingCount };
+  const paid=Math.round(accounts.reduce((sum,a)=>sum+Number(a.paid || 0),0)*100)/100;
+  const total=Math.round(accounts.reduce((sum,a)=>sum+Number(a.season_total || 0),0)*100)/100;
+  const owed=Math.round(accounts.reduce((sum,a)=>sum+Math.max(0,Number(a.season_total || 0)-Number(a.paid || 0)),0)*100)/100;
+  const seen=new Set();
+  const classPaid=Math.round(enrollments.reduce((sum,row)=>{const id=row.registration_id || row.id;if(seen.has(id))return sum;seen.add(id);return sum+(row.payment_status==='paid'?Number(row.amount_paid_cents || 0)/100:0);},0)*100)/100;
+  const pendingCount=charges.filter(c=>!(c.paid_at || c.external_status==='paid') && !['canceled','cancelled','void','refunded'].includes(String(c.external_status || '').toLowerCase())).length
+    +enrollments.filter(r=>!['paid','comped','refunded'].includes(r.payment_status) && !['rejected','withdrawn','cancelled'].includes(r.staff_status)).length;
+  return {accounts,charges,enrollments,paid,total,owed,classPaid,pendingCount,basis:'posted_season_accounts'};
 }
 
 function ageFromDobOrNumber(dob, age) {
@@ -1028,8 +1020,8 @@ function ParentDashboard({ snap, session, navigate, pushToast }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 24 }}>
         <MiniBox label="Schedule" value={parentClassEnrollments.length || upcomingSessions.length || 0} sub={parentClassEnrollments.length ? 'registered classes' : 'team sessions'} accent="var(--hz-teal)"/>
-        <MiniBox label="Paid" value={dollarsToParentMoney(moneySummary.paid)} sub={moneySummary.enrollments.length ? 'registrations included' : ''} accent="var(--hz-green)"/>
-        <MiniBox label="Balance" value={moneySummary.owed > 0 ? dollarsToParentMoney(moneySummary.owed) : '$0'} sub={moneySummary.pendingCount ? `${moneySummary.pendingCount} pending item${moneySummary.pendingCount === 1 ? '' : 's'}` : 'current'} accent={moneySummary.owed > 0 ? 'var(--hz-amber)' : 'var(--hz-teal)'}/>
+        <MiniBox label="Class payments" value={dollarsToParentMoney(moneySummary.classPaid)} sub="saved registration receipts" accent="var(--hz-green)"/>
+        <MiniBox label="Season balance" value={moneySummary.owed > 0 ? dollarsToParentMoney(moneySummary.owed) : '$0'} sub={moneySummary.pendingCount ? `${moneySummary.pendingCount} pending item${moneySummary.pendingCount === 1 ? '' : 's'}` : 'posted ledger'} accent={moneySummary.owed > 0 ? 'var(--hz-amber)' : 'var(--hz-teal)'}/>
         <MiniBox label="Forms" value={familyFormsComplete ? 'Done' : 'Needed'} sub={familyPacket ? 'packet saved' : 'waiver and medical'} accent={familyFormsComplete ? 'var(--hz-green)' : 'var(--hz-amber)'}/>
       </div>
 
@@ -1925,7 +1917,7 @@ function AdminConsole({ snap, navigate, session }) {
       <LaunchAccessManager snap={snap} session={session}/>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
         <div className="hz-card">
-          <div className="hz-eyebrow" style={{ marginBottom: 14 }}>Revenue · Season</div>
+          <div className="hz-eyebrow" style={{ marginBottom: 14 }}>Posted season ledger</div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 14 }}>
             <div className="hz-display" style={{ fontSize: 60 }}>${(bill.paid/1000).toFixed(1)}<span style={{ fontSize: 28 }}>k</span></div>
             <div style={{ color: 'var(--hz-dim)' }}>of ${(bill.total/1000).toFixed(1)}k</div>
@@ -1945,9 +1937,9 @@ function AdminConsole({ snap, navigate, session }) {
             </div>
             <div style={{ padding: '12px 14px', borderRadius: 12, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.03)' }}>
               <div className="hz-eyebrow" style={{ marginBottom: 6 }}>Square Sync</div>
-              <div style={{ fontSize: 24, fontWeight: 700 }}>{bill.syncedAccounts}</div>
+              <div style={{ fontSize: 24, fontWeight: 700 }}>Unallocated</div>
               <div style={{ color: 'var(--hz-dim)', fontSize: 11, marginTop: 4 }}>
-                {bill.hasSquareData ? `$${bill.syncedOpen.toLocaleString()} open` : 'waiting for first sync'}
+                Provider totals stay separate from child balances
               </div>
             </div>
           </div>
@@ -3323,12 +3315,13 @@ function Billing({ snap, session, openAthlete }) {
   return (
     <div>
       <SectionHeading eyebrow={isParent ? 'My family' : 'Program billing'} title="Billing."/>
+      <p style={{color:'var(--hz-dim)',fontSize:13,lineHeight:1.5,marginBottom:18}}>Class receipts and season accounts may cover overlapping charges. Each total shows its own records.</p>
       {isParent && (
         <div style={{ display: 'grid', gap: 16, marginBottom: 20 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
-          <StatTile label="Paid" value={dollarsToParentMoney(parentSummary.paid)} sub={`${parentSummary.enrollments.length} registrations`} accent="var(--hz-green)" size="md"/>
-          <StatTile label="Total" value={dollarsToParentMoney(parentSummary.total)} sub="tracked charges" accent="var(--hz-teal)" size="md"/>
-          <StatTile label="Balance" value={dollarsToParentMoney(parentSummary.owed)} sub={parentSummary.owed > 0 ? 'open' : 'current'} accent={parentSummary.owed > 0 ? 'var(--hz-amber)' : 'var(--hz-green)'} size="md"/>
+          <StatTile label="Class payments" value={dollarsToParentMoney(parentSummary.classPaid)} sub={`${parentSummary.enrollments.length} saved enrollments`} accent="var(--hz-green)" size="md"/>
+          <StatTile label="Season paid" value={dollarsToParentMoney(parentSummary.paid)} sub="posted season accounts" accent="var(--hz-teal)" size="md"/>
+          <StatTile label="Season balance" value={dollarsToParentMoney(parentSummary.owed)} sub="posted season accounts" accent={parentSummary.owed > 0 ? 'var(--hz-amber)' : 'var(--hz-green)'} size="md"/>
           <StatTile label="Pending" value={parentSummary.pendingCount} sub="review/payment items" accent={parentSummary.pendingCount ? 'var(--hz-amber)' : 'var(--hz-teal)'} size="md"/>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -3352,15 +3345,15 @@ function Billing({ snap, session, openAthlete }) {
       {!isParent && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 16, marginBottom: 24 }}>
-            <StatTile label="Collected" value={`$${bill.paid.toLocaleString()}`} sub={`${bill.paidRegistrations || 0} paid regs`} accent="var(--hz-green)" size="md"/>
-            <StatTile label="Class Revenue" value={`$${bill.classRevenue.toLocaleString()}`} sub={`${bill.classEnrollments || 0} enrollments`} accent="var(--hz-teal)" size="md"/>
-            <StatTile label="Outstanding" value={`$${bill.owed.toLocaleString()}`} accent="var(--hz-amber)" size="md"/>
+            <StatTile label="Registration payments" value={`$${bill.registrationRevenue.toLocaleString()}`} sub={`${bill.paidRegistrations || 0} paid records`} accent="var(--hz-green)" size="md"/>
+            <StatTile label="Season paid" value={`$${bill.paid.toLocaleString()}`} sub="posted season accounts" accent="var(--hz-teal)" size="md"/>
+            <StatTile label="Season balance" value={`$${bill.owed.toLocaleString()}`} sub="posted accounts only" accent="var(--hz-amber)" size="md"/>
             <StatTile label="Pending" value={bill.pendingRegistrations || 0} sub="registrations" size="md"/>
             <StatTile label="Accounts" value={bill.nAccounts} sub={`${bill.nCharges || 0} charges`} size="md"/>
             <StatTile
-              label="Square Open"
-              value={`$${bill.syncedOpen.toLocaleString()}`}
-              sub={bill.hasSquareData ? `${bill.syncedAccounts} matched families` : 'run first sync'}
+              label="Square allocation"
+              value="Review"
+              sub="provider totals kept separate"
               accent={bill.syncedOpen > 0 ? 'var(--hz-pink)' : 'var(--hz-teal)'}
               size="md"
             />
@@ -3458,24 +3451,10 @@ function Billing({ snap, session, openAthlete }) {
                   <td>{a.owed > 0 ? <Pill tone="amber">{dollarsToParentMoney(a.owed)}</Pill> : <span style={{ color: 'var(--hz-dim)' }}>$0</span>}</td>
                   {!isParent && (
                     <td>
-                      {a.sync_status === 'matched' ? <Pill tone="teal">Matched</Pill>
-                        : a.sync_status === 'unmatched' ? <Pill tone="amber">Needs match</Pill>
-                        : a.sync_status === 'missing_parent_email' ? <Pill tone="pink">Missing email</Pill>
-                        : <span style={{ color: 'var(--hz-dim)', fontSize: 11 }}>Not synced</span>}
+                      {a.payment_provider==='square' || a.external_customer_id ? <Pill tone="amber">Unallocated</Pill> : <span style={{color:'var(--hz-dim)'}}>No provider record</span>}
                     </td>
                   )}
-                  {!isParent && (
-                    <td>
-                      {a.sync_status === 'matched' ? (
-                        <div>
-                          <div style={{ fontFamily: 'var(--hz-mono)', color: 'var(--hz-green)' }}>${Number(a.synced_paid || 0).toLocaleString()} paid</div>
-                          <div style={{ color: 'var(--hz-dim)', fontSize: 11 }}>${Number(a.synced_open_amount || 0).toLocaleString()} open · {a.synced_open_invoice_count || 0} invoices</div>
-                        </div>
-                      ) : (
-                        <div style={{ color: 'var(--hz-dim)', fontSize: 11 }}>Waiting for Square customer match</div>
-                      )}
-                    </td>
-                  )}
+                  {!isParent && <td style={{color:'var(--hz-dim)',fontSize:12}}>View the Square location snapshot. Family email matching is not a child payment allocation.</td>}
                   <td>{a.autopay ? <Pill tone="teal">On</Pill> : <span style={{ color: 'var(--hz-dim)', fontSize: 11 }}>Off</span>}</td>
                 </tr>
               ))}
@@ -3516,7 +3495,7 @@ function SquareBillingPanel({ programRef }) {
       setFlash({
         kind: square === 'connected' ? 'success' : square === 'error' ? 'error' : 'info',
         text: square === 'connected'
-          ? 'Square connected. Pulling the first sync in now will show how families map back into Hit Zero.'
+          ? 'Square connected. Refresh its location totals to review provider activity.'
           : message || `Square returned: ${square}`,
       });
       url.searchParams.delete('square');
@@ -3625,7 +3604,7 @@ function SquareBillingPanel({ programRef }) {
             Billing with a <span className="hz-zero">real processor</span>.
           </div>
           <div style={{ color: 'var(--hz-dim)', fontSize: 13, maxWidth: 760, lineHeight: 1.5 }}>
-            Connect the gym&apos;s Square account, pull live customer + invoice + payment data, and verify which families are matching back into Hit Zero before we let the app become a true billing command center.
+            Review payment and invoice totals for the connected Square location. Registration receipts and posted season balances remain separate.
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -3674,70 +3653,18 @@ function SquareBillingPanel({ programRef }) {
         </div>
       )}
 
-      {preview && (
-        <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginTop: 18 }}>
-            <MiniStat label="Matched" value={preview.counts?.matched_accounts ?? 0} sub={`${preview.counts?.accounts ?? 0} billing accounts`} accent="var(--hz-teal)"/>
-            <MiniStat label="Unmatched" value={preview.counts?.unmatched_accounts ?? 0} sub="needs cleanup" accent="var(--hz-amber)"/>
-            <MiniStat label="Square paid" value={`$${Number(preview.totals?.synced_paid || 0).toLocaleString()}`} sub="rolling sync total" accent="var(--hz-green)"/>
-            <MiniStat label="Open invoices" value={preview.totals?.open_invoice_count ?? 0} sub={`$${Number(preview.totals?.open_invoice_amount || 0).toLocaleString()} open`} accent="var(--hz-pink)"/>
+      {preview?.basis==='square_location_snapshot' ? (
+        <div style={{marginTop:18}}>
+          <p style={{color:'var(--hz-dim)',fontSize:13,lineHeight:1.5}}>Square location snapshot · USD payments from the last {preview.payment_window_days || 365} days. These totals include provider activity that has not been allocated to individual children or season accounts.</p>
+          {(preview.counts?.excluded_payment_currencies || preview.counts?.excluded_invoice_currencies) ? <p style={{color:'var(--hz-amber)',fontSize:12}}>Records with other or missing currencies are excluded and need review.</p> : null}
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:12}}>
+            <MiniStat label="Completed payments" value={dollarsToParentMoney(preview.totals?.provider_paid_amount)} sub={`${preview.counts?.completed_payments || 0} payments before refunds`}/>
+            <MiniStat label="Refunded" value={dollarsToParentMoney(preview.totals?.provider_refunded_amount)} sub="same payment window"/>
+            <MiniStat label="Open invoices" value={dollarsToParentMoney(preview.totals?.open_invoice_amount)} sub={`${preview.counts?.open_invoices || 0} current open invoices`}/>
+            <MiniStat label="Allocation" value="Review" sub="no automatic family matching"/>
           </div>
-
-          <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: '1.25fr 0.75fr', gap: 16 }}>
-            <div className="hz-card" style={{ padding: 0, overflow: 'hidden', background: 'rgba(255,255,255,0.02)' }}>
-              <table className="hz-table">
-                <thead>
-                  <tr>
-                    <th style={{ paddingLeft: 18 }}>Matched family</th>
-                    <th>Square customer</th>
-                    <th>Paid</th>
-                    <th>Open</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(preview.accounts || []).slice(0, 8).map(row => (
-                    <tr key={row.account_id}>
-                      <td style={{ paddingLeft: 18 }}>
-                        <div style={{ fontWeight: 600 }}>{row.athlete_name}</div>
-                        <div style={{ color: 'var(--hz-dim)', fontSize: 11 }}>{row.parent_email || 'No parent email'}</div>
-                      </td>
-                      <td>
-                        <div style={{ fontWeight: 600 }}>{row.square_customer_name || '—'}</div>
-                        <div style={{ color: 'var(--hz-dim)', fontSize: 11 }}>{row.square_customer_id}</div>
-                      </td>
-                      <td style={{ color: 'var(--hz-green)', fontFamily: 'var(--hz-mono)' }}>${Number(row.synced_paid || 0).toLocaleString()}</td>
-                      <td>
-                        <div style={{ fontFamily: 'var(--hz-mono)' }}>${Number(row.open_invoice_amount || 0).toLocaleString()}</div>
-                        <div style={{ color: 'var(--hz-dim)', fontSize: 11 }}>{row.open_invoice_count} open</div>
-                      </td>
-                    </tr>
-                  ))}
-                  {!(preview.accounts || []).length && (
-                    <tr><td colSpan="4" style={{ padding: 18, color: 'var(--hz-dim)' }}>No matched families yet. Connect Square and run the first sync.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="hz-card" style={{ background: 'rgba(255,255,255,0.02)' }}>
-              <div className="hz-eyebrow" style={{ marginBottom: 10 }}>Needs attention</div>
-              <div style={{ display: 'grid', gap: 8 }}>
-                {(preview.unmatched_accounts || []).slice(0, 8).map(row => (
-                  <div key={row.athlete_id} style={{ padding: '10px 12px', borderRadius: 10, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.03)' }}>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{row.athlete_name}</div>
-                    <div style={{ color: 'var(--hz-dim)', fontSize: 11, marginTop: 4 }}>
-                      {row.parent_email || 'Missing parent email in Hit Zero'}
-                    </div>
-                  </div>
-                ))}
-                {!(preview.unmatched_accounts || []).length && (
-                  <div style={{ color: 'var(--hz-dim)', fontSize: 12.5 }}>Nothing stuck right now. The family-to-customer matching pass looks clean.</div>
-                )}
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+        </div>
+      ) : preview ? <p role="status" style={{marginTop:18,color:'var(--hz-amber)',fontSize:13,lineHeight:1.5}}>The earlier Square snapshot used family email matching. Its totals are retained in history and are not verified child balances. Refresh Square to view the location totals.</p> : null}
 
       {state.loading && (
         <div style={{ marginTop: 16, color: 'var(--hz-dim)', fontSize: 12.5 }}>Loading Square status…</div>
