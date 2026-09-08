@@ -15,3 +15,10 @@ hit_zero_backend/supabase/.temp/
 hit_zero_backend/supabase/.branches/
 supabase/.temp/
 .vercel
+
+# Operational evidence is private and must never be committed.
+docs/audits/*
+!docs/audits/.gitkeep
+!docs/audits/README.md
+hit_zero_financials.pdf
+private-audits/

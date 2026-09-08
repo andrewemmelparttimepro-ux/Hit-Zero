@@ -1,0 +1,1 @@
+Operational audit output belongs in a private evidence location. Generated reports in this directory are ignored by Git. Never commit customer records, financial reports, recovery evidence, or raw production exports. Historical repository copies require a separate privacy cleanup.
