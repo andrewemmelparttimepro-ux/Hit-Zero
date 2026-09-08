@@ -19,7 +19,7 @@
   const PROD_HOSTS = new Set(['thehitzero.net', 'www.thehitzero.net']);
   const LOCAL_ONLY_TABLES = new Set(['pin_designs', 'athlete_pins', 'pin_drops', 'pin_quests']);
   const EMPTY_TABLES = [
-    'programs', 'teams', 'profiles', 'athletes', 'skills', 'athlete_skills', 'sessions', 'attendance',
+    'programs', 'teams', 'profiles', 'athletes', 'skills', 'athlete_skills', 'sessions', 'attendance', 'score_runs', 'score_deductions',
     'routines', 'routine_sections', 'routine_audio_assets', 'music_licenses', 'routine_count_maps',
     'routine_events', 'routine_formations', 'routine_positions', 'routine_assignments',
     'routine_ai_suggestions', 'routine_exports', 'routine_versions', 'routine_comments',
@@ -1536,29 +1536,13 @@
         return { data: null, error: new Error('Magic-link auth is unavailable in prototype mode.') };
       }
       rememberEmail(email);
-      try {
-        const res = await fetch(window.HZ_FN_BASE + '/functions/v1/auth-link-v1', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + window.HZ_ANON_KEY,
-            'apikey': window.HZ_ANON_KEY,
-          },
-          body: JSON.stringify({
-            email,
-            role,
-            redirect_to: window.location.origin + '/auth/callback',
-          }),
-        });
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          return { data: null, error: new Error(payload?.error || payload?.message || 'We could not start the sign-in flow.') };
-        }
-        if (payload?.action_link) window.location.assign(payload.action_link);
-        return { data: payload, error: null };
-      } catch (err) {
-        return { data: null, error: err instanceof Error ? err : new Error(String(err)) };
-      }
+      // Auth delivers the credential only to the verified mailbox. Never fetch
+      // an admin-generated action_link or navigate to a caller-returned token.
+      const { data: result, error } = await window.HZsupa.auth.signInWithOtp({
+        email: loginEmail(email),
+        options: { shouldCreateUser: false, emailRedirectTo: window.location.origin + '/auth/callback' },
+      });
+      return { data: result, error };
     },
 	    async signInWithPassword(identifier, password) {
       if (!hasRealAuth()) return { data: null, error: new Error('Password auth is unavailable in prototype mode.') };

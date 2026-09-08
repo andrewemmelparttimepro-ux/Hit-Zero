@@ -160,9 +160,27 @@
       activeProgramId = liveProfile.program_id;
     }
     try { performance.mark('hz-live-hydration-start'); } catch {}
+    // Reference collections are consumed synchronously by selectors. Hydrate
+    // them explicitly; reading the mirror must not silently erase the catalog.
+    if (isLiveSession) {
+      const referenceTables = ['skills', 'rubric_versions', 'rubric_categories'];
+      const referenceResults = await Promise.all(referenceTables.map(table => s.from(table).select('*')));
+      const failed = [];
+      referenceResults.forEach((result, index) => {
+        const table = referenceTables[index];
+        if (result.error) failed.push(table);
+        else d[table] = result.data || [];
+      });
+      d.__referenceData = {
+        status: failed.length ? 'error' : (d.skills?.length ? 'ready' : 'empty'),
+        failed,
+        loadedAt: new Date().toISOString(),
+      };
+    }
+
     const clearPrivateRows = () => {
       [
-        'teams', 'athletes', 'athlete_skills', 'parent_links', 'billing_accounts', 'billing_charges',
+        'teams', 'athletes', 'athlete_skills', 'parent_links', 'billing_accounts', 'billing_charges', 'score_runs', 'score_deductions',
         'attendance', 'sessions', 'session_availability', 'calendar_tokens', 'celebrations',
         'registration_windows', 'registrations', 'leads', 'lead_touches',
         'message_threads', 'thread_members', 'messages', 'message_reads', 'announcements',
@@ -310,6 +328,8 @@
     if (!athleteRows.error) d.athletes = athleteRows.data || [];
     if (!profileRows?.error && profileRows?.data?.length) d.profiles = profileRows.data;
     const aIds = (d.athletes || []).map(a => a.id);
+    const scoreRows = await s.from('score_runs').select('*').in('team_id', ids).order('run_at', { ascending: false }).limit(200);
+    if (!scoreRows.error) d.score_runs = scoreRows.data || [];
     const sessionRows = await s.from('sessions').select('*').in('team_id', ids).order('scheduled_at');
     if (!sessionRows.error) d.sessions = (sessionRows.data || []).map(row => ({ ...row, scheduled: row.scheduled === false ? false : true }));
     const planRows = await s.from('practice_plans').select('*').in('team_id', ids).order('created_at', { ascending: false });

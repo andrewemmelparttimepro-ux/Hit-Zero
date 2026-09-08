@@ -161,6 +161,19 @@ function SkillMatrix({ snap, session, openAthlete, pushToast }) {
     });
   });
 
+  if (skillMatrixLiveMode() && (!snap.skills?.length || window.HZdb?._raw?.().__referenceData?.status === 'error')) {
+    const failed = window.HZdb?._raw?.().__referenceData?.status === 'error';
+    return <div role="status" className="hz-card" style={{ padding: 24 }}>
+      <h1>Skill Matrix</h1>
+      <h2>{failed ? 'Skill catalog could not load' : 'Skill catalog is not available yet'}</h2>
+      <p>Progress cannot be calculated until the skill catalog is available. Your saved assessments have not been changed.</p>
+      <button className="hz-btn hz-btn-primary" onClick={async () => {
+        await window.HZmirror?.refresh?.({ force: true });
+        await refreshSkillMatrix();
+      }}>Retry loading skills</button>
+    </div>;
+  }
+
   return (
     <div>
       <SectionHeading eyebrow="Every athlete, every skill" title="Skill Matrix." trailing={

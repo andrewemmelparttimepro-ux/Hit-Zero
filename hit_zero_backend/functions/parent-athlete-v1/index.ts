@@ -48,12 +48,12 @@ function usernameEmail(username: string) {
 async function getAuthedProfile(req: Request) {
   const auth = req.headers.get('Authorization') || '';
   const token = auth.replace(/^Bearer\s+/i, '').trim();
-  if (!token) throw new Error('Missing signed-in user token.');
+  if (!token) throw Object.assign(new Error('Sign in before managing a child account.'), { status: 401 });
 
   const userRes = await fetch(`${SB_URL}/auth/v1/user`, {
     headers: { apikey: SB_SR, Authorization: `Bearer ${token}` },
   });
-  if (!userRes.ok) throw new Error('Invalid or expired signed-in user token.');
+  if (!userRes.ok) throw Object.assign(new Error('Your sign-in expired. Sign in again to continue.'), { status: 401 });
   const user = await userRes.json();
 
   const { data: profile, error } = await supa
@@ -62,7 +62,7 @@ async function getAuthedProfile(req: Request) {
     .eq('id', user.id)
     .maybeSingle();
   if (error) throw error;
-  if (!profile) throw new Error('Signed-in user does not have a Hit Zero profile.');
+  if (!profile) throw Object.assign(new Error('This account does not have a Hit Zero profile.'), { status: 403 });
   return profile;
 }
 
@@ -144,12 +144,15 @@ async function createAthleteLogin(actor: any, body: any) {
   let profileId = null;
   const { data: existingProfile, error: profileLookupError } = await supa
     .from('profiles')
-    .select('id, email')
+    .select('id, email, role')
     .eq('email', email)
     .maybeSingle();
   if (profileLookupError) throw profileLookupError;
 
   if (existingProfile?.id) {
+    if (existingProfile.role !== 'athlete' || athlete.profile_id !== existingProfile.id) {
+      return json({ error: 'That username is unavailable. Choose a different athlete username.' }, 409);
+    }
     profileId = existingProfile.id;
     const { error } = await supa.auth.admin.updateUserById(profileId, {
       password,
@@ -198,7 +201,7 @@ async function createAthleteLogin(actor: any, body: any) {
   });
 }
 
-Deno.serve(async (req) => {
+export async function handleRequest(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
 
@@ -222,12 +225,25 @@ Deno.serve(async (req) => {
     const position = validPositions.has(cleanText(body.position)) ? cleanText(body.position) : null;
     const team = await resolveTeam(actor, body.team_id);
     const photoColor = cleanText(body.photo_color, 32) || '#F97FAC';
+    const explicitRegistrationId = cleanText(body.registration_id, 80);
+    if (explicitRegistrationId) {
+      const { data: registration, error } = await supa.from('registrations')
+        .select('id, program_id, parent_email, athlete_name').eq('id', explicitRegistrationId).maybeSingle();
+      if (error) throw error;
+      const normalize = (value: unknown) => String(value ?? '').trim().toLowerCase();
+      if (!registration || registration.program_id !== team.program_id
+          || normalize(registration.parent_email) !== normalize(actor.email)
+          || normalize(registration.athlete_name) !== normalize(displayName)) {
+        return json({ error: 'This registration does not belong to this family and athlete.' }, 403);
+      }
+    }
+
 
     const { data: existingAthlete, error: existingError } = await supa
       .from('athletes')
       .select('*')
       .eq('team_id', team.id)
-      .ilike('display_name', displayName)
+      .eq('display_name', displayName)
       .is('deleted_at', null)
       .order('profile_id', { ascending: false, nullsFirst: false })
       .limit(1)
@@ -236,6 +252,9 @@ Deno.serve(async (req) => {
 
     let athlete = existingAthlete;
     if (athlete?.id) {
+      if (!await canManageAthlete(actor, { ...athlete, teams: team })) {
+        return json({ error: 'Staff must confirm this athlete family link before you can continue.', code: 'family_link_requires_staff' }, 403);
+      }
       const patch: Record<string, unknown> = {};
       if (age && !athlete.age) patch.age = age;
       if (position && !athlete.position) patch.position = position;
@@ -297,7 +316,6 @@ Deno.serve(async (req) => {
       billingAccount = insertedBilling;
     }
 
-    const explicitRegistrationId = cleanText(body.registration_id, 80);
     const refreshIds: string[] = [];
     if (explicitRegistrationId) refreshIds.push(explicitRegistrationId);
     if (actor.email) {
@@ -305,8 +323,8 @@ Deno.serve(async (req) => {
         .from('registrations')
         .select('id')
         .eq('program_id', team.program_id)
-        .ilike('parent_email', actor.email)
-        .ilike('athlete_name', displayName)
+        .eq('parent_email', actor.email)
+        .eq('athlete_name', displayName)
         .not('class_id', 'is', null)
         .limit(10);
       for (const reg of matchingRegs || []) {
@@ -317,15 +335,13 @@ Deno.serve(async (req) => {
       await supa.rpc('refresh_registration_enrollment', { p_registration_id: registrationId });
     }
 
-    await supa
-      .from('family_info_packets')
-      .update({ materialized_athlete_id: athlete.id, materialized_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .eq('program_id', team.program_id)
-      .eq('profile_id', actor.id)
-      .is('materialized_athlete_id', null);
+    // Packet materialization belongs to the validated packet-submit action.
+    // Never assign every outstanding sibling packet to a newly added child.
 
     return json({ ok: true, athlete, parent_link: link, billing_account: billingAccount });
   } catch (err) {
-    return json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    return json({ error: err instanceof Error ? err.message : 'Could not complete this request.' }, Number((err as any)?.status) || 500);
   }
-});
+}
+if (import.meta.main) Deno.serve(handleRequest);
+

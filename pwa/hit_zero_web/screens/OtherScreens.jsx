@@ -914,7 +914,7 @@ function ParentDashboard({ snap, session, navigate, pushToast }) {
   const linkedKids = scope?.linkedAthletes || [];
   const familyKids = [...createdKids, ...linkedKids].filter((kid, idx, arr) => kid && arr.findIndex(x => x.id === kid.id) === idx);
   const myKids = familyKids;
-  const parentClassEnrollments = window.HZsel.classEnrollmentsForParent(session);
+  const parentClassEnrollments = window.HZsel.classEnrollmentsForParent(session).filter(row => !window.HZsel.classEnrollmentIsPast(row));
   const linkedKidIds = new Set(myKids.filter(Boolean).map(kid => kid.id));
   const unlinkedPaidRegistrations = parentClassEnrollments.filter(row => !row.athlete_id || !linkedKidIds.has(row.athlete_id));
   const familyName = (session.profile.display_name || 'Your').split(' ').slice(-1)[0];
