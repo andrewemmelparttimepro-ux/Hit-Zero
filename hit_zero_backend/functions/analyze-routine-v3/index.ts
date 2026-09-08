@@ -1,3 +1,4 @@
+import { authorizeAnalysis } from '../_shared/analysis-access.ts';
 // analyze-routine-v2 — Gemini 2.5 Flash AI judge with async background processing.
 //
 // Flow:
@@ -139,7 +140,7 @@ function isTransientGeminiError(msg: string) {
 }
 
 const SCORE_CALIBRATION_ANCHORS = [{
-  label: 'Known comp day anchor',
+  label: 'Magic City comp day anchor',
   model_pct: 90.3,
   official_pct: 93.65,
   note: 'Single known day-of-competition score supplied by Andrew on 2026-04-23.',
@@ -242,7 +243,7 @@ async function gUpload(bytes: Uint8Array, mime: string): Promise<string> {
       'X-Goog-Upload-Offset': '0',
       'X-Goog-Upload-Command': 'upload, finalize'
     },
-    body: bytes
+    body: new Uint8Array(bytes).buffer
   });
   if (!up.ok) throw new Error('gUpload finalize ' + up.status + ' ' + (await up.text()));
 
@@ -471,7 +472,7 @@ async function geminiEngine(req: AReq, cats: Cat[], path: string): Promise<Out> 
     description: String(d.description || ''),
     confidence: Number(d.confidence ?? 0.6),
     athlete_id: null
-  })).filter(d => d.severity !== 'minor' || d.confidence >= 0.85);
+  })).filter((d: Ded) => d.severity !== 'minor' || d.confidence >= 0.85);
 
   const hasRunning = elements.some(e => e.category_code === 'running_tumbling');
   if (!hasRunning && level <= 1 && teamSize <= 12) {
@@ -676,7 +677,7 @@ async function runAnalysisBackground(aid: string, body: AReq, categories: Cat[],
 
     const vp = await resolvePath(body);
     const useG = !!GEMINI_KEY && !!vp;
-    let out: Out, eErr: string | null = null;
+    let out: Out | null = null, eErr: string | null = null;
 
     if (useG) {
       try {
@@ -707,6 +708,7 @@ async function runAnalysisBackground(aid: string, body: AReq, categories: Cat[],
       out.notes = reason;
     }
 
+    if (!out) throw new Error('Video judge returned no analysis.');
     if (out.elements.length)   await supa.from('analysis_elements').insert(out.elements.map(e => ({ analysis_id: aid, ...e })));
     if (out.deductions.length) await supa.from('analysis_deductions').insert(out.deductions.map(d => ({ analysis_id: aid, ...d })));
 
@@ -778,13 +780,15 @@ const CORS_HEADERS = {
 function ok(b: unknown)  { return new Response(JSON.stringify(b), { headers: { 'content-type': 'application/json', ...CORS_HEADERS } }); }
 function err(m: string, s: number, d?: unknown) { return new Response(JSON.stringify({ error: m, detail: d }), { status: s, headers: { 'content-type': 'application/json', ...CORS_HEADERS } }); }
 
-Deno.serve(async (req) => {
+export async function handleRequest(req: Request) {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS_HEADERS });
   if (req.method !== 'POST') return new Response('method not allowed', { status: 405 });
 
   let body: AReq;
   try { body = await req.json(); } catch { return err('bad json', 400); }
   if (!body.team_id) return err('team_id required', 400);
+  const access = await authorizeAnalysis(req, body, supa);
+  if (access) return err(access.error, access.status);
   if (!SB_URL || !SB_SR) return err('server misconfigured', 500);
 
   const rv = await supa.from('rubric_versions').select('id').eq('is_active', true).limit(1).maybeSingle();
@@ -838,4 +842,6 @@ Deno.serve(async (req) => {
   }
 
   return ok({ analysis_id: aid, status: 'queued' });
-});
+}
+
+if (import.meta.main) Deno.serve(handleRequest);
