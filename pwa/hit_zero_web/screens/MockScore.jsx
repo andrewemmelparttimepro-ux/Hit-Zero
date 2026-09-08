@@ -36,42 +36,29 @@ function mockScoreLiveMode() {
   return Boolean(window.HZsupa && window.HZdb?.auth?._mode?.() === 'live');
 }
 function mockScoreUuid(value) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(String(value || ''));
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
 }
 
-// Persist the run, then its deduction events. Event persistence is
-// best-effort — a failed detail write never loses the run itself.
+// A live run and all deduction details commit together under one retry identity.
 async function persistScoreRun(payload, events) {
-  let run = null;
-  if (mockScoreLiveMode() && mockScoreUuid(payload.team_id)) {
-    const { data, error } = await window.HZsupa.from('score_runs').insert(payload).select('*').single();
-    if (error) return { data: null, error };
-    run = data;
-    await window.HZdb.from('score_runs').upsert(run, { onConflict: 'id' }); // saveRun follows with HZsel?._refresh + hz:refresh
-    if (run?.id && events.length) {
-      const rows = events.map(e => ({
-        run_id: run.id, code: e.id, value: e.value,
-        at_count: e.atSec != null ? Math.round(e.atSec) : null,
-        note: e.label,
-      }));
-      const { error: dErr } = await window.HZsupa.from('score_deductions').insert(rows); // saveRun follows with HZsel?._refresh + hz:refresh
-      if (dErr) console.warn('[mockscore] deduction detail save failed', dErr);
-    }
-  } else {
-    const res = await window.HZdb.from('score_runs').insert(payload).single(); // saveRun follows with HZsel?._refresh + hz:refresh
-    if (res.error) return res;
-    run = res.data || payload;
-    try {
-      for (const e of events) {
-        await window.HZdb.from('score_deductions').insert({ // saveRun follows with HZsel?._refresh + hz:refresh
-          run_id: run.id, code: e.id, value: e.value,
-          at_count: e.atSec != null ? Math.round(e.atSec) : null,
-          note: e.label,
-        });
-      }
-    } catch { /* prototype detail is best-effort */ }
+  if (mockScoreLiveMode()) {
+    if (!mockScoreUuid(payload.team_id)) return {data:null,error:{message:'Choose a valid team.'}};
+    const {data,error}=await window.HZsupa.rpc('save_observed_score_run_v1', {
+      p_request_id:payload.id,p_team_id:payload.team_id,p_routine_id:payload.routine_id,
+      p_scores:payload.category_scores,p_events:events.map(e=>({id:e.id,value:e.value,atSec:e.atSec ?? null,label:e.label})),p_note:payload.note,
+    });
+    if(error)return {data:null,error};
+    const raw=window.HZdb?._raw?.();
+    if(raw){raw.score_runs=[...(raw.score_runs || []).filter(r=>r.id!==data.id),data];}
+    return {data,error:null};
   }
-  return { data: run, error: null };
+  const res=await window.HZdb.from('score_runs').insert(payload).single();
+  if(res.error)return res;
+  for(const e of events) {
+    const detail=await window.HZdb.from('score_deductions').insert({run_id:res.data.id,code:e.id,value:e.value,at_seconds:e.atSec==null?null:Math.round(e.atSec),note:e.label});
+    if(detail.error)return {data:res.data,error:detail.error};
+  }
+  return res;
 }
 
 // press-and-hold stepper button (tap = one step, hold = repeat)
@@ -127,6 +114,8 @@ function MockScore({ session, snap, pushToast }) {
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [pendingSave,setPendingSave]=useState(null);
+  const saveInFlight=useRef(false);
 
   // ── run mode + clock ──
   const [runOpen, setRunOpen] = useState(false);
@@ -182,34 +171,25 @@ function MockScore({ session, snap, pushToast }) {
   const total = Math.max(0, subtotal - dedTotal);
   const maxTotal = sheet.reduce((s, r) => s + r.max, 0);
 
+  const scoreDraftKey = () => JSON.stringify({team:team?.id,routine:routine?.id || null,scores,events,note});
+  const latestDraftKey=useRef(null);latestDraftKey.current=scoreDraftKey();
   const saveRun = async () => {
-    if (!team?.id || saving) return;
-    if (!allScored) {setError('Enter every category score before saving this run.');return;}
-    setSaving(true);
-    setError('');
-    const { error: saveError } = await persistScoreRun({
-      team_id: team.id,
-      routine_id: routine?.id || null,
-      run_at: new Date().toISOString(),
-      subtotal: Math.round(subtotal * 100) / 100,
-      deductions: Math.round(dedTotal * 100) / 100,
-      total: Math.round(total * 100) / 100,
-      note,
-      created_by: mockScoreUuid(session?.profile?.id) ? session.profile.id : null,
-    }, events);
-    if (saveError) {
-      setError(saveError.message || 'Could not save score run.');
-      setSaving(false);
-      return;
-    }
-    if (window.HZsel?._refresh) await window.HZsel._refresh();
-    window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table: 'score_runs', action: 'insert' } }));
-    pushToast?.({ title: 'Run saved', body: `${total.toFixed(2)} — ${events.length} deduction${events.length === 1 ? '' : 's'} logged` });
-    setEvents([]);
-    setScores({});
-    setNote('');
-    resetClock();
-    setSaving(false);
+    if (saveInFlight.current || (!pendingSave && (!team?.id || !allScored))) return;
+    const request=pendingSave || {payload:{id:crypto.randomUUID(),team_id:team.id,routine_id:routine?.id || null,category_scores:{...scores},note,subtotal,deductions:dedTotal,total,created_by:session?.profile?.id || null},events:events.map(e=>({...e})),draftKey:scoreDraftKey()};
+    saveInFlight.current=true;setSaving(true);setError('');setPendingSave(request);
+    try {
+      const result=await persistScoreRun(request.payload,request.events);
+      if(result.error)throw result.error;
+      setPendingSave(null);
+      if(window.HZsel?._refresh)await window.HZsel._refresh();
+      window.dispatchEvent(new CustomEvent('hz:refresh',{detail:{table:'score_runs',action:'insert'}}));
+      pushToast?.({title:'Run saved',body:`${Number(result.data.total).toFixed(2)} — ${request.events.length} deductions saved together.`});
+      // If edits changed during a lost-response retry, keep those newer edits.
+      if(latestDraftKey.current===request.draftKey){setEvents([]);setScores({});setNote('');resetClock();}
+    } catch(error) {
+      if(['23514','42501','22023','22P02'].includes(error?.code))setPendingSave(null);
+      setError(error?.message || 'The save could not be confirmed. Check the previous save before starting another.');
+    } finally {saveInFlight.current=false;setSaving(false);}
   };
 
   // history with deltas (oldest → newest for delta math)
@@ -247,8 +227,8 @@ function MockScore({ session, snap, pushToast }) {
           <button className="hz-btn hz-btn-primary" onClick={() => { setRunOpen(true); resetClock(); }}>
             <HZIcon name="bolt" size={13}/> Run the routine
           </button>
-          <button className="hz-btn" onClick={saveRun} disabled={saving || !team?.id || !allScored}>
-            <HZIcon name="check" size={13}/> {saving ? 'Saving…' : 'Save run'}
+          <button className="hz-btn" onClick={saveRun} disabled={saving || (!pendingSave && (!team?.id || !allScored))}>
+            <HZIcon name="check" size={13}/> {saving ? 'Saving…' : pendingSave ? 'Check previous save' : 'Save run'}
           </button>
         </div>
       }/>

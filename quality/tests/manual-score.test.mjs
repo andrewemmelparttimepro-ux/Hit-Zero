@@ -19,3 +19,14 @@ test('live gym scope and empty prediction cannot borrow another gym or invent an
  assert.equal(window.HZsel.programProfile().id,session.profile.program_id);assert.equal(window.HZsel.routine().id,'mine-routine');assert.equal(window.HZsel.predictedScore().total,null);
  session={mode:'live',profile:{program_id:'not-loaded'}};assert.equal(window.HZsel.programProfile(),null);assert.equal(window.HZsel.programTeams().length,0);assert.equal(window.HZsel.routine(),null);
 });
+test('lost score-save response retries one request and preserves edits made while confirmation is pending',async()=>{
+ let i=0,ri=0,resolveFirst;const values=[],refs=[],requests=[];
+ const R={...React,useState:initial=>{const k=i++;if(!(k in values))values[k]=typeof initial==='function'?initial():initial;return [values[k],v=>values[k]=typeof v==='function'?v(values[k]):v];},useMemo:fn=>fn(),useRef:v=>refs[ri++] ||= {current:v},useEffect:()=>{}};
+ const raw={score_runs:[]};const ctx={React:R,crypto:{randomUUID:()=> 'b1b312f0-40cb-4423-8c54-384867314398'},CustomEvent:class{},window:{dispatchEvent:()=>{},HZdb:{_raw:()=>raw,auth:{_mode:()=> 'live'}},HZsupa:{rpc:async(name,args)=>{requests.push(args);if(requests.length===1)return await new Promise(r=>resolveFirst=r);return {data:{id:args.p_request_id,total:20},error:null};}},HZsel:{_refresh:async()=>{},programTeams:()=>[{id:'b1b312f0-40cb-4423-8c54-384867314399',name:'Team'}],routine:()=>null,SHEET:[{id:'a',label:'A',max:50},{id:'b',label:'B',max:50}]}},SectionHeading:()=>null,HZIcon:()=>null,localStorage:{getItem:()=>null,setItem:()=>{}}};
+ vm.runInNewContext(transformSync(fs.readFileSync(new URL('../../pwa/hit_zero_web/screens/MockScore.jsx',import.meta.url),'utf8'),{loader:'jsx'}).code,ctx);
+ const render=()=>{i=0;ri=0;return ctx.MockScore({session:{profile:{id:'coach'}},snap:{score_runs:[],routines:[]}});};
+ const nodes=t=>{if(!t||typeof t!=='object')return [];return [t,...React.Children.toArray(t.props?.children).flatMap(nodes),...nodes(t.props?.trailing)];};const save=t=>nodes(t).find(n=>n.type==='button'&&n.props.onClick?.name==='saveRun');
+ let tree=render();for(const input of nodes(tree).filter(n=>n.type==='input'))input.props.onChange({target:{value:'10'}});tree=render();const action=save(tree);assert.equal(action.props.disabled,false,JSON.stringify(values));const first=action.props.onClick();await action.props.onClick();assert.equal(requests.length,1,JSON.stringify(values));
+ resolveFirst({data:null,error:{message:'Lost response'}});await first;tree=render();nodes(tree).find(n=>n.type==='input').props.onChange({target:{value:'15'}});tree=render();await save(tree).props.onClick();tree=render();
+ assert.equal(requests.length,2);assert.equal(JSON.stringify(requests[0]),JSON.stringify(requests[1]));assert.equal(nodes(tree).find(n=>n.type==='input').props.value,15);assert.equal(raw.score_runs.length,1);
+});
