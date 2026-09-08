@@ -157,7 +157,7 @@ function pbAnonKey() {
 
 function pbTrack(eventName, props = {}) {
   const payload = { flow: 'booking', ...(props || {}) };
-  window.HZAnalytics?.track?.(eventName, payload);
+  try { window.HZAnalytics?.track?.(eventName, payload); } catch {}
   return payload;
 }
 
@@ -1248,6 +1248,9 @@ function PublicPaymentStep({ klass, program, form, registrationId, registrationI
 
   async function payNow() {
     if (!card || !config || inFlight.current || reviewRequired || scopeChanged) return;
+    const paymentStartedAt=Date.now();
+    let paymentResultTracked=false;
+    pbTrack('checkout_submit',{retry:!!pendingRequest.current});
     inFlight.current=true;setPaying(true);setError('');
     let timer;
     try {
@@ -1270,14 +1273,19 @@ function PublicPaymentStep({ klass, program, form, registrationId, registrationI
       const res=await fetch(`${pbFunctionsBase()}/functions/v1/square-checkout-v1`,{method:'POST',headers:{apikey:anon,Authorization:`Bearer ${await pbSessionToken()}`,'Content-Type':'application/json'},body:JSON.stringify(pendingRequest.current),signal:controller.signal});
       const data=await res.json().catch(()=>({}));
       if(!res.ok || !data.ok){
+        paymentResultTracked=true;
+        pbTrack('checkout_result',{ok:false,code:data.code || 'unknown',duration_ms:Date.now()-paymentStartedAt});
         const policy=checkoutRetryPolicy(data.code);
         if(policy==='new_attempt'){pendingRequest.current=null;pendingScope.current=null;setPendingAttempt(false);}
         if(policy==='review'){setReviewRequired(true);}
         throw new Error(data.message || 'Payment confirmation is unavailable. Check this same attempt before starting another payment.');
       }
       pendingRequest.current=null;pendingScope.current=null;setPendingAttempt(false);
+      paymentResultTracked=true;
+      pbTrack('checkout_result',{ok:true,status:data.payment?.status || 'unknown',duration_ms:Date.now()-paymentStartedAt});
       setReceipt({...(data.payment || {}),recurring_setup:data.recurring_setup || null});
     } catch(err){
+      if(!paymentResultTracked)pbTrack('checkout_result',{ok:false,code:'unknown',duration_ms:Date.now()-paymentStartedAt});
       setError(err?.name==='AbortError' || (err instanceof TypeError && pendingRequest.current)?'Connection lost while waiting for payment confirmation. Use Check payment to retry this same attempt. Do not start another payment.':err.message || 'Payment confirmation is unavailable.');
     } finally {
       if(timer)window.clearTimeout(timer);inFlight.current=false;setPaying(false);
