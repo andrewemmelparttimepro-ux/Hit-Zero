@@ -3,7 +3,7 @@ const real=globalThis.fetch;let fake:typeof fetch=real;globalThis.fetch=(...args
 const {handleRequest}=await import('../functions/square-checkout-v1/index.ts');const {encryptSecret}=await import('../functions/_shared/square.ts');
 const encrypted=await encryptSecret('fixture-provider-token');
 const gym='11111111-1111-4111-8111-111111111111',reg='22222222-2222-4222-8222-222222222222',intent='33333333-3333-4333-8333-333333333333';
-for(const mode of ['no-registration','one-cent-tamper','comped','approved','completed','timeout','declined','settlement-failure','intent-outage','resume-known','recurring-decline-replacement','recurring-pending-reuse'])Deno.test(`checkout server contract: ${mode}`,async()=>{
+for(const mode of ['no-registration','no-access','one-cent-tamper','comped','approved','completed','timeout','declined','settlement-failure','intent-outage','resume-known','recurring-decline-replacement','recurring-pending-reuse'])Deno.test(`checkout server contract: ${mode}`,async()=>{
  const recurring=mode.startsWith('recurring-');let cards=0;
  let payments=0,reads=0,dbCalls=0,settlements=0;const failures:any[]=[];const preserved:any[]=[];
  fake=async(input:any,init:any={})=>{
@@ -22,6 +22,7 @@ for(const mode of ['no-registration','one-cent-tamper','comped','approved','comp
    return Response.json({payment:{id:'payment-fixture',status:mode==='approved'?'APPROVED':'COMPLETED',amount_money:{amount:4500,currency:'USD'},location_id:'location',reference_id:intent,created_at:'2026-09-01T00:00:00Z'}});
   }
   dbCalls++;
+  if(u.pathname.endsWith('/checkout_access_grants'))return Response.json({registration_ids:[reg],expires_at:'2099-01-01T00:00:00Z',revoked_at:null});
   if(u.pathname.endsWith('/programs'))return Response.json({id:gym,is_public:true});
   if(u.pathname.endsWith('/program_payment_settings'))return Response.json({public_checkout_enabled:true,default_provider:'square',currency:'USD'});
   if(u.pathname.endsWith('/registrations')){
@@ -38,15 +39,15 @@ for(const mode of ['no-registration','one-cent-tamper','comped','approved','comp
   throw new Error('Unexpected provider/database request');
  };
  try{
-  const response=await handleRequest(new Request('https://example.test/checkout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({program_id:gym,registration_id:mode==='no-registration'?undefined:reg,source_id:'fixture-nonce',amount_cents:mode==='one-cent-tamper'?4499:4500,currency:'CAD',idempotency_key:'untrusted-browser-key',...(recurring?{recurring_authorization:{accepted:true,terms_version:'fixture-terms'}}:{})})}));
-  const expected:any={'no-registration':400,'one-cent-tamper':400,comped:409,approved:200,completed:200,timeout:409,declined:402,'settlement-failure':409,'intent-outage':503,'resume-known':200,'recurring-decline-replacement':200,'recurring-pending-reuse':200};
+  const response=await handleRequest(new Request('https://example.test/checkout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({program_id:gym,checkout_token:mode==='no-access'?undefined:'a'.repeat(64),registration_id:mode==='no-registration'?undefined:reg,source_id:'fixture-nonce',amount_cents:mode==='one-cent-tamper'?4499:4500,currency:'CAD',idempotency_key:'untrusted-browser-key',...(recurring?{recurring_authorization:{accepted:true,terms_version:'fixture-terms'}}:{})})}));
+  const expected:any={'no-registration':400,'no-access':403,'one-cent-tamper':400,comped:409,approved:200,completed:200,timeout:409,declined:402,'settlement-failure':409,'intent-outage':503,'resume-known':200,'recurring-decline-replacement':200,'recurring-pending-reuse':200};
   if(response.status!==expected[mode])throw new Error(`${mode}: status ${response.status}`);
   if(recurring && (payments!==1||settlements!==1||cards!==(mode==='recurring-decline-replacement'?1:0)))throw new Error('Recurring retry created or reused the wrong card');
   if(mode==='resume-known' && (payments!==0||reads!==1||settlements!==1))throw new Error('Known payment was charged again instead of retrieved');
   if(['approved','completed'].includes(mode) && (payments!==1||settlements!==1||failures.length))throw new Error('Expected one charge identity and atomic settlement');
   if(['timeout','declined'].includes(mode) && (settlements||failures.length!==1||failures[0].p_definitive!==(mode==='declined')))throw new Error('Uncertain payment became a failed charge');
   if(mode==='settlement-failure' && (payments!==1||preserved.length!==1||preserved[0].provider_payment_id!=='payment-fixture'))throw new Error('Provider evidence lost after database failure');
-  if(['no-registration','one-cent-tamper','comped','intent-outage'].includes(mode) && payments)throw new Error('Invalid request reached Square');
+  if(['no-registration','no-access','one-cent-tamper','comped','intent-outage'].includes(mode) && payments)throw new Error('Invalid request reached Square');
   if(mode==='no-registration'&&dbCalls)throw new Error('Missing registration reached database');
  }finally{fake=real;}
 });

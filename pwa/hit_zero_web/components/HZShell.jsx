@@ -751,7 +751,7 @@ function App() {
   if (route && route.startsWith('pay/')) {
     const registrationId = route.slice(4).split('?')[0];
     if (registrationId && window.PublicPaymentLink) {
-      return <window.PublicPaymentLink registrationId={registrationId} />;
+      return <window.PublicPaymentLink registrationId={registrationId} checkoutToken={routeHashParams(route).get('access')} />;
     }
     return <SkeletonCard rows={4} style={{ margin: 40, maxWidth: 620 }} />;
   }

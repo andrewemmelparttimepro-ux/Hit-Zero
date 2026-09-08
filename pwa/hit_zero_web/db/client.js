@@ -1206,7 +1206,7 @@
     const timeoutMs = Number(opts.timeoutMs || 30000);
     const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
     try {
-      const token = opts.allowAnon ? null : await liveToken();
+      const token = opts.allowAnon && !opts.preferSession ? null : await liveToken();
       if (!opts.allowAnon && !token) throw new Error('Sign in first.');
       const res = await fetch(window.HZ_FN_BASE + '/functions/v1/join-gym-v1', {
         method: 'POST',
@@ -1899,9 +1899,9 @@
       emit('program_invites', { eventType: 'INSERT', new: invite, old: null });
       return { data: { ok: true, registration, invite, code, url: window.location.origin + '/#invite/' + encodeURIComponent(code), email_attempted: false }, error: null };
     },
-    async registrationPaymentInfo(registrationId) {
+    async registrationPaymentInfo(registrationId, checkoutToken) {
       if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) {
-        return callLaunchFunction('registration_payment_info', { registration_id: registrationId }, { allowAnon: true });
+        return callLaunchFunction('registration_payment_info', { registration_id: registrationId, checkout_token: checkoutToken || undefined }, { allowAnon: true, preferSession: true });
       }
       const reg = (data.registrations || []).find(r => r.id === registrationId);
       if (!reg) return { data: null, error: new Error('Registration not found.') };

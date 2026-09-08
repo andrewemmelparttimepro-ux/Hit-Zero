@@ -23,6 +23,12 @@ const _useS_pb = React.useState;
 const _useE_pb = React.useEffect;
 const _useR_pb = React.useRef;
 
+async function pbSessionToken() {
+  const result=await window.HZsupa?.auth?.getSession?.();
+  if(result?.error)throw new Error('Could not verify your sign-in. Refresh before continuing.');
+  return result?.data?.session?.access_token || pbAnonKey();
+}
+
 const PB_RESEND_NOTIFY = 'andrewemmelparttimepro@gmail.com';
 
 function fmtCents(cents) {
@@ -246,7 +252,7 @@ function PublicBooking({ classId, onClose }) {
           method: 'GET',
           headers: {
             apikey: anon,
-            Authorization: `Bearer ${anon}`,
+            Authorization: `Bearer ${await pbSessionToken()}`,
             'Cache-Control': 'no-cache',
             'Accept': 'application/json',
           },
@@ -297,7 +303,7 @@ function PublicBooking({ classId, onClose }) {
       method: 'POST',
       headers: {
         apikey: anon,
-        Authorization: `Bearer ${anon}`,
+        Authorization: `Bearer ${await pbSessionToken()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -402,7 +408,7 @@ function PublicBooking({ classId, onClose }) {
         method: 'POST',
         headers: {
           apikey: anon,
-          Authorization: `Bearer ${anon}`,
+          Authorization: `Bearer ${await pbSessionToken()}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -452,6 +458,7 @@ function PublicBooking({ classId, onClose }) {
       });
       const completedState = {
         registrationId: data.registration_id,
+        checkoutToken: data.checkout_token || null,
         willInvoice: !program?.public_checkout_enabled,
         existing: !!data.existing,
         pricing: data.pricing || appliedDiscount || null,
@@ -461,7 +468,7 @@ function PublicBooking({ classId, onClose }) {
         // Move checkout to a durable URL immediately. If the browser refreshes,
         // closes, or retries, the same unpaid registration reopens instead of
         // becoming an orphaned pending row.
-        window.location.hash = `pay/${encodeURIComponent(data.registration_id)}`;
+        window.location.hash = `pay/${encodeURIComponent(data.registration_id)}?access=${encodeURIComponent(data.checkout_token || "")}`;
       }
     } catch (err) {
       const message = err?.message || 'Could not save your booking. Please try again.';
@@ -530,6 +537,7 @@ function PublicBooking({ classId, onClose }) {
               program={program}
               form={form}
               registrationId={done.registrationId}
+              checkoutToken={done.checkoutToken}
             />
           )}
           {done.willInvoice && PB_RESEND_NOTIFY && (
@@ -735,7 +743,7 @@ function PublicDropIn({ classId }) {
           method: 'GET',
           headers: {
             apikey: anon,
-            Authorization: `Bearer ${anon}`,
+            Authorization: `Bearer ${await pbSessionToken()}`,
             'Cache-Control': 'no-cache',
             'Accept': 'application/json',
           },
@@ -801,7 +809,7 @@ function PublicDropIn({ classId }) {
         method: 'POST',
         headers: {
           apikey: anon,
-          Authorization: `Bearer ${anon}`,
+          Authorization: `Bearer ${await pbSessionToken()}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -829,6 +837,7 @@ function PublicDropIn({ classId }) {
       }
       setDone({
         registrationId: data.registration_id,
+        checkoutToken: data.checkout_token || null,
         willInvoice: Boolean(Number(klass?.price_cents || 0)) && !program?.public_checkout_enabled,
       });
     } catch (err) {
@@ -889,6 +898,7 @@ function PublicDropIn({ classId }) {
               program={program}
               form={{ parentEmail: form.guardianEmail, parentName: form.guardianName }}
               registrationId={done.registrationId}
+              checkoutToken={done.checkoutToken}
             />
           )}
           <div style={{ marginTop: 22, display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -1011,7 +1021,7 @@ function paymentRegistrationIds(raw) {
     .slice(0, 20);
 }
 
-function PublicPaymentLink({ registrationId }) {
+function PublicPaymentLink({ registrationId, checkoutToken }) {
   const registrationIds = paymentRegistrationIds(registrationId);
   const [info, setInfo] = _useS_pb(null);
   const [err, setErr] = _useS_pb('');
@@ -1023,7 +1033,7 @@ function PublicPaymentLink({ registrationId }) {
       setLoading(true);
       setErr('');
       try {
-        const { data, error } = await window.HZdb.auth.registrationPaymentInfo(registrationIds.join(','));
+        const { data, error } = await window.HZdb.auth.registrationPaymentInfo(registrationIds.join(','), checkoutToken);
         if (error) throw error;
         if (!cancelled) setInfo(data);
       } catch (e) {
@@ -1034,7 +1044,7 @@ function PublicPaymentLink({ registrationId }) {
     }
     load();
     return () => { cancelled = true; };
-  }, [registrationId]);
+  }, [registrationId, checkoutToken]);
 
   if (loading) {
     return (
@@ -1051,6 +1061,7 @@ function PublicPaymentLink({ registrationId }) {
           <div className="hz-eyebrow" style={{ color: 'var(--hz-pink)', marginBottom: 8 }}>Payment link unavailable</div>
           <div className="hz-display" style={{ fontSize: 26 }}>We couldn't open that payment link.</div>
           <div style={{ color: 'var(--hz-dim)', fontSize: 13, marginTop: 12 }}>{err || 'Please ask MCA for a fresh payment link.'}</div>
+          <a className="hz-btn hz-btn-primary" href="#signin" style={{ marginTop: 18, display: 'inline-flex' }}>Sign in with registration email</a>
           <a className="hz-btn hz-btn-primary" href="mailto:teammca@mcaminot.com" style={{ marginTop: 18, display: 'inline-flex' }}>Email MCA</a>
         </div>
       </PBPage>
@@ -1127,6 +1138,7 @@ function PublicPaymentLink({ registrationId }) {
             form={form}
             registrationId={registrationId}
             registrationIds={registrationIds}
+            checkoutToken={checkoutToken}
           />
         )}
         <div style={{ marginTop: 22, display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -1161,12 +1173,12 @@ function PublicPaymentReceipt({ receipt, recurring, monthly }) {
 }
 
 function checkoutRetryPolicy(code) {
-  if(['already_paid','registration_not_found','registration_program_mismatch','payment_review_required'].includes(code))return 'review';
+  if(['checkout_access_required','already_paid','registration_not_found','registration_program_mismatch','payment_review_required'].includes(code))return 'review';
   if(['card_declined','missing_source_id','bad_amount','amount_mismatch','no_payable_item','registration_required','recurring_authorization_required','recurring_terms_changed','recurring_card_setup_failed','square_not_connected','checkout_disabled'].includes(code))return 'new_attempt';
   return 'same_attempt';
 }
 
-function PublicPaymentStep({ klass, program, form, registrationId, registrationIds = [] }) {
+function PublicPaymentStep({ klass, program, form, registrationId, registrationIds = [], checkoutToken }) {
   const [config, setConfig] = _useS_pb(null);
   const [card, setCard] = _useS_pb(null);
   const [loading, setLoading] = _useS_pb(true);
@@ -1245,7 +1257,7 @@ function PublicPaymentStep({ klass, program, form, registrationId, registrationI
         pendingScope.current=checkoutScope;
         pendingRequest.current={
           program_id:program?.id || klass?.program_id,program_slug:program?.slug || klass?.program_slug || 'mca',
-          source_id:tokenResult.token,amount_cents:Number(klass.price_cents || 0),currency:config.currency || 'USD',
+          checkout_token:checkoutToken || undefined,source_id:tokenResult.token,amount_cents:Number(klass.price_cents || 0),currency:config.currency || 'USD',
           buyer_email_address:form.parentEmail,buyer_full_name:form.parentName,
           registration_id:registrationIds.length<=1?registrationIds[0] || registrationId:undefined,
           registration_ids:registrationIds.length>1?registrationIds:undefined,
@@ -1255,7 +1267,7 @@ function PublicPaymentStep({ klass, program, form, registrationId, registrationI
       setPendingAttempt(true);
       const controller=new AbortController();timer=window.setTimeout(()=>controller.abort(),45000);
       const anon=pbAnonKey();
-      const res=await fetch(`${pbFunctionsBase()}/functions/v1/square-checkout-v1`,{method:'POST',headers:{apikey:anon,Authorization:`Bearer ${anon}`,'Content-Type':'application/json'},body:JSON.stringify(pendingRequest.current),signal:controller.signal});
+      const res=await fetch(`${pbFunctionsBase()}/functions/v1/square-checkout-v1`,{method:'POST',headers:{apikey:anon,Authorization:`Bearer ${await pbSessionToken()}`,'Content-Type':'application/json'},body:JSON.stringify(pendingRequest.current),signal:controller.signal});
       const data=await res.json().catch(()=>({}));
       if(!res.ok || !data.ok){
         const policy=checkoutRetryPolicy(data.code);

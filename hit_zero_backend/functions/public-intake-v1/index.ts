@@ -1,3 +1,4 @@
+import { authorizeCheckout, issueCheckoutAccess } from '../_shared/checkout-access.ts';
 // public-intake-v1
 // Anonymous, public-website-callable intake endpoint for leads + registrations.
 //
@@ -219,19 +220,7 @@ async function findReusableCheckout(args: {
   });
   if (!match) return null;
 
-  const intakeMetadata = {
-    ...(match.intake_metadata && typeof match.intake_metadata === 'object' ? match.intake_metadata : {}),
-    payment_required: true,
-    payment_gate_required: true,
-    payment_gate_state: 'checkout_started',
-    checkout_last_reopened_at: new Date().toISOString(),
-  };
-  const { error: updateError } = await supa
-    .from('registrations')
-    .update({ intake_metadata: intakeMetadata })
-    .eq('id', match.id);
-  if (updateError) throw updateError;
-  return { ...match, intake_metadata: intakeMetadata };
+  return match;
 }
 
 type ProgramResolveResult = { program: any; error?: never } | { program?: never; error: Response };
@@ -364,7 +353,7 @@ async function handleLead(body: any): Promise<Response> {
   return json({ ok: true, lead_id: data.id });
 }
 
-async function handleRegistration(body: any): Promise<Response> {
+async function handleRegistration(req: Request, body: any): Promise<Response> {
   const resolved = await resolveProgram(body.program_slug, body.program_id);
   if (resolved.error) return resolved.error;
   const { program } = resolved;
@@ -446,10 +435,12 @@ async function handleRegistration(body: any): Promise<Response> {
         parentEmail,
       });
       if (existing) {
+          if (!await authorizeCheckout(supa, req, [existing.id], body.checkout_token)) return bad(409, 'checkout_verification_required', 'To recover an earlier checkout, sign in with the registration email and submit this form again, or open your original secure link.');
         return json({
           ok: true,
           existing: true,
           registration_id: existing.id,
+          checkout_token: await issueCheckoutAccess(supa, program.id, [existing.id]),
           class: classRow ? { id: classRow.id, name: classRow.name } : null,
           pricing: {
             code_id: existing.discount_code_id ?? null,
@@ -462,7 +453,8 @@ async function handleRegistration(body: any): Promise<Response> {
         });
       }
     } catch (err) {
-      console.warn('[intake] reusable checkout lookup failed', err);
+      console.warn('[intake] reusable checkout verification unavailable');
+      return bad(503, 'checkout_recovery_unavailable', 'Could not safely verify an earlier checkout. Please retry shortly; no new registration was created.');
     }
   }
 
@@ -575,10 +567,12 @@ async function handleRegistration(body: any): Promise<Response> {
           parentEmail,
         });
         if (existing) {
+          if (!await authorizeCheckout(supa, req, [existing.id], body.checkout_token)) return bad(409, 'checkout_verification_required', 'To recover an earlier checkout, sign in with the registration email and submit this form again, or open your original secure link.');
           return json({
             ok: true,
             existing: true,
             registration_id: existing.id,
+          checkout_token: await issueCheckoutAccess(supa, program.id, [existing.id]),
             class: classRow ? { id: classRow.id, name: classRow.name } : null,
             pricing: {
               code_id: existing.discount_code_id ?? null,
@@ -629,6 +623,7 @@ async function handleRegistration(body: any): Promise<Response> {
   return json({
     ok: true,
     registration_id: data.id,
+    checkout_token: await issueCheckoutAccess(supa, program.id, [data.id]),
     class: classRow ? { id: classRow.id, name: classRow.name } : null,
     pricing,
   });
@@ -688,6 +683,7 @@ async function handleOpenGym(body: any): Promise<Response> {
         return bad(409, 'class_full', 'this drop-in is full');
       }
     }
+    if (Number(c.price_cents || 0)>0 && !parentEmail) return bad(400, 'payment_email_required', 'Enter a guardian email so payment and recovery stay linked to your family.');
     classId = c.id;
     classRow = c;
   }
@@ -744,6 +740,7 @@ async function handleOpenGym(body: any): Promise<Response> {
   return json({
     ok: true,
     registration_id: data.id,
+    checkout_token: parentEmail ? await issueCheckoutAccess(supa, program.id, [data.id]) : null,
     open_gym: true,
     account_required: false,
     class: classRow ? { id: classRow.id, name: classRow.name } : null,
@@ -771,7 +768,7 @@ export async function handleRequest(req: Request) {
     const limited = await throttle(req, kind, null, email);
     if (limited) return limited;
     if (kind === 'lead') return await handleLead(body);
-    if (kind === 'registration') return await handleRegistration(body);
+    if (kind === 'registration') return await handleRegistration(req, body);
     if (kind === 'discount_quote') return await handleDiscountQuote(body);
     return await handleOpenGym(body);
   } catch (err) {

@@ -7,11 +7,11 @@ test('lost checkout response retries the identical in-memory card request and bl
  const context={React:testReact,window:{setTimeout,clearTimeout,HZ_FN_BASE:'https://example.test',HZ_ANON_KEY:'fixture-public-key'},AbortController,TypeError,URLSearchParams,fetch:async(url,options)=>{requests.push(options.body);if(tries++===0)throw new TypeError('Lost response fixture');return {ok:true,json:async()=>({ok:true,payment:{id:'fixture',status:'COMPLETED'}})};}};
  vm.runInNewContext(transformSync(fs.readFileSync(new URL('../../pwa/hit_zero_web/screens/PublicBooking.jsx',import.meta.url),'utf8'),{loader:'jsx'}).code,context);
  context.SkeletonLine=()=>null;
- const props={klass:{id:'class',price_cents:4500},program:{id:'gym'},form:{parentName:'Private fixture',parentEmail:'fixture@example.test'},registrationId:'registration'};
+ const props={klass:{id:'class',price_cents:4500},program:{id:'gym'},form:{parentName:'Private fixture',parentEmail:'fixture@example.test'},registrationId:'registration',checkoutToken:'private-access-fixture'};
  const render=()=>{stateIndex=0;refIndex=0;return context.PublicPaymentStep(props);};
  const button=tree=>{if(!tree || typeof tree!=='object')return null;if(tree.type==='button' && tree.props.onClick)return tree;return React.Children.toArray(tree.props?.children).map(button).find(Boolean);};
  let action=button(render());const first=action.props.onClick();await action.props.onClick();assert.equal(tokenizations,1);resolveToken({status:'OK',token:'private-single-use-fixture'});await first;
  props.registrationId='different-registration';action=button(render());assert.equal(action.props.disabled,true);await action.props.onClick();assert.equal(requests.length,1);props.registrationId='registration';
- action=button(render());assert.equal(action.props.children,'Check payment');await action.props.onClick();assert.equal(tokenizations,1);assert.equal(requests.length,2);assert.equal(requests[0],requests[1]);
+ action=button(render());assert.equal(action.props.children,'Check payment');await action.props.onClick();assert.equal(tokenizations,1);assert.equal(requests.length,2);assert.equal(requests[0],requests[1]);assert.equal(JSON.parse(requests[0]).checkout_token,props.checkoutToken);
  const receipt=render();assert.equal(receipt.type,context.PublicPaymentReceipt);assert.equal(receipt.props.receipt.status,'COMPLETED');
 });

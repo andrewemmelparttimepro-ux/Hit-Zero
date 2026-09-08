@@ -1,3 +1,4 @@
+import { authorizeCheckout, issueCheckoutAccess } from '../_shared/checkout-access.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
 const SB_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -511,11 +512,12 @@ async function staffQueue(profile: any) {
   });
 }
 
-async function registrationPaymentInfo(body: any) {
+async function registrationPaymentInfo(req: Request, body: any) {
   const registrationIds: string[] = Array.isArray(body.registration_ids)
     ? body.registration_ids.map((id: unknown) => cleanText(id, 80)).filter(Boolean).slice(0, 20)
     : cleanText(body.registration_id, 2000).split(',').map((id: string) => cleanText(decodeURIComponent(id), 80)).filter(Boolean).slice(0, 20);
   if (!registrationIds.length) return json({ error: 'Registration id is required.' }, 400);
+  if (!await authorizeCheckout(supa, req, registrationIds, body.checkout_token)) return json({ error: 'Open the secure checkout link or sign in with the registration email. An expired or older link cannot show family details without verification.' }, 403);
   const { data: regRows, error: regError } = await supa
     .from('registrations')
     .select('id, program_id, window_id, class_id, athlete_name, parent_name, parent_email, payment_status, payment_provider, amount_paid_cents, currency, payment_metadata, intake_metadata, status, discount_code, list_amount_cents, discount_amount_cents, final_amount_cents')
@@ -745,7 +747,8 @@ export async function sendPaymentReminders(profile: any, body: any) {
     const email = first.email;
     const amountCents = group.reduce((sum, row) => sum + Number(row.amount_cents || 0), 0);
     const paymentPath = group.map(row => encodeURIComponent(row.id)).join(',');
-    const payUrl = `${APP_ORIGIN}/pay/${paymentPath}`;
+    const checkoutToken = await issueCheckoutAccess(supa, profile.program_id, group.map(row => row.id));
+    const payUrl = `${APP_ORIGIN}/#pay/${paymentPath}?access=${encodeURIComponent(checkoutToken)}`;
     const amount = `$${(amountCents / 100).toFixed(amountCents % 100 ? 2 : 0)}`;
     const athleteNames = group.map(row => row.athlete_name).filter(Boolean).join(', ');
     const itemName = group.length === 1 ? first.item_name : `${group.length} registrations${athleteNames ? ` for ${athleteNames}` : ''}`;
@@ -1419,7 +1422,7 @@ export async function handleRequest(req: Request) {
     const body = await req.json().catch(() => ({}));
     const action = cleanText(body.action, 60);
     if (action === 'search_programs') return await searchPrograms(body);
-    if (action === 'registration_payment_info') return await registrationPaymentInfo(body);
+    if (action === 'registration_payment_info') return await registrationPaymentInfo(req, body);
 
     const profile = await getAuthedProfile(req, action !== 'submit_owner_application');
     if (action === 'submit_owner_application') return await submitOwnerApplication(profile, body);

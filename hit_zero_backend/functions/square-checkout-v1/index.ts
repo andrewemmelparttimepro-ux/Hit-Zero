@@ -31,6 +31,7 @@
 //     "note": "..."                     // optional human-readable note
 //   }
 
+import { authorizeCheckout } from '../_shared/checkout-access.ts';
 import {
   corsHeaders,
   json,
@@ -52,6 +53,7 @@ type Body = {
   program_slug?: string;
   program_id?: string;
   source_id?: string;
+  checkout_token?: string;
   amount_cents?: number;
   currency?: string;
   buyer_email_address?: string;
@@ -191,6 +193,10 @@ export async function handleRequest(req: Request) {
 
   const registrationIds = cleanRegistrationIds(body);
   if (!registrationIds.length) return bad(400, 'registration_required', 'Select a saved registration before checkout.');
+
+  try {
+    if (!await authorizeCheckout(supa, req, registrationIds, body.checkout_token)) return bad(403, 'checkout_access_required', 'Open the secure checkout link or sign in with the registration email before paying.');
+  } catch { return bad(503, 'checkout_access_unavailable', 'Payment access verification is temporarily unavailable. No charge was attempted.'); }
 
   // Resolve program
   let programId: string;
