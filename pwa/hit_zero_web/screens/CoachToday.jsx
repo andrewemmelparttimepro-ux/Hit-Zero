@@ -136,6 +136,7 @@ function CoachToday({ snap, openAthlete, navigate, pushToast, session }) {
   const scopedAthletes = scope?.visibleAthletes || athletesArr;
   const athletes = scopedAthletes.filter(a => !a.deleted_at && (!team || a.team_id === team.id));
   const visibleAthleteIds = new Set(athletes.map(a => a.id));
+  const attendanceRows = (snap.attendance || []).filter(row => visibleAthleteIds.has(row.athlete_id));
   const visibleTeamIds = team ? [team.id] : visibleTeams.map(t => t.id);
   const teamLine = team ? `${team.name || team.division || 'Team'}${team.level ? ` · L${team.level}` : ''}` : 'All teams in your gym';
   const metrics = safe(() => window.HZsel.dashboardMetrics([...visibleAthleteIds], visibleTeamIds), {});
