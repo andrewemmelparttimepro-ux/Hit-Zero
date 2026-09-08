@@ -54,28 +54,29 @@ function synthesizeAnalysis({ routine, audio, countMap, sections }: any) {
   };
 }
 
-Deno.serve(async (req) => {
+export async function handleRequest(req: Request) {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'method not allowed' }, 405);
 
   let jobId: string | undefined;
   try {
+    const token = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
+    if (!token) return json({ error: 'Sign in to analyze routine audio.' }, 401);
+    const { data: userData, error: authError } = await supa.auth.getUser(token);
+    if (authError || !userData?.user?.id) return json({ error: 'Session expired. Sign in again.' }, 401);
+    const { data: actor } = await supa.from('profiles').select('id,role,program_id').eq('id', userData.user.id).maybeSingle();
+    if (!actor || !['owner','coach'].includes(actor.role)) return json({ error: 'Staff access required.' }, 403);
     const body = await req.json().catch(() => ({}));
-    jobId = body.job_id;
-    if (!jobId) return json({ error: 'job_id required' }, 400);
+    const requestedJobId = body.job_id;
+    if (!requestedJobId) return json({ error: 'job_id required' }, 400);
 
     const { data: job, error: jobErr } = await supa
       .from('routine_audio_analysis_jobs')
       .select('*')
-      .eq('id', jobId)
+      .eq('id', requestedJobId)
       .maybeSingle();
     if (jobErr) throw jobErr;
     if (!job) return json({ error: 'job not found' }, 404);
-
-    await supa.from('routine_audio_analysis_jobs').update({
-      status: 'processing',
-      updated_at: new Date().toISOString(),
-    }).eq('id', jobId);
 
     const [{ data: routine }, { data: audio }, { data: countMap }, { data: sections }] = await Promise.all([
       supa.from('routines').select('*').eq('id', job.routine_id).maybeSingle(),
@@ -86,7 +87,17 @@ Deno.serve(async (req) => {
       supa.from('routine_sections').select('*').eq('routine_id', job.routine_id).order('start_count'),
     ]);
 
-    if (!routine) throw new Error('routine not found');
+    if (!routine) return json({ error: 'Routine not found.' }, 404);
+    const { data: team } = await supa.from('teams').select('program_id').eq('id', routine.team_id).maybeSingle();
+    if (!team || team.program_id !== actor.program_id) return json({ error: 'This routine is outside your gym.' }, 403);
+    if (job.audio_asset_id && (!audio || audio.routine_id !== routine.id)) return json({ error: 'Audio does not belong to this routine.' }, 409);
+    if (job.status === 'ready') return json({ ok: true, job });
+    const { data: claimed, error: claimError } = await supa.from('routine_audio_analysis_jobs')
+      .update({ status: 'processing', updated_at: new Date().toISOString() })
+      .eq('id', requestedJobId).in('status', ['queued', 'pending', 'error']).select('id').maybeSingle();
+    if (claimError) throw claimError;
+    if (!claimed) return json({ error: 'This job is already processing.' }, 409);
+    jobId = claimed.id;
     const result = synthesizeAnalysis({ routine, audio, countMap, sections: sections || [] });
     const now = new Date().toISOString();
 
@@ -129,4 +140,6 @@ Deno.serve(async (req) => {
     }
     return json({ error: message }, 500);
   }
-});
+}
+
+if (import.meta.main) Deno.serve(handleRequest);
