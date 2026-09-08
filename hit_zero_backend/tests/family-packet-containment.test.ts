@@ -30,3 +30,11 @@ Deno.test('a packet cannot attach another family gym request',async()=>{
  fake=async(input:any)=>{if(String(input).includes('/programs'))return Response.json({id:gym});if(String(input).includes('/program_join_requests'))return Response.json([]);throw new Error('Packet write forbidden');};
  try{const res=await submitFamilyPacket(parent,{join_request_id:'33333333-3333-4333-8333-333333333333'});if(res.status!==403)throw new Error('Foreign request accepted');}finally{fake=real;}
 });
+
+Deno.test('child submit uses the atomic RPC and translates stale edits into a recoverable conflict',async()=>{
+ let called=false;fake=async(input:any,init:any={})=>{
+  if(String(input).includes('/programs'))return Response.json({id:gym});
+  if(String(input).includes('/rpc/save_family_packet_v2')){const body=JSON.parse(init.body);if(body.p_actor_id!==parent.id||body.p_payload.athlete_id!=='44444444-4444-4444-8444-444444444444'||body.p_expected_revision!==2||body.p_confirm_child!==true)throw new Error('Child confirmation contract missing');called=true;return Response.json({code:'40001',message:'Reload the saved packet'},{status:409});}
+  throw new Error('Independent packet or medical write is forbidden');
+ };try{const res=await submitFamilyPacket(parent,{athlete_id:'44444444-4444-4444-8444-444444444444',expected_revision:2,confirm_child:true});if(res.status!==409||!called)throw new Error('Stale conflict lost');}finally{fake=real;}
+});

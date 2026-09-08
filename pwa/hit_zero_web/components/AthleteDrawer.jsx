@@ -730,6 +730,11 @@ function MedicalTab({ a, session }) {
 
   return (
     <div style={{ display: 'grid', gap: 14 }}>
+      {record?.provenance_review_required && <div role="status" className="hz-card" style={{borderColor:'var(--hz-amber)',padding:14}}>
+        <strong>Family record needs review</strong>
+        <p style={{fontSize:13,lineHeight:1.5,marginBottom:0}}>A saved packet names a different child. Confirm this athlete’s medical details, emergency contacts and waiver with the family before relying on those records.</p>
+      </div>}
+
       {(linkedParents.length > 0 || canEdit) && (
         <div className="hz-card" style={{ padding: 16 }}>
           <div className="hz-eyebrow" style={{ marginBottom: 8 }}>Linked parents</div>

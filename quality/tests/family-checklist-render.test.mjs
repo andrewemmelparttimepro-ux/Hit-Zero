@@ -7,3 +7,8 @@ test('family checklist distinguishes a completed packet from missing sibling rec
 test('an account with no enrollment does not claim failed payment or completed forms',()=>{
  const html=renderToStaticMarkup(React.createElement(ctx.FamilySetupChecklist,{session:{profile:{}},kids:[],packet:null,enrollments:[],waiverSignatures:[],navigate:()=>{}}));assert.match(html,/Gym approval or invite needed/);assert.match(html,/No registration payment to review/);assert.doesNotMatch(html,/failed|overdue|Packet submitted/);
 });
+
+test('one confirmed child packet does not complete a sibling or a flagged medical record',()=>{
+ const html=renderToStaticMarkup(React.createElement(ctx.FamilySetupChecklist,{session:{profile:{id:'parent',program_id:'gym'}},kids:[{id:'one'},{id:'two'}],packets:[{profile_id:'parent',athlete_id:'one',completion_status:'complete'},{profile_id:'parent',athlete_id:'two',completion_status:'complete'}],medicalRecords:[{athlete_id:'two',provenance_review_required:true}],enrollments:[],waiverSignatures:[{athlete_id:'one'},{athlete_id:'two'}],navigate:()=>{}}));
+ assert.match(html,/1 of 2 linked children have a confirmed packet/);assert.match(html,/1 of 2 linked athletes have a saved waiver/);assert.doesNotMatch(html,/✓ Family packets/);
+});

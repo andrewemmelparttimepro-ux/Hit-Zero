@@ -5,7 +5,7 @@
   "scripts": {
     "build": "npm run check:critical && node build.mjs && node ../quality/check-performance-build.mjs",
     "check": "node ../quality/check-performance-build.mjs",
-    "check:critical": "node --test ../quality/tests/dashboard-render.test.mjs ../quality/tests/dashboard-evidence.test.mjs ../quality/tests/live-hydration.test.mjs ../quality/tests/payment-receipt-render.test.mjs ../quality/tests/family-link-render.test.mjs ../quality/tests/family-checklist-render.test.mjs"
+    "check:critical": "node --test ../quality/tests/dashboard-render.test.mjs ../quality/tests/dashboard-evidence.test.mjs ../quality/tests/live-hydration.test.mjs ../quality/tests/payment-receipt-render.test.mjs ../quality/tests/family-link-render.test.mjs ../quality/tests/family-checklist-render.test.mjs ../quality/tests/child-packet-render.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.57.4",

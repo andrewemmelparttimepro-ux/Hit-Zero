@@ -1597,10 +1597,49 @@ function FamilyPacketPolicySections() {
   );
 }
 
-function FamilyInfoPacketCard({ session, program, request, onSaved }) {
+function FamilyInfoPacketCard(props) {
+  const profile=props.session?.actualProfile || props.session?.profile || {};
+  const programId=props.program?.id || props.request?.program_id || profile.program_id || '';
+  const [family,setFamily]=useState(null);
+  const [error,setError]=useState('');
+  const [selected,setSelected]=useState('');
+  const [attempt,setAttempt]=useState(0);
+  useEffect(()=>{
+    let alive=true;setFamily(null);setError('');
+    if(!programId){setFamily({children:[]});return;}
+    Promise.race([window.HZdb.auth.myFamilyPacket(programId),timeoutAfter(FAMILY_PACKET_LOAD_TIMEOUT_MS,'Linked child lookup took too long.')]).then(({data,error})=>{
+      if(!alive)return;
+      if(error){setError(error.message || 'Could not load your linked children.');return;}
+      setFamily(data);setSelected(data?.children?.length===1?data.children[0].id:'');
+    }).catch(()=>{if(alive)setError('Could not load your linked children. Please retry.');});
+    return ()=>{alive=false;};
+  },[programId,profile.id,attempt]);
+  if(error)return <div className="hz-card" role="alert" style={{padding:18}}>{error} <button className="hz-btn" onClick={()=>setAttempt(n=>n+1)}>Retry packet lookup</button></div>;
+  if(!family)return <div className="hz-card" role="status" style={{padding:18}}>Loading family packets...</div>;
+  const children=family.children || [];
+  if(!children.length)return <FamilyInfoPacketEditor {...props}/>;
+  const legacy=(family.packets || []).find(p=>!p.athlete_id);
+  return <section style={{display:'grid',gap:12}} aria-label="Packets by child">
+    <div className="hz-card" style={{padding:18,display:'grid',gap:10}}>
+      <label style={{display:'grid',gap:6,fontWeight:800}}>Choose the child for this packet
+        <select className="hz-input" value={selected} onChange={e=>setSelected(e.target.value)}>
+          <option value="">Choose a child</option>{children.map(child=><option key={child.id} value={child.id}>{child.display_name}</option>)}
+        </select>
+      </label>
+      <p style={{margin:0,color:'var(--hz-dim)',fontSize:13}}>Each child has a separate packet. Switching children here keeps your unsaved edits open until you leave this page.</p>
+      {legacy && <p style={{margin:0,color:'var(--hz-amber)',fontSize:13}}>Your earlier family packet names {legacy.athlete_name || 'an unnamed athlete'}. It is retained as history. Review and submit a separate packet for each linked child.</p>}
+    </div>
+    {children.map(child=><div key={child.id} hidden={selected!==child.id}><FamilyInfoPacketEditor {...props} child={child}/></div>)}
+  </section>;
+}
+
+function FamilyInfoPacketEditor({ session, program, request, onSaved, child }) {
   const profile = session?.actualProfile || session?.profile || {};
   const programId = program?.id || request?.program_id || profile.program_id || '';
   const [loaded, setLoaded] = useState(false);
+  const [loadFailed,setLoadFailed]=useState(false);
+  const [attempt,setAttempt]=useState(0);
+  const [confirmed,setConfirmed]=useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [saved, setSaved] = useState(null);
@@ -1612,8 +1651,8 @@ function FamilyInfoPacketCard({ session, program, request, onSaved }) {
     relationship: 'Parent',
     secondary_phone: '',
     mailing_address: '',
-    athlete_name: request?.athlete_name || '',
-    athlete_age: request?.athlete_age || '',
+    athlete_name: child?.display_name || request?.athlete_name || '',
+    athlete_age: child?.age ?? request?.athlete_age ?? '',
     athlete_dob: '',
     grade: '',
     cheer_experience: 'Beginner',
@@ -1694,16 +1733,16 @@ function FamilyInfoPacketCard({ session, program, request, onSaved }) {
   useEffect(() => {
     let alive = true;
     async function load() {
-      setLoaded(false);
+      setLoaded(false);setLoadFailed(false);setErr('');
       if (!programId || !window.HZdb?.auth?.myFamilyPacket) { setLoaded(true); return; }
       try {
         const { data, error } = await Promise.race([
-          window.HZdb.auth.myFamilyPacket(programId),
+          window.HZdb.auth.myFamilyPacket(programId,child?.id),
           timeoutAfter(FAMILY_PACKET_LOAD_TIMEOUT_MS, 'Saved family packet lookup took too long.'),
         ]);
         if (!alive) return;
         if (error) {
-          setErr(error.message || 'Could not load your saved family packet.');
+          setLoadFailed(true);setErr(error.message || 'Could not load your saved family packet.');
           setLoaded(true);
           return;
         }
@@ -1711,13 +1750,13 @@ function FamilyInfoPacketCard({ session, program, request, onSaved }) {
         setLoaded(true);
       } catch (loadError) {
         if (!alive) return;
-        setErr(`${loadError?.message || 'Could not load your saved family packet.'} You can submit the packet again to stamp the latest date and time.`);
+        setLoadFailed(true);setErr(loadError?.message || 'Could not load your saved family packet. Retry before editing so an existing submission stays protected.');
         setLoaded(true);
       }
     }
     load();
     return () => { alive = false; };
-  }, [programId, hydrate]);
+  }, [programId, child?.id, hydrate,attempt]);
 
   const set = (key, value) => setForm(f => ({ ...f, [key]: value }));
   const complete = saved?.completion_status === 'complete';
@@ -1727,8 +1766,9 @@ function FamilyInfoPacketCard({ session, program, request, onSaved }) {
   const savedDraft = !!saved && !hasSubmission;
   const previewOnly = !!session?.profile?.is_view_as;
 
-  async function submit(e) {
-    e.preventDefault();
+  async function submit(e,saveDraft=false) {
+    e?.preventDefault();
+    if(loadFailed)return;
     if (previewOnly) {
       setErr('Preview only in View as Parent. Sign in with the real parent account to submit or update this packet.');
       return;
@@ -1738,6 +1778,10 @@ function FamilyInfoPacketCard({ session, program, request, onSaved }) {
     setErr('');
     const payload = {
       program_id: programId,
+      athlete_id:child?.id || null,
+      expected_revision:saved?.revision || 0,
+      confirm_child:confirmed,
+      save_draft:saveDraft,
       join_request_id: request?.id || null,
       requested_role: request?.requested_role || profile.role || 'parent',
       parent_name: form.parent_name,
@@ -1795,6 +1839,7 @@ function FamilyInfoPacketCard({ session, program, request, onSaved }) {
         return;
       }
       hydrate(packet);
+      setConfirmed(false);
       setBusy(false);
       onSaved?.(packet);
       window.setTimeout(() => {
@@ -1817,10 +1862,10 @@ function FamilyInfoPacketCard({ session, program, request, onSaved }) {
     <form className="hz-card" data-testid="family-info-packet-form" onSubmit={submit} style={{ padding: 18, display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
         <div>
-          <div className="hz-eyebrow" style={{ marginBottom: 6 }}>Family info packet</div>
+          <div className="hz-eyebrow" style={{ marginBottom: 6 }}>{child ? `Packet for ${child.display_name}` : 'Family info packet'}</div>
           <div style={{ fontWeight: 900, fontSize: 18 }}>Insurance, emergency contact, policies, and waiver.</div>
           <div style={{ color: 'var(--hz-dim)', fontSize: 12, lineHeight: 1.45, marginTop: 5 }}>
-            {program?.public_name || program?.name || 'The gym'} can review this before linking your account to the correct athlete.
+            {child ? `These details apply only to ${child.display_name}.` : `${program?.public_name || program?.name || 'The gym'} can review this before linking your account to the correct athlete.`}
           </div>
         </div>
         <Pill tone={hasSubmission ? (complete ? 'teal' : 'amber') : 'amber'}>
@@ -1883,8 +1928,9 @@ function FamilyInfoPacketCard({ session, program, request, onSaved }) {
           </div>
         </div>
       )}
+      {loadFailed && <div role="alert">{err} <button type="button" className="hz-btn" onClick={()=>setAttempt(n=>n+1)}>Retry saved packet</button></div>}
       <fieldset
-        disabled={previewOnly || busy || !loaded}
+        disabled={previewOnly || busy || !loaded || loadFailed}
         style={{ border: 0, margin: 0, padding: 0, minWidth: 0, display: 'grid', gap: 12 }}
       >
       {!loaded && (
@@ -1902,7 +1948,7 @@ function FamilyInfoPacketCard({ session, program, request, onSaved }) {
         <PacketField label="Email"><input className="hz-input" type="email" value={form.parent_email} onChange={e => set('parent_email', e.target.value)} required/></PacketField>
         <PacketField label="Phone"><input className="hz-input" type="tel" value={form.parent_phone} onChange={e => set('parent_phone', e.target.value)} required/></PacketField>
         <PacketField label="Preferred contact"><select className="hz-input" value={form.preferred_contact} onChange={e => set('preferred_contact', e.target.value)}><option value="email">Email</option><option value="text">Text</option><option value="phone">Phone</option></select></PacketField>
-        <PacketField label="Athlete name"><input className="hz-input" value={form.athlete_name} onChange={e => set('athlete_name', e.target.value)} required/></PacketField>
+        <PacketField label="Athlete name"><input className="hz-input" readOnly={!!child} value={form.athlete_name} onChange={e => set('athlete_name', e.target.value)} required/></PacketField>
         <PacketField label="Athlete age"><input className="hz-input" type="number" min="0" max="30" value={form.athlete_age} onChange={e => set('athlete_age', e.target.value)}/></PacketField>
         <PacketField label="Date of birth"><input className="hz-input" type="date" value={form.athlete_dob} onChange={e => set('athlete_dob', e.target.value)}/></PacketField>
         <PacketField label="Grade"><input className="hz-input" value={form.grade} onChange={e => set('grade', e.target.value)}/></PacketField>
@@ -1945,8 +1991,14 @@ function FamilyInfoPacketCard({ session, program, request, onSaved }) {
       </div>
       <PacketField label="Notes"><textarea className="hz-input" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)}/></PacketField>
       <FamilyPacketPolicySections />
+      {child && profile.role!=='athlete' && <label style={{display:'flex',gap:10,alignItems:'flex-start',fontSize:14}}>
+        <input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)} required/>
+        <span>I confirm the medical details, emergency contacts, and waiver in this packet are for {child.display_name}.</span>
+      </label>}
+      {profile.role==='athlete' && <p role="status">You can save a draft. Your linked parent or guardian must confirm medical details and sign the waiver.</p>}
+      <button type="button" className="hz-btn" disabled={busy || !loaded || loadFailed} onClick={()=>submit(null,true)}>Save draft for {child?.display_name || 'this athlete'}</button>
       {err && <div style={{ color: 'var(--hz-pink)', fontSize: 13 }}>{err}</div>}
-      <button className="hz-btn hz-btn-primary" data-testid="family-packet-submit" disabled={busy || !loaded}>
+      <button className="hz-btn hz-btn-primary" data-testid="family-packet-submit" disabled={busy || !loaded || loadFailed || profile.role==='athlete'}>
         {previewOnly ? 'Preview only in View as Parent' : !loaded ? 'Checking saved form...' : busy ? 'Submitting...' : hasSubmission ? 'Update submitted form' : 'Submit family packet'}
       </button>
       </fieldset>

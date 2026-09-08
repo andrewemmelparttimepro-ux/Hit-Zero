@@ -911,16 +911,18 @@ function SkillTreeNudgeCard({ kids, navigate, profileId }) {
 }
 window.SkillTreeNudgeCard = SkillTreeNudgeCard;
 
-function FamilySetupChecklist({ session, kids, packet, enrollments, waiverSignatures, navigate }) {
+function FamilySetupChecklist({ session, kids, packet, packets=[], medicalRecords=[], enrollments, waiverSignatures, navigate }) {
   const profile = session?.actualProfile || session?.profile || {};
   const linked = kids.filter(Boolean);
-  const waived = linked.filter(kid => (waiverSignatures || []).some(row => row.athlete_id === kid.id)).length;
+  const needsReview=kid=>medicalRecords.some(row=>row.athlete_id===kid.id && row.provenance_review_required);
+  const completedPackets=linked.filter(kid=>!needsReview(kid) && packets.some(row=>row.profile_id===profile.id && row.athlete_id===kid.id && row.completion_status==='complete')).length;
+  const waived = linked.filter(kid => !needsReview(kid) && (waiverSignatures || []).some(row => row.athlete_id === kid.id)).length;
   const settled = enrollments.filter(row => ['paid','comped'].includes(row.payment_status)).length;
   const pendingLinks = enrollments.filter(row => !linked.some(kid => kid.id === row.athlete_id)).length;
   const steps = [
     { title: 'Account', detail: profile.program_id ? 'Signed in to your gym' : 'Gym approval or invite needed', done: !!profile.program_id },
     { title: 'Athlete link', detail: pendingLinks ? `${pendingLinks} registration${pendingLinks===1?'':'s'} waiting for staff to finish the roster link` : linked.length ? `${linked.length} athlete${linked.length===1?'':'s'} linked` : 'Add your athlete or ask staff to link an existing record', done: linked.length>0 && !pendingLinks },
-    { title: 'Family packet', detail: packet?.completion_status==='complete' ? 'Packet submitted; review each child’s records in Forms' : packet ? 'Saved packet needs more information' : 'Emergency, medical and policy details needed', done: packet?.completion_status==='complete', route: 'family_forms' },
+    { title: 'Family packets', detail: linked.length ? `${completedPackets} of ${linked.length} linked children have a confirmed packet; review each child in Forms` : packet?.completion_status==='complete' ? 'Onboarding packet submitted; confirm the child after staff links the roster' : packet ? 'Saved packet needs more information' : 'Emergency, medical and policy details needed', done: linked.length>0 && completedPackets===linked.length, route: 'family_forms' },
     { title: 'Saved waivers', detail: linked.length ? `${waived} of ${linked.length} linked athletes have a saved waiver` : 'Checked after your athlete is linked', done: linked.length>0 && waived===linked.length, route:'family_forms' },
     { title: 'Enrollment', detail: enrollments.length ? `${enrollments.length} current class registration${enrollments.length===1?'':'s'}` : 'No current class registrations recorded', done: enrollments.length>0, route:'schedule' },
     { title: 'Payment', detail: enrollments.length ? `${settled} of ${enrollments.length} registrations paid or comped. Review any remaining items before paying again.` : 'No registration payment to review', done: enrollments.length>0 && settled===enrollments.length, route:'billing' },
@@ -1013,7 +1015,7 @@ function ParentDashboard({ snap, session, navigate, pushToast }) {
         </div>
       </div>
 
-      <FamilySetupChecklist session={session} kids={myKids} packet={familyPacket} enrollments={parentClassEnrollments} waiverSignatures={snap.waiver_signatures} navigate={navigate}/>
+      <FamilySetupChecklist session={session} kids={myKids} packet={familyPacket} packets={snap.family_info_packets} medicalRecords={snap.medical_records} enrollments={parentClassEnrollments} waiverSignatures={snap.waiver_signatures} navigate={navigate}/>
 
       {!leadKid && (
         <AddChildCard
@@ -1517,8 +1519,10 @@ function FamilyForms({ snap, session, navigate }) {
                 return (
                   <div key={kid.id} style={{ padding: 14, borderRadius: 10, border: '1px solid var(--hz-line)', background: 'rgba(255,255,255,0.03)' }}>
                     <div style={{ fontWeight: 900 }}>{kid.display_name}</div>
+                    {medical.record?.provenance_review_required && <p role="status" style={{color:'var(--hz-amber)',fontSize:13,lineHeight:1.5}}>Family review needed: a saved packet names a different child. Review this athlete’s medical details, emergency contacts and waiver with staff.</p>}
+
                     <div className="family-forms-record-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginTop: 10 }}>
-                      <MiniBox label="Medical" value={medical.record ? 'Saved' : 'Needed'} sub={medical.record?.insurance_carrier || ''} accent={medical.record ? 'var(--hz-green)' : 'var(--hz-amber)'}/>
+                      <MiniBox label="Medical" value={medical.record?.provenance_review_required ? 'Review needed' : medical.record ? 'Saved' : 'Needed'} sub={medical.record?.insurance_carrier || ''} accent={medical.record ? 'var(--hz-green)' : 'var(--hz-amber)'}/>
                       <MiniBox label="Contacts" value={contacts.length || 0} sub={contacts[0]?.name || 'emergency'} accent={contacts.length ? 'var(--hz-teal)' : 'var(--hz-amber)'}/>
                       <MiniBox label="Waiver" value={(snap.waiver_signatures || []).some(row => row.athlete_id === kid.id) ? 'Signed' : 'Needed'} sub="liability" accent={(snap.waiver_signatures || []).some(row => row.athlete_id === kid.id) ? 'var(--hz-green)' : 'var(--hz-amber)'}/>
                     </div>
@@ -2078,7 +2082,7 @@ function LaunchAccessManager({ snap, session }) {
   }
 
   if (!canManage) return null;
-  const packetByProfile = new Map((queue.family_packets || []).map(packet => [packet.profile_id, packet]));
+  const packetByProfile = new Map((queue.family_packets || []).filter(packet=>!packet.athlete_id).map(packet => [packet.profile_id, packet]));
   const healthItems = [
     { label: 'Pending requests', value: queue.requests.length, tone: queue.requests.length ? 'amber' : 'teal' },
     { label: 'Account-only parents', value: queue.unlinked_parents.length, tone: queue.unlinked_parents.length ? 'amber' : 'teal' },

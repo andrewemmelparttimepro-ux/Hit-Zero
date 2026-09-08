@@ -1292,6 +1292,8 @@
     const row = {
       id: input.id || 'fp_' + Math.random().toString(36).slice(2, 10),
       program_id: input.program_id,
+      athlete_id:input.athlete_id || null,
+      revision:(input.expected_revision || 0)+1,
       profile_id: current.profile.id,
       join_request_id: input.join_request_id || null,
       requested_role: input.requested_role === 'athlete' ? 'athlete' : 'parent',
@@ -1316,12 +1318,12 @@
       agreements: input.agreements || {},
       signatures: input.signatures || {},
       notes: input.notes || null,
-      completion_status: packetCompletionStatus(input),
+      completion_status: input.save_draft ? 'incomplete' : packetCompletionStatus(input),
       submitted_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       created_at: input.created_at || new Date().toISOString(),
     };
-    const idx = (data.family_info_packets || []).findIndex(p => p.program_id === row.program_id && p.profile_id === row.profile_id);
+    const idx = (data.family_info_packets || []).findIndex(p => p.program_id === row.program_id && p.profile_id === row.profile_id && (p.athlete_id || null)===row.athlete_id);
     if (idx >= 0) data.family_info_packets[idx] = { ...data.family_info_packets[idx], ...row, id: data.family_info_packets[idx].id };
     else data.family_info_packets = [row, ...(data.family_info_packets || [])];
     const saved = idx >= 0 ? data.family_info_packets[idx] : row;
@@ -1662,14 +1664,16 @@
         error: null,
       };
     },
-    async myFamilyPacket(programId = '') {
+    async myFamilyPacket(programId = '', athleteId = '') {
       const current = getSession();
       if (!current?.profile?.id) return { data: { ok: true, packet: null }, error: null };
-      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) return callLaunchFunction('my_family_packet', { program_id: programId || current.profile.program_id || null });
+      if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) return callLaunchFunction('my_family_packet', { program_id: programId || current.profile.program_id || null, athlete_id:athleteId || null });
       const packets = (data.family_info_packets || [])
         .filter(p => p.profile_id === current.profile.id && (!programId || p.program_id === programId))
         .sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at));
-      return { data: { ok: true, packet: packets[0] || null }, error: null };
+      const childIds=new Set((data.parent_links || []).filter(l=>l.parent_id===current.profile.id).map(l=>l.athlete_id));
+      const children=(data.athletes || []).filter(a=>childIds.has(a.id) && !a.deleted_at && (data.teams || []).some(t=>t.id===a.team_id && t.program_id===(programId || current.profile.program_id)));
+      return { data: { ok: true, packet: packets.find(p=>athleteId?p.athlete_id===athleteId:!p.athlete_id) || null,packets,children }, error: null };
     },
     async submitFamilyPacket(input = {}) {
       if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) {
@@ -1677,7 +1681,7 @@
         if (!out.error && out.data?.packet) {
           data.family_info_packets = [
             out.data.packet,
-            ...(data.family_info_packets || []).filter(p => p.id !== out.data.packet.id && !(p.program_id === out.data.packet.program_id && p.profile_id === out.data.packet.profile_id)),
+            ...(data.family_info_packets || []).filter(p => p.id !== out.data.packet.id && !(p.program_id === out.data.packet.program_id && p.profile_id === out.data.packet.profile_id && (p.athlete_id || null)===(out.data.packet.athlete_id || null))),
           ];
           save(data);
           emit('family_info_packets', { eventType: 'UPDATE', new: out.data.packet, old: null });

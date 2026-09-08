@@ -258,15 +258,20 @@ async function myRequests(profile: any) {
 
 async function myFamilyPacket(profile: any, body: any) {
   const programId = cleanText(body.program_id || profile.program_id, 80);
-  let query = supa
-    .from('family_info_packets')
-    .select('*')
-    .eq('profile_id', profile.id)
-    .order('updated_at', { ascending: false });
+  const athleteId = cleanUuid(body.athlete_id);
+  let query = supa.from('family_info_packets').select('*').eq('profile_id', profile.id).order('updated_at', { ascending: false });
   if (programId) query = query.eq('program_id', programId);
-  const { data, error } = await query.limit(1);
+  const { data: packets, error } = await query;
   if (error) throw error;
-  return json({ ok: true, packet: data?.[0] || null });
+  const { data: links, error: linkError } = await supa.from('parent_links').select('athletes(id, display_name, age, deleted_at, teams(program_id))').eq('parent_id',profile.id);
+  if (linkError) throw linkError;
+  const children = (links || []).map((l:any)=>l.athletes).filter((c:any)=>c && !c.deleted_at && c.teams?.program_id===programId).map((c:any)=>({id:c.id,display_name:c.display_name,age:c.age}));
+  if (profile.role === 'athlete') {
+    const {data: own,error: ownError}=await supa.from('athletes').select('id, display_name, age, teams(program_id)').eq('profile_id',profile.id).is('deleted_at',null);
+    if(ownError)throw ownError;
+    for(const c of own || [])if((c as any).teams?.program_id===programId && !children.some((x:any)=>x.id===c.id))children.push({id:c.id,display_name:c.display_name,age:c.age});
+  }
+  return json({ok:true,packet:(packets || []).find((p:any)=>athleteId ? p.athlete_id===athleteId : !p.athlete_id) || null,packets:packets || [],children});
 }
 
 export async function submitFamilyPacket(profile: any, body: any) {
@@ -316,33 +321,19 @@ export async function submitFamilyPacket(profile: any, body: any) {
     signatures: cleanPacketObject(body.signatures, ['parent_signature', 'athlete_signature'], 160),
     notes: cleanText(body.notes, 1000) || null,
   };
-  payload.completion_status = packetComplete(payload) ? 'complete' : 'incomplete';
-  payload.submitted_at = new Date().toISOString();
-
-  const { data, error } = await supa
-    .from('family_info_packets')
-    .upsert(payload, { onConflict: 'program_id,profile_id' })
-    .select('*')
-    .single();
-  if (error) throw error;
-
-  const materializedIds: string[] = [];
-  if (data.completion_status === 'complete') {
-    const { data: links, error: linkError } = await supa
-      .from('parent_links')
-      .select('athlete_id, athletes(id, display_name, team_id, teams(program_id))')
-      .eq('parent_id', profile.id);
-    if (linkError) throw linkError;
-    for (const link of links || []) {
-      const athlete = (link as any).athletes;
-      if (athlete?.id && athlete.teams?.program_id === program.id) {
-        const updated = await materializeFamilyPacket(profile, profile, athlete);
-        if (updated?.id) materializedIds.push(athlete.id);
-      }
-    }
+  payload.athlete_id = cleanUuid(body.athlete_id);
+  payload.save_draft=body.save_draft===true;
+  if (body.athlete_id && !payload.athlete_id) return json({error:'Choose a valid linked child.'},400);
+  const {data,error}=await supa.rpc('save_family_packet_v2',{
+    p_actor_id:profile.id,p_payload:payload,
+    p_expected_revision:Number.isInteger(body.expected_revision) ? body.expected_revision : null,
+    p_confirm_child:body.confirm_child===true,
+  });
+  if(error){
+    const status=error.code==='42501'?403:['23514','40001','23505'].includes(error.code)?409:503;
+    return json({error:status===503?'The packet could not be saved. No partial medical or waiver changes were applied. Please retry.':error.message},status);
   }
-
-  return json({ ok: true, packet: data, materialized_athlete_ids: materializedIds });
+  return json(data);
 }
 
 async function submitJoinRequest(profile: any, body: any) {
@@ -486,7 +477,7 @@ async function staffQueue(profile: any) {
       .map((link: any) => link.parent_id)
   );
   const unlinkedParents = (parents.data || []).filter((parent: any) => !linkedParentIds.has(parent.id));
-  const packetByProfile = new Map((packets.data || []).map((packet: any) => [packet.profile_id, packet]));
+  const packetByProfile = new Map((packets.data || []).filter((packet:any)=>!packet.athlete_id).map((packet: any) => [packet.profile_id, packet]));
   const incompletePackets = [
     ...(requests.data || [])
       .filter((request: any) => packetByProfile.get(request.profile_id)?.completion_status !== 'complete')
@@ -1090,195 +1081,25 @@ async function updateRegistrationNotes(profile: any, body: any) {
   return json({ ok: true, registration: data });
 }
 
-async function ensurePacketTemplates(programId: string, staffProfileId: string | null) {
-  let { data: waiver } = await supa
-    .from('waiver_templates')
-    .select('id')
-    .eq('program_id', programId)
-    .eq('title', 'MCA Participation Waiver')
-    .order('version', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (!waiver?.id) {
-    const created = await supa
-      .from('waiver_templates')
-      .insert({
-        program_id: programId,
-        title: 'MCA Participation Waiver',
-        version: 1,
-        body: 'Parent/guardian acknowledges the inherent risks of cheerleading, tumbling, stunting, conditioning, and related activities; authorizes emergency medical care when needed; and agrees to the program policies and expectations.',
-        created_by: staffProfileId,
-      })
-      .select('id')
-      .single();
-    if (created.error) throw created.error;
-    waiver = created.data;
-  }
-
-  let { data: form } = await supa
-    .from('form_templates')
-    .select('id')
-    .eq('program_id', programId)
-    .eq('title', 'Family Info Packet')
-    .limit(1)
-    .maybeSingle();
-  if (!form?.id) {
-    const created = await supa
-      .from('form_templates')
-      .insert({
-        program_id: programId,
-        kind: 'health',
-        title: 'Family Info Packet',
-        description: 'MCA family details, medical info, policy acknowledgements, and waiver signature.',
-        is_active: true,
-        created_by: staffProfileId,
-      })
-      .select('id')
-      .single();
-    if (created.error) throw created.error;
-    form = created.data;
-  }
-  return { waiverTemplateId: waiver.id, formTemplateId: form.id };
-}
-
 export async function materializeFamilyPacket(staffProfile: any, parent: any, athlete: any) {
-  const { data: packet, error: packetError } = await supa
-    .from('family_info_packets')
-    .select('*')
-    .eq('program_id', staffProfile.program_id)
-    .eq('profile_id', parent.id)
-    .maybeSingle();
-  if (packetError) throw packetError;
-  if (!packet?.id || packet.completion_status !== 'complete') return null;
-  const sameName = (value: unknown) => cleanText(value,120).normalize('NFKC').toLocaleLowerCase('en-US');
-  if (!sameName(packet.athlete_name) || sameName(packet.athlete_name) !== sameName(athlete.display_name)) return null;
-  const {data: familyLinks,error: familyError} = await supa.from('parent_links')
-    .select('athlete_id, athletes(id, display_name, deleted_at, teams(program_id))').eq('parent_id',parent.id);
-  if (familyError) throw familyError;
-  const matches=(familyLinks || []).map((link:any)=>link.athletes).filter((child:any)=>child && !child.deleted_at && child.teams?.program_id===staffProfile.program_id && sameName(child.display_name)===sameName(packet.athlete_name));
-  // Parent ownership is already established; ambiguity still requires an explicit child packet.
-  if (matches.length!==1 || matches[0].id!==athlete.id) return null;
-
-
-  const health = packet.health_safety || {};
-  const { error: medError } = await supa
-    .from('medical_records')
-    .upsert({
-      athlete_id: athlete.id,
-      allergies: health.medical_conditions_or_allergies || null,
-      medications: health.current_medications || null,
-      conditions: health.injury_history_or_limitations || null,
-      insurance_carrier: health.insurance_name || null,
-      insurance_member_id: health.policy_number || null,
-      physician_name: health.physician_name || null,
-      physician_phone: health.physician_phone || null,
-      notes: packet.notes || null,
-      updated_by: staffProfile.id,
-    }, { onConflict: 'athlete_id' });
-  if (medError) throw medError;
-
-  const primary = packet.emergency_contact || {};
-  const secondary = packet.secondary_emergency_contact || {};
-  const contacts = [
-    primary.name && primary.phone ? {
-      athlete_id: athlete.id,
-      name: primary.name,
-      relation: primary.relationship || packet.relationship || 'Emergency contact',
-      phone: primary.phone,
-      is_primary: true,
-    } : null,
-    secondary.name && secondary.phone ? {
-      athlete_id: athlete.id,
-      name: secondary.name,
-      relation: secondary.relationship || 'Emergency contact',
-      phone: secondary.phone,
-      is_primary: false,
-    } : null,
-  ].filter(Boolean);
-  if (contacts.length) {
-    const { error: deleteContactsError } = await supa.from('emergency_contacts').delete().eq('athlete_id', athlete.id);
-    if (deleteContactsError) throw deleteContactsError;
-    const { error: contactError } = await supa.from('emergency_contacts').insert(contacts);
-    if (contactError) throw contactError;
+  const {data:packets,error}=await supa.from('family_info_packets').select('*').eq('program_id',staffProfile.program_id).eq('profile_id',parent.id).order('updated_at',{ascending:false});
+  if(error)throw error;
+  const rows=Array.isArray(packets)?packets:packets?[packets]:[];
+  const packet=rows.find((p:any)=>p.athlete_id===athlete.id) || rows.find((p:any)=>!p.athlete_id);
+  if(!packet?.id || packet.completion_status!=='complete')return null;
+  if(!packet.athlete_id){
+    const sameName=(v:unknown)=>cleanText(v,120).normalize('NFKC').toLocaleLowerCase('en-US');
+    const name=sameName(packet.athlete_name);
+    const matchesName=(v:unknown)=>!!name && (sameName(v)===name || (!name.includes(' ') && sameName(v).split(' ')[0]===name));
+    if(!matchesName(athlete.display_name))return null;
+    const {data:links,error:linkError}=await supa.from('parent_links').select('athletes(id, display_name, deleted_at, teams(program_id))').eq('parent_id',parent.id);
+    if(linkError)throw linkError;
+    const matches=(links || []).map((l:any)=>l.athletes).filter((c:any)=>c && !c.deleted_at && c.teams?.program_id===staffProfile.program_id && matchesName(c.display_name));
+    if(matches.length!==1 || matches[0].id!==athlete.id)return null;
   }
-
-  const { waiverTemplateId, formTemplateId } = await ensurePacketTemplates(staffProfile.program_id, staffProfile.id);
-  const signerName = packet.signatures?.parent_signature || packet.parent_name || parent.display_name || parent.email;
-  const { data: existingWaiver, error: existingWaiverError } = await supa
-    .from('waiver_signatures')
-    .select('id')
-    .eq('template_id', waiverTemplateId)
-    .eq('athlete_id', athlete.id)
-    .eq('signer_email', packet.parent_email || parent.email)
-    .limit(1)
-    .maybeSingle();
-  if (existingWaiverError) throw existingWaiverError;
-  if (existingWaiver?.id) {
-    const { error: waiverUpdateError } = await supa
-      .from('waiver_signatures')
-      .update({ signer_name: signerName })
-      .eq('id', existingWaiver.id);
-    if (waiverUpdateError) throw waiverUpdateError;
-  } else {
-    const { error: waiverError } = await supa
-      .from('waiver_signatures')
-      .insert({
-        template_id: waiverTemplateId,
-        program_id: staffProfile.program_id,
-        athlete_id: athlete.id,
-        signer_name: signerName,
-        signer_email: packet.parent_email || parent.email,
-      });
-    if (waiverError) throw waiverError;
-  }
-
-  const formPayload = {
-      template_id: formTemplateId,
-      subject_athlete_id: athlete.id,
-      submitted_by: parent.id,
-      notes: JSON.stringify({
-        parent_name: packet.parent_name,
-        parent_phone: packet.parent_phone,
-        athlete_name: packet.athlete_name,
-        athlete_dob: packet.athlete_dob,
-        grade: packet.grade,
-        cheer_experience: packet.cheer_experience,
-        tshirt_size: packet.tshirt_size,
-        interest: packet.interest,
-        agreements: packet.agreements,
-        signatures: packet.signatures,
-        notes: packet.notes,
-      }),
-  };
-  const { data: existingForm, error: existingFormError } = await supa
-    .from('form_responses')
-    .select('id')
-    .eq('template_id', formTemplateId)
-    .eq('subject_athlete_id', athlete.id)
-    .eq('submitted_by', parent.id)
-    .order('submitted_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (existingFormError) throw existingFormError;
-  if (existingForm?.id) {
-    const { error: formUpdateError } = await supa
-      .from('form_responses')
-      .update({ ...formPayload, submitted_at: new Date().toISOString() })
-      .eq('id', existingForm.id);
-    if (formUpdateError) throw formUpdateError;
-  } else {
-    const { error: formError } = await supa.from('form_responses').insert(formPayload);
-    if (formError) throw formError;
-  }
-
-  const { data: updatedPacket, error: updatePacketError } = await supa
-    .from('family_info_packets')
-    .update({ materialized_athlete_id: athlete.id, materialized_at: new Date().toISOString() })
-    .eq('id', packet.id)
-    .select('*')
-    .single();
-  if (updatePacketError) throw updatePacketError;
-  return updatedPacket;
+  const {data,error:applyError}=await supa.rpc('apply_family_packet_v2',{p_packet_id:packet.id,p_actor_id:staffProfile.id,p_athlete_id:athlete.id});
+  if(applyError)throw applyError;
+  return data;
 }
 
 async function createMessageThread(profile: any, body: any) {
@@ -1451,6 +1272,7 @@ export async function linkParentAthlete(profile: any, body: any) {
     const { data: packet, error: packetError } = await supa
       .from('family_info_packets')
       .select('athlete_name, athlete_age')
+      .is('athlete_id',null)
       .eq('program_id', profile.program_id)
       .eq('profile_id', parent.id)
       .maybeSingle();
