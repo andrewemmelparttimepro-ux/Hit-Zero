@@ -360,37 +360,26 @@ function buildRemixBrief({ routine, team, audio, license, countMap, remixRequest
   const markers = analysisJob?.result_payload?.markers || countMap?.markers || [];
   if (markers.length) {
     lines.push('');
-    lines.push('Detected/planned music hits:');
-    markers.slice(0, 12).forEach((m) => lines.push(`- Count ${m.count}: ${m.kind || 'hit'} at ${fmtTime(m.seconds)}${m.energy ? ` / energy ${Math.round(m.energy * 100)}%` : ''}`));
+    lines.push('Planned section timing from entered counts:');
+    markers.slice(0, 12).forEach((m) => lines.push(`- Count ${m.count}: ${m.kind || 'hit'} at ${fmtTime(m.seconds)}`));
   }
   return lines.join('\n');
 }
 
-function synthesizeAudioAnalysis({ routine, audio, countMap }) {
-  const duration = Number(audio?.duration_seconds || countToSeconds(routine.length_counts + 1, countMap));
-  const bpm = Number(countMap?.bpm || routine.bpm || 144);
-  const eightCountSeconds = 8 * (60 / Math.max(1, bpm));
-  const bars = Math.max(1, Math.ceil(Number(routine.length_counts || 0) / 8));
-  const peaks = Array.from({ length: Math.min(96, bars * 4) }).map((_, i) => ({
-    t: Number(Math.min(duration, i * eightCountSeconds / 4).toFixed(3)),
-    value: Number((0.36 + ((i * 37) % 59) / 100).toFixed(2)),
-  }));
-  const markers = [...(routine.sections || [])].map((sec) => ({
-    count: sec.start_count,
-    seconds: Number(countToSeconds(sec.start_count, countMap).toFixed(3)),
-    kind: sec.section_type === 'stunts' || sec.section_type === 'pyramid' ? 'major_hit' : 'section_start',
-    label: sec.label || sec.section_type,
-    energy: sec.section_type === 'dance' ? 0.92 : sec.section_type === 'transition' ? 0.45 : 0.76,
-  }));
+function buildManualTimingMap({ routine, audio, countMap }) {
+  const timing={...countMap,bpm:Number(countMap?.bpm || routine?.bpm || 144)};
   return {
-    engine: 'hit-zero-local-audio-contract-v1',
-    duration_seconds: duration,
-    bpm,
-    first_count_seconds: Number(countMap?.first_count_seconds || 0),
-    peaks,
-    markers,
-    worker_next: 'Replace this deterministic client analysis with a server worker using ffmpeg + librosa/aubio for waveform peaks, beat/downbeat, and energy curves.',
+    engine:'hit-zero-manual-timing-v2',analysis_kind:'manual_timing',measured_audio:false,
+    duration_seconds:Number(audio?.duration_seconds || countToSeconds(routine.length_counts+1,timing)),
+    bpm:Number(countMap?.bpm || routine.bpm || 144),first_count_seconds:Number(countMap?.first_count_seconds || 0),peaks:[],
+    markers:(routine.sections || []).map(sec=>({count:sec.start_count,seconds:Number(countToSeconds(sec.start_count,timing).toFixed(3)),kind:'planned_section',label:sec.label || sec.section_type})),
+    note:'Planned section times calculated from the entered BPM and count-one offset. Audio beats, waveform and energy have not been measured.',
   };
+}
+function timingReport(job) {
+  const result=job?.result_payload || {};
+  if(result.measured_audio===true)return result;
+  return {...result,analysis_kind:'manual_timing',measured_audio:false,peaks:[],markers:(result.markers || []).map(({energy,...marker})=>({...marker,kind:'planned_section'})),note:'Planned timing only. Audio beats, waveform and energy have not been measured.'};
 }
 
 function deriveComplianceChecks({ audio, license, remixRequest }) {
@@ -1279,7 +1268,7 @@ function CoachRoutineBuilder({ snap, navigate, pushToast }) {
   const runAudioAnalysis = async (jobType = 'beat_map') => {
     setSaving(true);
     try {
-      const analysis = synthesizeAudioAnalysis({ routine, audio, countMap });
+      const analysis = buildManualTimingMap({ routine, audio, countMap });
       const now = new Date().toISOString();
       const job = {
         id: routineUid('aaj'),
@@ -1294,7 +1283,7 @@ function CoachRoutineBuilder({ snap, navigate, pushToast }) {
           first_count_seconds: countMap?.first_count_seconds || 0,
           sections: (routine.sections || []).map(s => ({ id: s.id, label: s.label, start_count: s.start_count, end_count: s.end_count, section_type: s.section_type })),
         },
-        result_payload: analysis,
+        result_payload: hasLiveSupabase() ? {} : analysis,
         created_at: now,
         updated_at: now,
       };
@@ -1310,21 +1299,20 @@ function CoachRoutineBuilder({ snap, navigate, pushToast }) {
             window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { table: 'routine_audio_analysis_jobs', action: 'update' } }));
           }
         } catch (workerErr) {
-          finalJob = { ...job, status: 'ready', error_message: null, result_payload: analysis, updated_at: new Date().toISOString() };
-          await persistUpdate('routine_audio_analysis_jobs', job.id, finalJob);
-          console.warn('[HZ] audio worker fallback used', workerErr);
+          await persistUpdate('routine_audio_analysis_jobs', job.id, {status:'error',error_message:'Timing map could not be saved. Retry when connected.',updated_at:new Date().toISOString()});
+          throw workerErr;
         }
       }
       const finalAnalysis = finalJob.result_payload || analysis;
       await upsertCountMap({
-        confidence: Math.max(0.72, Number(countMap?.confidence || 0)),
-        source: 'analysis',
+        confidence: Number(countMap?.confidence || 0),
+        source: 'coach_edit',
         markers: finalAnalysis.markers,
         corrections: { ...(countMap?.corrections || {}), last_analysis_job_id: finalJob.id },
       }, audio?.id);
-      pushToast && pushToast({ kind: 'success', title: 'Audio map ready', body: `${finalAnalysis.engine || 'Audio worker'} attached beat/energy markers to the routine.` });
+      pushToast && pushToast({ kind: 'success', title: 'Planned timing saved', body: 'Section times use your entered BPM and count-one offset. Listen to the track and check the alignment.' });
     } catch (err) {
-      pushToast && pushToast({ kind: 'error', title: 'Audio analysis failed', body: err.message || 'Could not create analysis job.' });
+      pushToast && pushToast({ kind: 'error', title: 'Timing map could not be saved', body: err.message || 'Could not create analysis job.' });
     } finally {
       setSaving(false);
     }
@@ -2385,8 +2373,8 @@ function CoachRoutineBuilder({ snap, navigate, pushToast }) {
   const practicePlan = buildPracticePlan({ routine, predicted, validation: validationIssues });
   const remixBrief = buildRemixBrief({ routine, team, audio, license, countMap, remixRequest: latestRemixRequest || remixDraft, analysisJob: latestAnalysis });
   const analysisReport = latestAnalysis
-    ? JSON.stringify(latestAnalysis.result_payload, null, 2)
-    : 'No audio analysis job yet. Run Audio map to create waveform peaks, beat/count markers, and the worker-ready result contract.';
+    ? JSON.stringify(timingReport(latestAnalysis), null, 2)
+    : 'No planned timing map yet. Save section timing from your entered BPM and count-one offset, then check it against the track.';
   const outputMap = {
     count_sheet: { title: 'Printable 8-count sheet', exportType: 'count_sheet', body: countSheet },
     formation_cards: { title: 'Formation cards', exportType: 'formation_cards', body: formationCards },
@@ -2394,7 +2382,7 @@ function CoachRoutineBuilder({ snap, navigate, pushToast }) {
     practice_plan: { title: 'Practice plan', exportType: 'practice_plan', body: practicePlan },
     provider_brief: { title: 'Music provider brief', exportType: 'provider_brief', body: providerBrief },
     remix_brief: { title: 'Compliant remix brief', exportType: 'remix_brief', body: remixBrief },
-    audio_analysis_report: { title: 'Audio analysis report', exportType: 'audio_analysis_report', body: analysisReport },
+    audio_analysis_report: { title: 'Planned timing report', exportType: 'audio_analysis_report', body: analysisReport },
   };
   const activeArtifact = outputMap[activeOutput] || outputMap.count_sheet;
   const scoreLow = Math.max(0, predicted.total - validationIssues.length * 0.25 - (license?.proof_status === 'competition_ready' ? 0 : 0.75));
@@ -2804,9 +2792,9 @@ function CoachRoutineBuilder({ snap, navigate, pushToast }) {
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button className={`hz-btn hz-btn-sm ${loopingSection ? 'hz-btn-primary' : ''}`} onClick={() => setLoopingSection(!loopingSection)} disabled={!selectedSection}>Loop section</button>
               <button className="hz-btn hz-btn-sm" onClick={() => generateSectionIdea('music')} disabled={!selectedSection}>Mark music hit</button>
-              <button className="hz-btn hz-btn-sm hz-btn-primary" onClick={() => runAudioAnalysis('beat_map')} disabled={saving}>Audio map</button>
+              <button className="hz-btn hz-btn-sm hz-btn-primary" onClick={() => runAudioAnalysis('beat_map')} disabled={saving}>Save planned timing</button>
             </div>
-            <div className="routine-waveform-strip">
+            <div className="routine-waveform-strip" aria-label="Count navigation">
               {Array.from({ length: 48 }).map((_, i) => {
                 const count = Math.min(routine.length_counts, i + 1);
                 const active = count === liveDisplayCount || count === selectedSection?.start_count;
@@ -2817,7 +2805,7 @@ function CoachRoutineBuilder({ snap, navigate, pushToast }) {
                     className={`routine-waveform-bar ${active ? 'active' : ''}`}
                     onClick={() => jumpToCount(count, { focus: 'live' })}
                     title={`Jump to count ${count}`}
-                    style={{ height: `${18 + ((i * 17) % 38)}px`, opacity: (i + 1) % 8 === 0 ? 0.95 : 0.42 }}
+                    style={{ height: `28px`, opacity: (i + 1) % 8 === 0 ? 0.95 : 0.42 }}
                   />
                 );
               })}
@@ -2927,7 +2915,7 @@ function CoachRoutineBuilder({ snap, navigate, pushToast }) {
               <div>
                 <div className="hz-eyebrow">Audio worker contract</div>
                 <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>
-                  {latestAnalysis ? `${latestAnalysis.job_type} ${latestAnalysis.status} - ${latestAnalysis.result_payload?.markers?.length || 0} markers` : 'No analysis job yet. Create a beat/energy map before provider handoff.'}
+                  {latestAnalysis ? `Planned timing ${latestAnalysis.status} - ${latestAnalysis.result_payload?.markers?.length || 0} section markers` : 'No timing map yet. Save planned section times before provider handoff.'}
                 </div>
               </div>
               <button className="hz-btn hz-btn-sm" onClick={() => runAudioAnalysis('remix_prep')} disabled={saving}>Prep worker job</button>

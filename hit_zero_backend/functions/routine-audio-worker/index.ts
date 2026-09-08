@@ -26,31 +26,16 @@ function countToSeconds(count: number, countMap: any) {
   return first + (Math.max(1, Number(count || 1)) - 1) * 8 * (60 / bpm);
 }
 
-function synthesizeAnalysis({ routine, audio, countMap, sections }: any) {
-  const duration = Number(audio?.duration_seconds || countToSeconds(Number(routine?.length_counts || 96) + 1, countMap));
-  const bpm = Number(countMap?.bpm || routine?.bpm || 144);
-  const eightCountSeconds = 8 * (60 / Math.max(1, bpm));
-  const bars = Math.max(1, Math.ceil(Number(routine?.length_counts || 0) / 8));
-  const peaks = Array.from({ length: Math.min(128, bars * 4) }).map((_, i) => ({
-    t: Number(Math.min(duration, i * eightCountSeconds / 4).toFixed(3)),
-    value: Number((0.36 + ((i * 37) % 59) / 100).toFixed(2)),
-  }));
-  const markers = [...(sections || [])].map((sec: any) => ({
-    count: sec.start_count,
-    seconds: Number(countToSeconds(sec.start_count, countMap).toFixed(3)),
-    kind: sec.section_type === 'stunts' || sec.section_type === 'pyramid' ? 'major_hit' : 'section_start',
-    label: sec.label || sec.section_type,
-    energy: sec.section_type === 'dance' ? 0.92 : sec.section_type === 'transition' ? 0.45 : 0.76,
-  }));
+export function buildManualTimingMap({ routine, audio, countMap, sections }: any) {
+  const timing={...countMap,bpm:Number(countMap?.bpm || routine?.bpm || 144)};
   return {
-    engine: 'hit-zero-edge-audio-worker-v1',
-    duration_seconds: duration,
-    bpm,
-    first_count_seconds: Number(countMap?.first_count_seconds || 0),
-    peaks,
-    markers,
-    compliance_note: 'Analysis output is timing metadata only; it does not grant music rights or competition-ready status.',
-    next_dsp_worker: 'Replace synthesizeAnalysis with ffmpeg normalization plus librosa/aubio beat, downbeat, onset, and energy extraction.',
+    engine:'hit-zero-manual-timing-v2',analysis_kind:'manual_timing',measured_audio:false,
+    duration_seconds:Number(audio?.duration_seconds || countToSeconds(Number(routine?.length_counts || 96)+1,timing)),
+    bpm:Number(countMap?.bpm || routine?.bpm || 144),
+    first_count_seconds:Number(countMap?.first_count_seconds || 0),
+    peaks:[],
+    markers:(sections || []).map((sec:any)=>({count:sec.start_count,seconds:Number(countToSeconds(sec.start_count,timing).toFixed(3)),kind:'planned_section',label:sec.label || sec.section_type})),
+    note:'Planned section times calculated from the entered BPM and count-one offset. Audio beats, waveform and energy have not been measured.',
   };
 }
 
@@ -91,14 +76,14 @@ export async function handleRequest(req: Request) {
     const { data: team } = await supa.from('teams').select('program_id').eq('id', routine.team_id).maybeSingle();
     if (!team || team.program_id !== actor.program_id) return json({ error: 'This routine is outside your gym.' }, 403);
     if (job.audio_asset_id && (!audio || audio.routine_id !== routine.id)) return json({ error: 'Audio does not belong to this routine.' }, 409);
-    if (job.status === 'ready') return json({ ok: true, job });
+    if (job.status === 'ready') return json({ ok: true, job: {...job,result_payload:{...(job.result_payload || {}),analysis_kind:'manual_timing',measured_audio:false,peaks:[],markers:(job.result_payload?.markers || []).map(({energy,...marker}:any)=>({...marker,kind:'planned_section'})),note:'Planned section timing only. Audio beats, waveform and energy have not been measured.'}} });
     const { data: claimed, error: claimError } = await supa.from('routine_audio_analysis_jobs')
       .update({ status: 'processing', updated_at: new Date().toISOString() })
       .eq('id', requestedJobId).in('status', ['queued', 'pending', 'error']).select('id').maybeSingle();
     if (claimError) throw claimError;
     if (!claimed) return json({ error: 'This job is already processing.' }, 409);
     jobId = claimed.id;
-    const result = synthesizeAnalysis({ routine, audio, countMap, sections: sections || [] });
+    const result = buildManualTimingMap({ routine, audio, countMap, sections: sections || [] });
     const now = new Date().toISOString();
 
     const { data: updated, error: updateErr } = await supa
@@ -114,15 +99,6 @@ export async function handleRequest(req: Request) {
       .single();
     if (updateErr) throw updateErr;
 
-    if (countMap?.id) {
-      await supa.from('routine_count_maps').update({
-        confidence: Math.max(0.74, Number(countMap.confidence || 0)),
-        source: 'analysis',
-        markers: result.markers,
-        corrections: { ...(countMap.corrections || {}), last_analysis_job_id: jobId },
-        updated_at: now,
-      }).eq('id', countMap.id);
-    }
 
     return json({ ok: true, job: updated });
   } catch (err) {
