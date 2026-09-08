@@ -1,7 +1,7 @@
 import { json, preflight, supa, verifySquareWebhookSignature } from '../_shared/square.ts';
 
-// Only verified events enter the durable inbox. Processing is deliberately
-// separate: email-based account-wide sync is not a safe payment allocator.
+// Preserve the verified receipt before processing. Redelivery retries the same
+// exact checkout transaction; it never runs customer-wide email allocation.
 export async function handleRequest(req: Request) {
   const pf = preflight(req); if (pf) return pf;
   if (req.method !== 'POST') return json({ error: 'POST only' },405);
@@ -29,6 +29,9 @@ export async function handleRequest(req: Request) {
   });
   // Insert preserves the original receipt and processing state on redelivery.
   if(error && error.code!=='23505') return json({ error:'webhook_inbox_unavailable' },503);
-  return json({ok:true,duplicate:error?.code==='23505'});
+  if (!connection) return json({ok:true,processing_status:'ignored'});
+  const {data:processed,error:processError}=await supa.rpc('process_square_payment_event_v1',{p_event_id:event.event_id});
+  if(processError || !processed || !['processed','ignored','review_required'].includes(processed.status) || processed.retryable) return json({error:'webhook_processing_unavailable'},503);
+  return json({ok:true,duplicate:error?.code==='23505',processing_status:processed.status});
 }
 if(import.meta.main) Deno.serve(handleRequest);
