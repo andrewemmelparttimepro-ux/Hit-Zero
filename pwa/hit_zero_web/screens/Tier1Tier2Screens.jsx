@@ -2554,7 +2554,7 @@ function RegistrationInbox({ snap, session }) {
                   <span>· {row.reconciliation?.disposition?.replaceAll('_',' ') || 'Review required'}</span>
                 </div>
                 {row.reconciliation?.next_action && <p style={{ fontSize: 12 }}>{row.reconciliation.next_action}</p>}
-                {row.reconciliation?.disposition === 'active_failure' && <button className="hz-btn hz-btn-sm" disabled={!!reminderBusy} onClick={() => sendPaymentReminders([row.id], row.id)}>Send payment follow-up</button>}
+                {row.reconciliation?.disposition === 'active_failure' && <button data-hz-help="Sends a payment follow-up to this family. Review existing payment evidence before contacting them." className="hz-btn hz-btn-sm" disabled={!!reminderBusy} onClick={() => sendPaymentReminders([row.id], row.id)}>Send payment follow-up</button>}
                 {row.notes && (
                   <div style={{ marginTop: 10, color: 'var(--hz-dim)', fontSize: 12, lineHeight: 1.5 }}>
                     {row.notes}
@@ -2577,7 +2577,7 @@ function RegistrationInbox({ snap, session }) {
             <div style={{ fontSize: 18, fontWeight: 900 }}>Register an athlete in person, then send the parent their setup link.</div>
             <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 5 }}>Creates a pending registration and a one-use parent invite. Staff still controls approval and athlete linking.</div>
           </div>
-          <button className="hz-btn hz-btn-primary" type="submit" disabled={assistBusy}>{assistBusy ? 'Creating...' : 'Create + send'}</button>
+          <button data-hz-help="Creates a pending registration and sends the parent a one-use setup invite. Approval and athlete linking remain separate staff steps." className="hz-btn hz-btn-primary" type="submit" disabled={assistBusy}>{assistBusy ? 'Creating...' : 'Create + send'}</button>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
           <Input label="Parent name" required value={assist.parent_name} onChange={v => setAssist(a => ({ ...a, parent_name: v }))}/>

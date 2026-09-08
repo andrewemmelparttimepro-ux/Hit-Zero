@@ -1705,7 +1705,7 @@
       emit('program_owner_applications', { eventType: 'INSERT', new: row, old: null });
       return { data: { ok: true, application: row }, error: null };
     },
-    async welcomeNotice() { return callLaunchFunction('get_welcome_notice', {}); },
+    async welcomeNotice(options={}) { return callLaunchFunction('get_welcome_notice', options); },
     async dismissWelcomeNotice(id) { return callLaunchFunction('dismiss_welcome_notice', {notice_id:id}); },
     async staffLaunchQueue() {
       if (hasRealAuth() && window.HZ_FN_BASE && window.HZ_ANON_KEY) return callLaunchFunction('staff_queue', {});

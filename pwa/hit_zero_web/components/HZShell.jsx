@@ -122,7 +122,6 @@ const ROLE_LABELS = {
   athlete: 'Athlete',
 };
 window.ROLE_LABELS = ROLE_LABELS;
-const WALKTHROUGH_VERSION = 'v4';
 const PLACEHOLDER_PROGRAM_ID = '11111111-1111-1111-1111-111111111111';
 
 function isPlaceholderProgramId(id) {
@@ -154,10 +153,6 @@ window.HZactiveProgramFromSnap = activeProgramFromSnap;
 
 function roleNav(role) {
   return NAV_CONFIG[role] || NAV_CONFIG.coach;
-}
-
-function walkthroughStorageKey(profileId, role, mode) {
-  return `hz_walkthrough_${WALKTHROUGH_VERSION}_${mode || 'prototype'}_${profileId}_${role}`;
 }
 
 // ─── Mobile bottom-tab-bar config (4 thumb-reachable + "More") ───
@@ -591,26 +586,7 @@ function App() {
     return () => { active = false; };
   }, [requestedScreenAsset, screenRetry]);
 
-  useEffect(() => {
-    if (!session?.profile || walkthroughRole) return;
-    const mode = session.mode || 'prototype';
-    const actualRole = session.actualProfile?.role || session.profile.role;
-    const canAutoOpen = mode === 'prototype' || (mode === 'live' && effectiveRole === 'parent' && actualRole === 'parent');
-    if (!canAutoOpen) return;
-    const profileId = session.actualProfile?.id || session.profile.id;
-    const key = walkthroughStorageKey(profileId, effectiveRole, mode);
-    try {
-      if (!localStorage.getItem(key)) setWalkthroughRole(effectiveRole);
-    } catch {}
-  }, [session?.profile?.id, session?.actualProfile?.id, effectiveRole, session?.mode, walkthroughRole]);
-
-  const closeWalkthrough = useCallback((markDone = true) => {
-    if (markDone && session?.profile?.id && walkthroughRole) {
-      const profileId = session.actualProfile?.id || session.profile.id;
-      try { localStorage.setItem(walkthroughStorageKey(profileId, walkthroughRole, session.mode || 'prototype'), 'done'); } catch {}
-    }
-    setWalkthroughRole(null);
-  }, [session?.profile?.id, session?.actualProfile?.id, session?.mode, walkthroughRole]);
+  const closeWalkthrough = useCallback(() => setWalkthroughRole(null), []);
 
   const openAthleteDrawer = useCallback((id) => {
     if (!id) return;
@@ -820,10 +796,10 @@ function App() {
 
   const needsGymConnection = !realProfile?.program_id && session.mode !== 'prototype';
   if (needsGymConnection && ['coach', 'owner'].includes(realProfile?.role || '')) {
-    return <StaffScopeGate session={session} />;
+    return <HelpBeforeGym session={session}><StaffScopeGate session={session}/></HelpBeforeGym>;
   }
   if (needsGymConnection) {
-    return <PendingGymOnboarding session={session} preferredGymSlug={preferredGymSlug} />;
+    return <HelpBeforeGym session={session}><PendingGymOnboarding session={session} preferredGymSlug={preferredGymSlug}/></HelpBeforeGym>;
   }
 
   const role = effectiveRole;
@@ -873,6 +849,7 @@ function App() {
       {isMobile && (
         <MobileTopBar
           title={screenLabel}
+          onHelp={() => setWalkthroughRole(effectiveRole)}
           onAccount={() => setAccountSheetOpen(true)}
           session={session}
           snap={snap}
@@ -946,8 +923,8 @@ function App() {
 
       {cmdkOpen && snap && <CommandK snap={snap} session={session} onClose={() => setCmdkOpen(false)} onNav={(id) => { location.hash = '#' + id; setCmdkOpen(false); }} openAthlete={(id) => { openAthleteDrawer(id); setCmdkOpen(false); }} />}
       {drawerAthleteId && snap && <AthleteDrawer athleteId={drawerAthleteId} snap={snap} session={session} onClose={closeAthleteDrawer} pushToast={pushToast}/>}
-      {walkthroughRole && <RoleWalkthrough role={walkthroughRole} onClose={closeWalkthrough} navigate={(id) => { location.hash = '#' + id; closeWalkthrough(); }}/>}
-      <WelcomeUpdate session={session} navigate={navigate}/>
+      <RoleHelpExperience session={session} requestedRole={walkthroughRole} onHelpClosed={closeWalkthrough} navigate={navigate}/>
+      <ContextualHelp/>
       <div className="toast-stack">
         {toasts.map(t => <Toast key={t.id} toast={t} onClose={(id) => setToasts(prev => prev.filter(x => x.id !== id))} />)}
       </div>
@@ -957,12 +934,13 @@ function App() {
 window.App = App;
 
 // ─── Mobile top bar (just title + account chip) ───
-function MobileTopBar({ title, onAccount, session, snap }) {
+function MobileTopBar({ title, onAccount, onHelp, session, snap }) {
   const canSwitchRoles = roleSwitcherRoles(session).length > 1 || (session.mode === 'prototype' && window.HZ_FORCE_PROTOTYPE === true);
   return (
     <div className="mobile-topbar hz-nosel">
       <div className="mobile-topbar__title">{title}</div>
       {canSwitchRoles && <RoleSwitcher session={session} snap={snap} compact />}
+      <button className="topbar-icon-btn" onClick={onHelp} aria-label="Help and what’s new" data-hz-help="Reopen your role guide and instructions anytime.">?</button>
       <button className="mobile-topbar__account" onClick={onAccount} title="Account" aria-label="Account">
         {session?.profile?.display_name?.[0]?.toUpperCase() || 'U'}
       </button>
@@ -999,7 +977,7 @@ function MobileAccountSheet({ session, snap, onClose, onSignOut, onWalkthrough }
         {onWalkthrough && !confirming && (
           <button className="mobile-sheet__item" onClick={onWalkthrough}>
             <span className="mobile-sheet__item-icon"><HZIcon name="star" size={18}/></span>
-            <span className="mobile-sheet__item-label">App tour</span>
+            <span className="mobile-sheet__item-label">Help &amp; what’s new</span>
           </button>
         )}
         {!confirming ? (
@@ -1033,6 +1011,7 @@ function MobileTabBar({ role, active, onNav, moreOpen = false, badges = {} }) {
         return (
           <button
             key={t.id}
+            data-hz-help={HELP_ROUTE_HINTS[t.id]}
             className={'mobile-tabbar__tab' + (isActive ? ' is-active' : '')}
             onClick={() => onNav(t.id)}
             aria-current={isActive ? 'page' : undefined}
@@ -1080,6 +1059,7 @@ function MobileMoreSheet({ nav, active, tabIds, onNav, onClose, onSignOut }) {
           {nav.filter(it => it.id && !tabSet.has(it.id)).map(it => (
             <button
               key={it.id}
+              data-hz-help={HELP_ROUTE_HINTS[it.id]}
               className={'mobile-sheet__item' + (active === it.id ? ' is-active' : '')}
               aria-current={active === it.id ? 'page' : undefined}
               onClick={() => onNav(it.id)}
@@ -1153,6 +1133,7 @@ function Sidebar({ nav, active, session, onNav, open, snap, program }) {
           <a
             key={item.id}
             href={'#' + item.id}
+            data-hz-help={HELP_ROUTE_HINTS[item.id]}
             aria-current={active === item.id ? 'page' : undefined}
             className={`nav-item ${active === item.id ? 'active' : ''}`}
             onClick={e => { e.preventDefault(); onNav(item.id); }}
@@ -1199,7 +1180,7 @@ function Topbar({ session, onOpenCmdk, onSignOut, onHamburger, onHelp, snap }) {
         {canSwitchRoles
           ? <RoleSwitcher session={session} snap={snap} />
           : <AccountBadge session={session} />}
-        <button className="topbar-icon-btn" onClick={onHelp} title="Open walkthrough" aria-label="Open walkthrough">
+        <button className="topbar-icon-btn" onClick={onHelp} aria-label="Help and what’s new" data-hz-help="Reopen your role guide and instructions anytime.">
           ?
         </button>
         <button className="topbar-icon-btn" onClick={onSignOut} title="Sign out" aria-label="Sign out">
@@ -2783,66 +2764,6 @@ function Login({ initialMode = 'password', inviteCode = '', preferredGymSlug = D
 }
 window.Login = Login;
 
-function walkthroughStepsForRole(role) {
-  const steps = {
-    parent: [
-      { title: 'Family home', body: 'Start with the family overview: linked athletes, upcoming schedule, recent wins, balances, and anything the gym needs from you.', action: 'Open Home', nav: 'parent' },
-      { title: 'Daily parent jobs', body: 'Schedule, Messages, Medical, Billing, and Gym Feed are the main places to handle logistics without digging through the app.', action: 'Open Schedule', nav: 'schedule' },
-      { title: 'Athlete progress', body: 'Skills is yours to keep current: tap any skill and pick Not yet, Working, Got it, or Mastered — it saves instantly and coaches see the same tree. Reel and AI Judge show progress with context from the gym.', action: 'Open Skills', nav: 'skilltree' },
-    ],
-    athlete: [
-      { title: 'Your reel', body: 'See wins, readiness, attendance, and what to work on next.', action: 'Open My Reel', nav: 'reel' },
-      { title: 'Skill tracker', body: 'Open Skill Tree and mark each skill as Not yet, Working, Got it, or Mastered so your profile stays current.', action: 'Open Skill Tree', nav: 'skilltree' },
-      { title: 'Team loop', body: 'Schedule, Messages, and Team Feed show what the gym has released for your team.', action: 'Open Schedule', nav: 'schedule' },
-      { title: 'AI Judge', body: 'Review scorecards and athlete feedback released by your coaches.', action: 'Open AI Judge', nav: 'ai_judge' },
-    ],
-    coach: [
-      { title: 'Run the room', body: 'Today, Roster, Skill Matrix, and Practice Plans are the daily cockpit for coaching the team.', action: 'Open Today', nav: 'today' },
-      { title: 'Score the reps', body: 'Mock Score, Skill Matrix, and AI Judge connect practice reps to scoring and feedback.', action: 'Open AI Judge', nav: 'ai_judge' },
-      { title: 'Keep everyone aligned', body: 'Schedule, messages, announcements, volunteers, and medical keep the whole gym moving together.', action: 'Open Schedule', nav: 'schedule' },
-    ],
-    owner: [
-      { title: 'Operate the gym', body: 'Program, Billing, Leads, Teams, Registration, and communications are your ownership command center.', action: 'Open Program', nav: 'admin' },
-      { title: 'Watch performance', body: 'Roster, Skill Matrix, Mock Score, and AI Judge show what is actually improving.', action: 'Open Roster', nav: 'roster' },
-      { title: 'Switch perspectives', body: 'Use View as to sanity-check what coaches, parents, and athletes experience before rollout.', action: 'Open Today', nav: 'today' },
-    ],
-  };
-  return steps[role] || steps.coach;
-}
-
-function RoleWalkthrough({ role, onClose, navigate }) {
-  const steps = walkthroughStepsForRole(role);
-  const [i, setI] = useState(0);
-  const step = steps[i];
-  return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.72)', display: 'grid', placeItems: 'center', padding: 24 }}>
-      <div className="hz-card" style={{ maxWidth: 640, width: '100%', borderColor: 'rgba(249,127,172,0.45)' }}>
-        <div className="hz-eyebrow" style={{ color: 'var(--hz-pink)', marginBottom: 10 }}>Welcome to Hit Zero · {ROLE_LABELS[role] || role}</div>
-        <div className="hz-display" style={{ fontSize: 44, lineHeight: 1 }}>{step.title}</div>
-        <div style={{ color: 'var(--hz-dim)', fontSize: 15, lineHeight: 1.6, marginTop: 14 }}>{step.body}</div>
-        <div style={{ marginTop: 18, padding: 14, borderRadius: 14, background: 'rgba(39,207,215,0.08)', color: 'var(--hz-dim)', fontSize: 13, lineHeight: 1.5 }}>
-          Need this again later? Reopen it from the ? in the header on desktop, or your account avatar → App tour on a phone.
-        </div>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', alignItems: 'center', marginTop: 24 }}>
-          <button className="hz-btn hz-btn-ghost" onClick={() => onClose(true)}>Skip</button>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {steps.map((_, idx) => <span key={idx} style={{ width: 8, height: 8, borderRadius: 999, background: idx === i ? 'var(--hz-pink)' : 'rgba(255,255,255,0.18)' }}/>)}
-          </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            {i > 0 && <button className="hz-btn" onClick={() => setI(v => v - 1)}>Back</button>}
-            {i < steps.length - 1 ? (
-              <button className="hz-btn hz-btn-primary" onClick={() => setI(v => v + 1)}>Next</button>
-            ) : (
-              <button className="hz-btn hz-btn-primary" onClick={() => navigate(step.nav)}>{step.action}</button>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-window.RoleWalkthrough = RoleWalkthrough;
-
 // ─── Command-K palette ───
 function CommandK({ snap, session, onClose, onNav, openAthlete }) {
   const [q, setQ] = useState('');
@@ -2916,7 +2837,7 @@ function CommandK({ snap, session, onClose, onNav, openAthlete }) {
 window.CommandK = CommandK;
 
 
-function WelcomeUpdateDialog({notice,busy,error,onClose,onOpen}) {
+function WelcomeUpdateDialog({notice,busy,error,onClose,onOpen,onNavigate,manual=false}) {
   const dialogRef=React.useRef(null);
   React.useEffect(()=>{
     const previous=document.activeElement;
@@ -2938,44 +2859,136 @@ function WelcomeUpdateDialog({notice,busy,error,onClose,onOpen}) {
   },[busy,onClose]);
   return <div style={{position:'fixed',inset:0,zIndex:10000,background:'rgba(0,0,0,.78)',display:'grid',placeItems:'center',padding:16}}>
     <section ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="hz-welcome-title" tabIndex={-1}
-      style={{width:'min(100%,600px)',maxHeight:'calc(100dvh - 32px)',overflowY:'auto',background:'var(--hz-surface,#14141b)',color:'var(--hz-text,#f5f5fa)',border:'1px solid var(--hz-teal,#27cfd7)',borderRadius:20,padding:'clamp(18px,4vw,30px)',boxSizing:'border-box',boxShadow:'0 20px 90px #000'}}>
-      <div className="hz-eyebrow" style={{color:'var(--hz-teal)',marginBottom:10}}>New in Hit Zero · For your daily work</div>
-      <h2 id="hz-welcome-title" style={{fontSize:27,lineHeight:1.15,margin:'0 0 12px'}}>{notice.title}</h2>
-      <p style={{fontSize:14,lineHeight:1.5,color:'var(--hz-dim)'}}>{notice.intro}</p>
+      style={{width:'min(100%,600px)',maxHeight:'calc(100dvh - 32px)',display:'flex',flexDirection:'column',overflow:'hidden',background:'var(--hz-surface,#14141b)',color:'var(--hz-text,#f5f5fa)',border:'1px solid var(--hz-teal,#27cfd7)',borderRadius:20,padding:'clamp(18px,4vw,30px)',boxSizing:'border-box',boxShadow:'0 20px 90px #000'}}>
+      <div className="hz-eyebrow" style={{color:'var(--hz-teal)',marginBottom:10}}>{notice.eyebrow || "New in Hit Zero · For your daily work"}</div>
+      <h2 id="hz-welcome-title" style={{flexShrink:0,fontSize:27,lineHeight:1.15,margin:'0 0 12px'}}>{notice.title}</h2>
+      <div className="hz-guide-scroll" style={{overflowY:'auto',minHeight:0,paddingRight:8}}><p style={{fontSize:14,lineHeight:1.5,color:'var(--hz-dim)'}}>{notice.intro}</p>
       <div style={{display:'grid',gap:14,margin:'20px 0'}}>{(notice.items || []).map((item,i)=><div key={i}>
         <div style={{fontWeight:800,fontSize:15,marginBottom:4}}>{item.title}</div>
         <div style={{fontSize:13,lineHeight:1.5,color:'var(--hz-dim)'}}>{item.body}</div>
+        {item.route && onNavigate && <button className="hz-btn hz-btn-sm" style={{marginTop:6}} disabled={busy} onClick={()=>onNavigate(item.route)}>{item.action || "Open"}</button>}
       </div>)}</div>
-      <p style={{fontSize:12,lineHeight:1.5,color:'var(--hz-dim)'}}>{notice.footer}</p>
+      <p style={{fontSize:12,lineHeight:1.5,color:'var(--hz-dim)'}}>{notice.footer}</p></div>
       {error && <p role="alert" style={{color:'var(--hz-pink)'}}>{error}</p>}
-      <div style={{display:'flex',flexWrap:'wrap',gap:10,marginTop:20}}>
-        <button className="hz-btn hz-btn-primary" disabled={busy} onClick={onOpen}>Open family setup</button>
-        <button className="hz-btn" disabled={busy} onClick={onClose}>{busy?'Saving…':'Got it'}</button>
+      <div style={{display:'flex',flexShrink:0,flexWrap:'wrap',gap:10,marginTop:16}}>
+        <button className="hz-btn hz-btn-primary" disabled={busy || notice.loading} onClick={onOpen}>{notice.primary_label || "Open family setup"}</button>
+        <button className="hz-btn" disabled={busy} onClick={onClose}>{busy?'Saving…':manual?'Close help':'Got it'}</button>
       </div>
-      <p style={{fontSize:11,color:'var(--hz-dim)',marginBottom:0}}>Once you dismiss this update, it will not greet you again.</p>
+      <p style={{flexShrink:0,fontSize:11,color:'var(--hz-dim)',marginBottom:0}}>Your guide stays in ? after you dismiss the welcome. You can reopen it anytime.</p>
     </section>
   </div>;
 }
-function WelcomeUpdate({session,navigate}) {
+function RoleHelpExperience({session,requestedRole,onHelpClosed=()=>{},navigate}) {
   const profile=session?.actualProfile || session?.profile;
-  const [notice,setNotice]=React.useState(null),[busy,setBusy]=React.useState(false),[error,setError]=React.useState('');
+  const [result,setResult]=React.useState(null),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[attempt,setAttempt]=React.useState(0);
+  const [loading,setLoading]=React.useState(false);
+  const manual=!!requestedRole;
   React.useEffect(()=>{
-    let active=true;setNotice(null);
-    if(session?.mode==='live' && profile?.role==='owner')window.HZdb.auth.welcomeNotice()
-      .then(result=>{if(active && !result.error)setNotice(result.data?.notice || null);}).catch(()=>{});
+    let active=true;setResult(null);setError('');
+    if(session?.mode!=='live' || !profile?.id)return;
+    setLoading(true);
+    window.HZdb.auth.welcomeNotice({help_role:requestedRole || profile.role})
+      .then(response=>{if(!active)return;if(response.error)throw response.error;setResult(response.data);})
+      .catch(()=>{if(active)setError('Your guide could not load. Try again.');})
+      .finally(()=>{if(active)setLoading(false);});
     return ()=>{active=false;};
-  },[session?.mode,profile?.id]);
-  const dismiss=React.useCallback(async(open=false)=>{
-    if(!notice || busy)return;
-    setBusy(true);setError('');
+  },[session?.mode,profile?.id,profile?.role,requestedRole,attempt]);
+  const display=manual ? result?.guide : result?.notice;
+  const dismiss=React.useCallback(async(route=null)=>{
+    if(busy)return;setBusy(true);setError('');
     try {
-      const result=await window.HZdb.auth.dismissWelcomeNotice(notice.id);
-      if(result.error)throw result.error;
-      setNotice(null);if(open)navigate('admin?family_setup=1');
-    }catch(e){setError('Could not save dismissal. Please try again; your update is still here.');}
+      if(result?.notice && (!display || display.id===result.notice.id)) {
+        const saved=await window.HZdb.auth.dismissWelcomeNotice(result.notice.id);
+        if(saved.error)throw saved.error;
+      }
+      setResult(old=>old?{...old,notice:null}:old);onHelpClosed();
+      if(route)navigate(route);
+    }catch(e){setError('Could not save dismissal. Please try again.');}
     finally{setBusy(false);}
-  },[notice,busy,navigate]);
-  const close=React.useCallback(()=>dismiss(false),[dismiss]);
-  if(!notice)return null;
-  return <WelcomeUpdateDialog notice={notice} busy={busy} error={error} onClose={close} onOpen={()=>dismiss(true)}/>;
+  },[result,display,busy,navigate,onHelpClosed]);
+  const close=React.useCallback(()=>dismiss(),[dismiss]);
+  if(manual && !display) return <WelcomeUpdateDialog manual notice={{title:'Your Hit Zero guide',loading,intro:loading?'Loading your guide…':error || 'Sign in to load your role guide.',items:[],primary_label:'Try again',footer:'You can close this and keep working.'}} busy={false} error="" onClose={onHelpClosed} onOpen={()=>setAttempt(x=>x+1)}/>;
+  if(!display)return null;
+  return <WelcomeUpdateDialog manual={manual} notice={display} busy={busy} error={error} onClose={close} onOpen={()=>dismiss(display.primary_route)} onNavigate={route=>dismiss(route)}/>;
+}
+window.RoleHelpExperience=RoleHelpExperience;
+
+const HELP_ROUTE_HINTS={
+ today:'Start with your team’s saved activity and upcoming work.',parent:'See every linked child, then open the right child’s profile.',
+ roster:'Find an athlete and review their team, skills and records.',skills:'Record coach assessments and notes for the selected team.',
+ skilltree:'Review coach assessments. Athletes can record separate practice reports.',
+ family_forms:'Choose a child before completing their medical details and guardian confirmation.',medical:'Review the selected child’s safety information. Flagged history needs family confirmation.',
+ billing:'Review recorded child balances and registration receipts. Provider totals are separate.',registration:'Review registrations and payment evidence before accepting or following up.',
+ admin:'Manage gym settings, family links, invitations and programs.',schedule:'See recorded classes and team sessions.',
+ score:'Enter every required category for the selected team before saving a run.',ai_judge:'Review video-based analysis. Unscored does not mean zero.',
+ messages:'Open conversations with your gym and check unread messages.',announcements:'Read updates published for your gym or team.',
+ routine:'Open the routine and counts for your selected athlete or team.',reel:'See saved athlete progress and recent wins.',
+ practice:'Prepare practice blocks and plans for your team.',forms:'Manage coaching evaluations and their responses.',
+ volunteers:'Review volunteer roles and assignments.',uniforms:'Review uniform information and orders.',
+ leads:'Review prospective families and their recorded follow-ups.',birthdays:'Review birthdays from attributable saved dates.',
+ profile:'Review your own account details.',arcade:'Open the gym’s practice games.',__more:'Find the rest of the tools available for your role.',
+};
+function HZHelpTip({label,text}) { return <button type="button" className="hz-help-tip-button" aria-label={`Explain ${label}`} data-hz-help={text} data-hz-help-button="true">i</button>; }
+window.HZHelpTip=HZHelpTip;
+
+function ContextualHelp() {
+  const [tip,setTip]=React.useState(null);
+  const active=React.useRef(null),showTimer=React.useRef(null),hideTimer=React.useRef(null),tipRef=React.useRef(null);
+  const hide=React.useCallback(()=>{
+    clearTimeout(showTimer.current);clearTimeout(hideTimer.current);
+    if(active.current){const {element,description}=active.current;const ids=(element.getAttribute('aria-describedby') || '').split(/\s+/).filter(id=>id && id!=='hz-context-help');
+      if(ids.length)element.setAttribute('aria-describedby',ids.join(' '));else if(description)element.setAttribute('aria-describedby',description);else element.removeAttribute('aria-describedby');}
+    active.current=null;setTip(null);
+  },[]);
+  React.useEffect(()=>{
+    const find=e=>e.target?.closest?.('[data-hz-help]');
+    const show=element=>{
+      clearTimeout(showTimer.current);clearTimeout(hideTimer.current);
+      if(active.current?.element===element)return;
+      hide();
+      const modal=document.querySelector('[role="dialog"][aria-modal="true"]');
+      if(modal && !modal.contains(element))return;
+      const text=element?.getAttribute('data-hz-help');if(!text)return;
+      const rect=element.getBoundingClientRect(),description=element.getAttribute('aria-describedby');
+      active.current={element,description};element.setAttribute('aria-describedby',`${description || ''} hz-context-help`.trim());
+      setTip({text,left:Math.max(12,Math.min(rect.left,window.innerWidth-332)),top:rect.bottom+8,anchorTop:rect.top});
+    };
+    const leave=e=>{
+      const related=e.relatedTarget;
+      if(active.current?.element?.contains(related) || tipRef.current?.contains(related))return;
+      clearTimeout(showTimer.current);hideTimer.current=setTimeout(hide,180);
+    };
+    const over=e=>{
+      if(e.pointerType==='touch')return;
+      if(tipRef.current?.contains(e.target)){clearTimeout(hideTimer.current);return;}
+      const element=find(e);if(!element)return;
+      clearTimeout(hideTimer.current);clearTimeout(showTimer.current);showTimer.current=setTimeout(()=>show(element),350);
+    };
+    const focus=e=>{const element=find(e);if(element)show(element);else hide();};
+    const click=e=>{const element=find(e);if(element?.hasAttribute('data-hz-help-button'))show(element);else hide();};
+    const key=e=>{if(e.key==='Escape' && active.current){e.preventDefault();e.stopPropagation();hide();}};
+    document.addEventListener('pointerover',over);document.addEventListener('pointerout',leave);
+    document.addEventListener('focusin',focus);document.addEventListener('focusout',leave);
+    document.addEventListener('click',click);document.addEventListener('keydown',key,true);
+    window.addEventListener('scroll',hide,true);window.addEventListener('resize',hide);window.addEventListener('hashchange',hide);
+    return ()=>{
+      document.removeEventListener('pointerover',over);document.removeEventListener('pointerout',leave);document.removeEventListener('focusin',focus);document.removeEventListener('focusout',leave);document.removeEventListener('click',click);document.removeEventListener('keydown',key,true);
+      window.removeEventListener('scroll',hide,true);window.removeEventListener('resize',hide);window.removeEventListener('hashchange',hide);hide();
+    };
+  },[hide]);
+  React.useLayoutEffect(()=>{
+    if(!tip || !tipRef.current)return;
+    const rect=tipRef.current.getBoundingClientRect();
+    const top=rect.bottom>window.innerHeight-12?Math.max(12,tip.anchorTop-rect.height-8):tip.top;
+    const left=Math.max(12,Math.min(tip.left,window.innerWidth-rect.width-12));
+    if(top!==tip.top || left!==tip.left)setTip({...tip,top,left});
+  },[tip]);
+  return tip?<div ref={tipRef} id="hz-context-help" role="tooltip" className="hz-context-help" style={{left:tip.left,top:tip.top}}>{tip.text}</div>:null;
+}
+window.ContextualHelp=ContextualHelp;
+
+function HelpBeforeGym({session,children}) {
+  const [role,setRole]=React.useState(null);
+  return <>{children}<button className="hz-btn" style={{position:'fixed',bottom:16,right:16,zIndex:100}} aria-label="Help and what’s new" onClick={()=>setRole(session.actualProfile?.role || session.profile?.role)}>?</button>
+    <RoleHelpExperience session={session} requestedRole={role} onHelpClosed={()=>setRole(null)} navigate={()=>{}}/><ContextualHelp/></>;
 }

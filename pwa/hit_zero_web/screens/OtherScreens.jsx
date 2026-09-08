@@ -1011,7 +1011,7 @@ function ParentDashboard({ snap, session, navigate, pushToast }) {
       </div>
 
       {myKids.length > 0 && <section aria-label="Your linked children" className="hz-card" style={{marginBottom:20}}>
-        <div className="hz-eyebrow" style={{marginBottom:10}}>{myKids.length} linked {myKids.length===1?'child':'children'}</div>
+        <div className="hz-eyebrow" style={{marginBottom:10}}>{myKids.length} linked {myKids.length===1?'child':'children'} {window.HZHelpTip && <window.HZHelpTip label="linked children" text="These are the children linked to your signed-in parent account. Tap a name to open their profile. Ask staff to review missing family links."/>}</div>
         <div style={{display:'flex',flexWrap:'wrap',gap:10}}>{myKids.map(kid=><button key={kid.id} className="hz-btn" onClick={()=>navigate('athlete/'+kid.id)}>{kid.display_name} · {(snap.teams || []).find(t=>t.id===kid.team_id)?.name || 'View profile'}</button>)}</div>
         <p style={{fontSize:12,color:'var(--hz-dim)',marginBottom:0}}>Choose a child to open their profile. Missing someone? Staff can review your family links in Program → Family setup.</p>
       </section>}
@@ -1236,10 +1236,11 @@ function QuickChip({ icon, label, onClick }) {
 }
 
 function MiniBox({ label, value, sub, accent }) {
+  const hints={'Class payments':'Saved registration receipts. These are separate from posted season charges.','Season balance':'The posted season ledger for your linked children. It does not include unallocated Square totals.','Forms':'Each child needs their own confirmed packet. A completed sibling packet does not count.','Ready':'Based on recorded skill assessments. No assessment means no measured readiness yet.','Attend':'Based on recorded attendance; missing records do not count as absences.'};
   const compact = String(value ?? '').length > 8;
   return (
     <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
-      <div style={{ fontSize: 9, color: 'var(--hz-dim)', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 700 }}>{label}</div>
+      <div style={{ fontSize: 9, color: 'var(--hz-dim)', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 700 }}>{label}{hints[label] && window.HZHelpTip && <window.HZHelpTip label={label} text={hints[label]}/>}</div>
       <div className="hz-display" style={{ fontSize: compact ? 15 : 22, color: accent || '#fff', marginTop: 2, lineHeight: 1.05 }}>{value}</div>
       {sub && <div style={{ fontSize: 10.5, color: 'var(--hz-dim)', marginTop: 5, lineHeight: 1.35 }}>{sub}</div>}
     </div>
@@ -2148,7 +2149,7 @@ function LaunchAccessManager({ snap, session }) {
     <div className="hz-card" style={{ marginBottom: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', marginBottom: 18 }}>
         <div>
-          <div className="hz-eyebrow" style={{ marginBottom: 6 }}>Family setup</div>
+          <div className="hz-eyebrow" style={{ marginBottom: 6 }}>Family setup {window.HZHelpTip && <window.HZHelpTip label="family access" text="Search an existing parent, check every linked child and choose the correct athlete to add. Existing parents do not need another invitation for a sibling."/>}</div>
           <div style={{ fontSize: 17, fontWeight: 800 }}>Manage every parent and every child.</div>
           <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>Registrations and payments still run through Registration. Approve accounts, review linked children, add another child, and create invitations here. Existing parents do not need a new invite for each child.</div>
         </div>
@@ -2256,7 +2257,7 @@ function LaunchAccessManager({ snap, session }) {
 	                            <option key={a.id} value={a.id}>{a.display_name}{a.age ? ` · age ${a.age}` : ''} · {queue.teams.find(t=>t.id===a.team_id)?.name || 'Team not available'}</option>
 	                          ))}
 	                        </select>
-	                        <button className="hz-btn hz-btn-primary hz-btn-sm" disabled={!selected || (String(selected).startsWith('__create_from_') && !linkTeams[parent.id]) || busyId === parent.id + 'link'} onClick={() => linkParent(parent, selected, packet)}>
+	                        <button data-hz-help="Grants this parent access to the selected child. Existing links and the child’s medical and waiver history stay unchanged." className="hz-btn hz-btn-primary hz-btn-sm" disabled={!selected || (String(selected).startsWith('__create_from_') && !linkTeams[parent.id]) || busyId === parent.id + 'link'} onClick={() => linkParent(parent, selected, packet)}>
 	                          {busyId === parent.id + 'link' ? 'Working...' : String(selected).startsWith('__create_from_') ? 'Create / link' : 'Link'}
 	                        </button>
 	                      </div>
@@ -2296,7 +2297,7 @@ function LaunchAccessManager({ snap, session }) {
               <input className="hz-input" type="number" min="1" max="250" value={invite.max_uses} onChange={e => setInvite({ ...invite, max_uses: e.target.value })} />
               <input className="hz-input" type="number" min="1" max="180" value={invite.expires_in_days} onChange={e => setInvite({ ...invite, expires_in_days: e.target.value })} />
             </div>
-            <button className="hz-btn hz-btn-primary" disabled={busyId === 'invite'}>{busyId === 'invite' ? 'Creating...' : 'Create invite link'}</button>
+            <button data-hz-help="Creates an invitation link to copy and share. Creating the link does not send an email." className="hz-btn hz-btn-primary" disabled={busyId === 'invite'}>{busyId === 'invite' ? 'Creating...' : 'Create invite link'}</button>
           </form>
           {createdInvite?.url && (
             <div style={{ marginTop: 12, padding: 12, borderRadius: 10, background: 'rgba(39,207,215,0.08)', color: 'var(--hz-teal)', fontSize: 12, lineHeight: 1.45, wordBreak: 'break-all' }}>

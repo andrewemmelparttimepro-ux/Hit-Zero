@@ -1,3 +1,4 @@
+import { roleHelp, HELP_ROLES } from '../_shared/role-help.ts';
 import { authorizeCheckout, issueCheckoutAccess } from '../_shared/checkout-access.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
@@ -1434,30 +1435,40 @@ async function createInvite(profile: any, body: any) {
 // Targeted product updates are server-managed Auth app metadata, never browser
 // preferences. A shared receipt lets one person with two accounts acknowledge once.
 export async function welcomeNotice(profile:any, body:any) {
-  if (!profile?.id || profile.role !== 'owner') return json({ok:true,notice:null});
+  if (!profile?.id || !HELP_ROLES.includes(profile.role)) return json({ok:true,notice:null,guide:null});
   const {data:own,error:ownError}=await supa.auth.admin.getUserById(profile.id);
   if (ownError) throw ownError;
+  let receiptUser=own.user;
   const pointer=own.user?.app_metadata?.hz_welcome_notice;
-  if (!pointer?.id || !pointer?.receipt_user_id) return json({ok:true,notice:null});
-  const canonical=pointer.receipt_user_id===profile.id ? {data:own,error:null}
-    : await supa.auth.admin.getUserById(pointer.receipt_user_id);
-  if (canonical.error) throw canonical.error;
-  const metadata=canonical.data.user?.app_metadata || {};
-  const notice=metadata.hz_welcome_notice;
-  if (!notice || notice.id!==pointer.id || notice.program_id!==profile.program_id
-      || !Array.isArray(notice.audience) || !notice.audience.includes(profile.id)) return json({ok:true,notice:null});
-  if (body.action==='dismiss_welcome_notice') {
-    if (body.notice_id!==notice.id) return json({error:'This update changed. Reopen it before dismissing.'},409);
-    if (!notice.acknowledged_at) {
-      const {error}=await supa.auth.admin.updateUserById(pointer.receipt_user_id,{
-        app_metadata:{...metadata,hz_welcome_notice:{...notice,acknowledged_at:new Date().toISOString()}},
-      });
-      if (error) throw error;
-    }
-    return json({ok:true,notice:null});
+  // Preserve the existing shared receipt for the explicitly targeted owner.
+  if (profile.role==='owner' && pointer?.receipt_user_id) {
+    const canonical=pointer.receipt_user_id===profile.id ? {data:own,error:null}
+      : await supa.auth.admin.getUserById(pointer.receipt_user_id);
+    if(canonical.error)throw canonical.error;
+    const previous=canonical.data.user?.app_metadata?.hz_welcome_notice;
+    if(previous?.id===pointer.id && previous?.program_id===profile.program_id && previous?.audience?.includes(profile.id))receiptUser=canonical.data.user;
   }
-  if (notice.acknowledged_at) return json({ok:true,notice:null});
-  return json({ok:true,notice:{id:notice.id,title:notice.title,intro:notice.intro,items:notice.items,footer:notice.footer}});
+  const metadata=receiptUser?.app_metadata || {};
+  const adapt=(help:any)=> !profile.program_id ? {...help,intro:'First connect this account to your gym through an invitation or staff approval. These tools become available after that step.',primary_label:'Back to account setup',primary_route:null,items:help.items.map((item:any)=>({...item,route:null}))} : help;
+  const actualGuide=adapt(roleHelp(profile.role)!);
+  const requestedRole=['owner','coach'].includes(profile.role) && HELP_ROLES.includes(body.help_role) ? body.help_role : profile.role;
+  const guide=adapt(roleHelp(requestedRole));
+  const legacy=metadata.hz_welcome_notice;
+  const legacyAcknowledged=profile.role==='owner' && legacy?.id==='owner-update-2026-09-08' && legacy?.acknowledged_at;
+  const seen=metadata.hz_help_seen || {};
+  if(body.action==='dismiss_welcome_notice') {
+    if(body.notice_id!==actualGuide.id && !(legacy?.id===body.notice_id && legacy?.audience?.includes(profile.id)))return json({error:'This guide changed. Reopen it before dismissing.'},409);
+    const stamp=new Date().toISOString();
+    if(!seen[actualGuide.id]) {
+      const next:Record<string,any>={...metadata,hz_help_seen:{...seen,[actualGuide.id]:stamp}};
+      if(legacy?.audience?.includes(profile.id))next.hz_welcome_notice={...legacy,acknowledged_at:legacy.acknowledged_at || stamp};
+      const {error}=await supa.auth.admin.updateUserById(receiptUser!.id,{app_metadata:next});
+      if(error)throw error;
+    }
+    return json({ok:true,notice:null,guide});
+  }
+  const notice=seen[actualGuide.id] || legacyAcknowledged ? null : actualGuide;
+  return json({ok:true,notice,guide});
 }
 
 export async function handleRequest(req: Request) {
