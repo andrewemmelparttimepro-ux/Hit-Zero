@@ -28,14 +28,14 @@ function StaffLaunchAlerts({ session, navigate, snap, pushToast }) {
       (snap?.parent_links || []).map(pl => (snap?.athletes || []).find(a => a.id === pl.athlete_id)?.profile_id).filter(Boolean)
     );
     return (snap?.profiles || []).filter(p => {
-      if (!p.program_id) return false;
+      if (!p.program_id || p.program_id !== (session?.actualProfile?.program_id || session?.profile?.program_id)) return false;
       const complete = (packets.get(p.id)?.completion_status || 'incomplete') === 'complete';
       if (complete) return false;
       if (p.role === 'parent') return true;
       if (p.role === 'athlete') return !parentLinkedAthleteProfiles.has(p.id);
       return false;
     });
-  }, [snap]);
+  }, [snap, session]);
 
   const nudgePacketFamilies = async () => {
     if (nudging || !packetGaps.length) return;
@@ -91,12 +91,12 @@ function StaffLaunchAlerts({ session, navigate, snap, pushToast }) {
       gap: 18,
     }}>
       <div>
-        <div className="hz-eyebrow" style={{ color: 'var(--hz-amber)', marginBottom: 6 }}>Action needed</div>
+        <div className="hz-eyebrow" style={{ color: 'var(--hz-amber)', marginBottom: 6 }}>Review family setup</div>
         <div style={{ fontWeight: 900, fontSize: 18 }}>
           {[
             pendingCount ? `${pendingCount} access request${pendingCount === 1 ? '' : 's'} waiting` : null,
-            linkCount ? `${linkCount} approved parent${linkCount === 1 ? '' : 's'} need athlete links` : null,
-            packetCount ? `${packetCount} family packet${packetCount === 1 ? '' : 's'} outstanding` : null,
+            linkCount ? `${linkCount} approved parent${linkCount === 1 ? '' : 's'} have no athlete link` : null,
+            packetCount ? `${packetCount} family packet${packetCount === 1 ? '' : 's'} not complete` : null,
           ].filter(Boolean).join(' · ') || 'All caught up'}
         </div>
         <div style={{ color: 'var(--hz-dim)', fontSize: 12, marginTop: 4 }}>
@@ -108,7 +108,7 @@ function StaffLaunchAlerts({ session, navigate, snap, pushToast }) {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
         {packetCount > 0 && (
           <button className="hz-btn" onClick={nudgePacketFamilies} disabled={nudging}>
-            <HZIcon name="megaphone" size={13}/> {nudging ? 'Posting…' : 'Nudge families'}
+            <HZIcon name="megaphone" size={13}/> {nudging ? 'Posting…' : 'Post reminder to all parents'}
           </button>
         )}
         <button className="hz-btn hz-btn-primary" onClick={() => navigate('admin')}>
