@@ -1160,18 +1160,31 @@ function PublicPaymentReceipt({ receipt, recurring, monthly }) {
     );
 }
 
+function checkoutRetryPolicy(code) {
+  if(['already_paid','registration_not_found','registration_program_mismatch','payment_review_required'].includes(code))return 'review';
+  if(['card_declined','missing_source_id','bad_amount','amount_mismatch','no_payable_item','registration_required','recurring_authorization_required','recurring_terms_changed','recurring_card_setup_failed','square_not_connected','checkout_disabled'].includes(code))return 'new_attempt';
+  return 'same_attempt';
+}
+
 function PublicPaymentStep({ klass, program, form, registrationId, registrationIds = [] }) {
   const [config, setConfig] = _useS_pb(null);
   const [card, setCard] = _useS_pb(null);
   const [loading, setLoading] = _useS_pb(true);
   const [paying, setPaying] = _useS_pb(false);
   const [error, setError] = _useS_pb('');
+  const [pendingAttempt,setPendingAttempt]=_useS_pb(false);
+  const [reviewRequired,setReviewRequired]=_useS_pb(false);
+  const pendingRequest=_useR_pb(null);
+  const pendingScope=_useR_pb(null);
+  const inFlight=_useR_pb(false);
   const [receipt, setReceipt] = _useS_pb(null);
   const [recurringAccepted, setRecurringAccepted] = _useS_pb(false);
   const cardId = _useR_pb(`sq-card-${Math.random().toString(36).slice(2)}`);
   const monthly = isMonthlyPrice(klass);
   const recurring = recurringTermsFor(klass);
   const hasDiscount = Number(klass.discount_amount_cents || 0) > 0;
+  const checkoutScope=JSON.stringify([program?.id || klass?.program_id,[...(registrationIds.length?registrationIds:[registrationId])].sort(),Number(klass.price_cents || 0),recurring?.termsVersion || null]);
+  const scopeChanged=!!pendingScope.current && pendingScope.current!==checkoutScope;
 
   _useE_pb(() => {
     let cancelled = false;
@@ -1222,48 +1235,40 @@ function PublicPaymentStep({ klass, program, form, registrationId, registrationI
   }, [klass?.id, program?.id, registrationId]);
 
   async function payNow() {
-    if (!card || !config) return;
-    setPaying(true);
-    setError('');
+    if (!card || !config || inFlight.current || reviewRequired || scopeChanged) return;
+    inFlight.current=true;setPaying(true);setError('');
+    let timer;
     try {
-      const tokenResult = await card.tokenize();
-      if (tokenResult.status !== 'OK') {
-        const msg = (tokenResult.errors || []).map(e => e.message || e.detail).filter(Boolean).join(' ');
-        throw new Error(msg || 'Check the card details and try again.');
+      if(!pendingRequest.current){
+        const tokenResult=await card.tokenize();
+        if(tokenResult.status!=='OK')throw new Error((tokenResult.errors || []).map(e=>e.message || e.detail).filter(Boolean).join(' ') || 'Check the card details and try again.');
+        pendingScope.current=checkoutScope;
+        pendingRequest.current={
+          program_id:program?.id || klass?.program_id,program_slug:program?.slug || klass?.program_slug || 'mca',
+          source_id:tokenResult.token,amount_cents:Number(klass.price_cents || 0),currency:config.currency || 'USD',
+          buyer_email_address:form.parentEmail,buyer_full_name:form.parentName,
+          registration_id:registrationIds.length<=1?registrationIds[0] || registrationId:undefined,
+          registration_ids:registrationIds.length>1?registrationIds:undefined,
+          recurring_authorization:recurring?{accepted:recurringAccepted,terms_version:recurring.termsVersion}:undefined,
+        };
       }
-      const fnBase = pbFunctionsBase();
-      const anon = pbAnonKey();
-      const res = await fetch(`${fnBase}/functions/v1/square-checkout-v1`, {
-        method: 'POST',
-        headers: {
-          apikey: anon,
-          Authorization: `Bearer ${anon}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          program_id: program?.id || klass?.program_id,
-          program_slug: program?.slug || klass?.program_slug || 'mca',
-          source_id: tokenResult.token,
-          amount_cents: Number(klass.price_cents || 0),
-          currency: config.currency || 'USD',
-          buyer_email_address: form.parentEmail,
-          buyer_full_name: form.parentName,
-          registration_id: registrationIds.length <= 1 ? registrationIds[0] || registrationId : undefined,
-          registration_ids: registrationIds.length > 1 ? registrationIds : undefined,
-          recurring_authorization: recurring ? {
-            accepted: recurringAccepted,
-            terms_version: recurring.termsVersion,
-          } : undefined,
-          note: `Hit Zero booking · ${klass.name}${registrationIds.length > 1 ? ` · ${registrationIds.length} registrations` : ''}`,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) throw new Error(data.message || 'Payment failed. Please try again.');
-      setReceipt({ ...(data.payment || {}), recurring_setup: data.recurring_setup || null });
-    } catch (err) {
-      setError(err.message || 'Payment failed. Please try again.');
+      setPendingAttempt(true);
+      const controller=new AbortController();timer=window.setTimeout(()=>controller.abort(),45000);
+      const anon=pbAnonKey();
+      const res=await fetch(`${pbFunctionsBase()}/functions/v1/square-checkout-v1`,{method:'POST',headers:{apikey:anon,Authorization:`Bearer ${anon}`,'Content-Type':'application/json'},body:JSON.stringify(pendingRequest.current),signal:controller.signal});
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok || !data.ok){
+        const policy=checkoutRetryPolicy(data.code);
+        if(policy==='new_attempt'){pendingRequest.current=null;pendingScope.current=null;setPendingAttempt(false);}
+        if(policy==='review'){setReviewRequired(true);}
+        throw new Error(data.message || 'Payment confirmation is unavailable. Check this same attempt before starting another payment.');
+      }
+      pendingRequest.current=null;pendingScope.current=null;setPendingAttempt(false);
+      setReceipt({...(data.payment || {}),recurring_setup:data.recurring_setup || null});
+    } catch(err){
+      setError(err?.name==='AbortError' || (err instanceof TypeError && pendingRequest.current)?'Connection lost while waiting for payment confirmation. Use Check payment to retry this same attempt. Do not start another payment.':err.message || 'Payment confirmation is unavailable.');
     } finally {
-      setPaying(false);
+      if(timer)window.clearTimeout(timer);inFlight.current=false;setPaying(false);
     }
   }
 
@@ -1290,7 +1295,7 @@ function PublicPaymentStep({ klass, program, form, registrationId, registrationI
             type="checkbox"
             checked={recurringAccepted}
             onChange={event => setRecurringAccepted(event.target.checked)}
-            disabled={paying}
+            disabled={paying || pendingAttempt || reviewRequired}
             style={{ width: 18, height: 18, marginTop: 1, flex: '0 0 auto' }}
           />
           <span>{recurringAuthorizationText(klass)}</span>
@@ -1298,19 +1303,21 @@ function PublicPaymentStep({ klass, program, form, registrationId, registrationI
       )}
       <div id={cardId.current} style={{ minHeight: 88, padding: 12, borderRadius: 10, background: '#fff' }} />
       {loading && <SkeletonLine width="64%" height={11} style={{ marginTop: 12 }} />}
-      {error && (
+      {(error || scopeChanged) && (
         <div role="alert" style={{ marginTop: 10, padding: '10px 12px', background: 'rgba(255,94,108,0.08)', borderRadius: 10, border: '1px solid rgba(255,94,108,0.25)', color: 'var(--hz-pink)', fontSize: 12.5 }}>
-          {error} Registration is not complete yet. Please try again, or email {program?.public_email || 'teammca@mcaminot.com'} if payment will not load.
+          {scopeChanged?'Checkout changed while an earlier payment is still being confirmed. Return to that registration or ask the gym to review it before paying again.':error} For help reviewing this payment, contact {program?.public_email || 'teammca@mcaminot.com'}.
         </div>
       )}
       <button
         className="hz-btn hz-btn-primary"
         onClick={payNow}
-        disabled={loading || paying || !card || (recurring && !recurringAccepted)}
+        disabled={loading || paying || !card || reviewRequired || scopeChanged || (recurring && !recurringAccepted && !pendingAttempt)}
         style={{ width: '100%', justifyContent: 'center', minHeight: 46, marginTop: 14 }}
       >
         {paying
-          ? 'Processing...'
+          ? 'Checking payment...'
+          : reviewRequired || scopeChanged ? 'Payment needs review'
+          : pendingAttempt ? 'Check payment'
           : recurring && !recurringAccepted
             ? 'Accept the draft schedule to continue'
             : `Pay ${monthly ? "today's " : ''}${fmtCents(klass.price_cents)} with Square`}

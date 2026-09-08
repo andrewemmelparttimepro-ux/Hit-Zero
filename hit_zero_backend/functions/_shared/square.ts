@@ -185,12 +185,19 @@ function buildQuery(params: Record<string, string | number | undefined | null>) 
   return qs ? `?${qs}` : '';
 }
 
+export class SquareRequestError extends Error {
+  status: number;
+  codes: string[];
+  constructor(message: string,status: number,codes: string[]) {super(message);this.name='SquareRequestError';this.status=status;this.codes=codes;}
+}
+
 export async function squareFetch(path: string, options: {
   accessToken?: string | null;
   method?: string;
   env?: 'sandbox' | 'production';
   query?: Record<string, string | number | undefined | null>;
   body?: unknown;
+  timeoutMs?: number;
 } = {}) {
   const env = options.env ?? SQUARE_ENV;
   const headers: Record<string, string> = {
@@ -204,6 +211,7 @@ export async function squareFetch(path: string, options: {
       method: options.method ?? (options.body ? 'POST' : 'GET'),
       headers,
       body: options.body ? JSON.stringify(options.body) : undefined,
+      signal: options.timeoutMs ? AbortSignal.timeout(options.timeoutMs) : undefined,
     },
   );
   const raw = await res.text();
@@ -212,7 +220,7 @@ export async function squareFetch(path: string, options: {
     const msg = typeof data === 'string'
       ? data
       : data?.errors?.map((e: any) => e.detail || e.code).join('; ') || JSON.stringify(data);
-    throw new Error(`${path} ${res.status} ${msg}`);
+    throw new SquareRequestError(`${path} ${res.status} ${msg}`,res.status,Array.isArray(data?.errors)?data.errors.map((e:any)=>String(e.code || '')):[]);
   }
   return data;
 }

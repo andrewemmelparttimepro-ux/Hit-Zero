@@ -27,7 +27,7 @@
 //     "buyer_full_name": "...",         // optional
 //     "registration_id": "...",         // required unless registration_ids is supplied
 //     "registration_ids": ["..."],       // optional group checkout
-//     "idempotency_key": "...",         // optional; defaults to crypto.randomUUID()
+//     "idempotency_key": "...",         // legacy input; server owns the charge identity
 //     "note": "..."                     // optional human-readable note
 //   }
 
@@ -40,6 +40,7 @@ import {
   getSquareConnection,
   getUsableAccessToken,
   squareFetch,
+  SquareRequestError,
 } from '../_shared/square.ts';
 import {
   ensureSquareRecurringPlan,
@@ -233,7 +234,7 @@ export async function handleRequest(req: Request) {
   if (registrationIds.length) {
     const { data: regRows, error: regErr } = await supa
       .from('registrations')
-      .select('id, program_id, window_id, class_id, status, payment_status, parent_email, parent_name, parent_phone, athlete_name, intake_metadata, discount_code_id, discount_code, list_amount_cents, discount_amount_cents, final_amount_cents')
+      .select('id, program_id, window_id, class_id, status, payment_status, parent_email, parent_name, parent_phone, athlete_name, intake_metadata, discount_code_id, discount_code, list_amount_cents, discount_amount_cents, final_amount_cents, active_checkout_intent_id')
       .in('id', registrationIds);
     if (regErr) return bad(500, 'registration_lookup_failed', regErr.message);
     const byId = new Map((regRows || []).map((row: any) => [row.id, row]));
@@ -299,12 +300,8 @@ export async function handleRequest(req: Request) {
     return bad(502, 'square_token_unavailable', err instanceof Error ? err.message : 'token error');
   }
 
-  const idempotencyKey = body.idempotency_key || crypto.randomUUID();
+  let idempotencyKey: string;
   const currency = (settings.currency || 'USD').toUpperCase();
-
-  const note = body.note || (registrations.length
-    ? `Hit Zero registration · ${registration?.parent_name || ''}`.trim()
-    : `Hit Zero public checkout`);
 
   let recurringSetup: any = null;
   let paymentSourceId = body.source_id;
@@ -359,6 +356,11 @@ export async function handleRequest(req: Request) {
     recurringSetup = { schedule: scheduleResult.data, prepared, terms };
     squareCustomerId = scheduleResult.data.external_customer_id || null;
     squareCardId = scheduleResult.data.external_card_id || null;
+    if(registration.active_checkout_intent_id){
+      const {data:priorIntent,error:priorError}=await supa.from('checkout_intents').select('status').eq('id',registration.active_checkout_intent_id).eq('program_id',programId).maybeSingle();
+      if(priorError)return bad(503,'payment_confirmation_pending','Could not verify the earlier payment. Do not start another payment.');
+      if(priorIntent?.status==='failed' || priorIntent?.status==='canceled')squareCardId=null;
+    }
 
     try {
       if (!squareCustomerId) {
@@ -383,12 +385,14 @@ export async function handleRequest(req: Request) {
         }).eq('id', recurringSetup.schedule.id);
       }
       if (!squareCardId) {
+        const tokenDigest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(body.source_id));
+        const cardAttempt=Array.from(new Uint8Array(tokenDigest),b=>b.toString(16).padStart(2,'0')).join('').slice(0,16);
         const cardResult = await squareFetch('/v2/cards', {
           accessToken,
           env: connection.environment,
           method: 'POST',
           body: {
-            idempotency_key: squareIdempotencyKey(registration.id, 'card'),
+            idempotency_key: `${registration.id.slice(0,24)}-${cardAttempt}`,
             source_id: body.source_id,
             card: {
               customer_id: squareCustomerId,
@@ -412,94 +416,56 @@ export async function handleRequest(req: Request) {
     }
   }
 
-  // Call Square CreatePayment
-  let payment: any;
-  try {
-    const res = await squareFetch('/v2/payments', {
-      accessToken,
-      env: connection.environment,
-      method: 'POST',
-      body: {
-        source_id: paymentSourceId,
-        idempotency_key: idempotencyKey,
-        amount_money: {
-          amount: body.amount_cents,
-          currency,
-        },
-        location_id: connection.external_location_id,
-        autocomplete: true,
-        buyer_email_address: body.buyer_email_address || registration?.parent_email || undefined,
-        customer_id: squareCustomerId || undefined,
-        reference_id: registrations.length === 1 ? registration?.id : undefined,
-        note: note.slice(0, 500),
-      },
-    });
-    payment = res.payment;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Square error';
-    // Surface a sanitized error code for the website to display, but log full
-    // detail in payment_metadata if we have a registration to attach it to.
-    if (registrations.length) {
-      await Promise.all(registrations.map((row) => supa.from('registrations').update({
-        payment_status: 'failed',
-        payment_provider: 'square',
-        payment_metadata: {
-          last_attempt_at: new Date().toISOString(),
-          last_error: msg,
-          idempotency_key: idempotencyKey,
-        },
-      }).eq('id', row.id).not('payment_status','in','(paid,comped,refunded)')));
+  // Reserve one durable charge identity before calling Square. The browser cannot
+  // rotate it after a lost response or change its source while confirmation is pending.
+  const providerRequest={
+    source_id:paymentSourceId,
+    amount_money:{amount:body.amount_cents,currency},
+    location_id:connection.external_location_id,
+    autocomplete:true,
+    buyer_email_address:registration?.parent_email || undefined,
+    customer_id:squareCustomerId || undefined,
+    note:'Hit Zero registration payment',
+  };
+  const fingerprintBytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(providerRequest)));
+  const fingerprint=Array.from(new Uint8Array(fingerprintBytes),b=>b.toString(16).padStart(2,'0')).join('');
+  const {data:intent,error:intentError}=await supa.rpc('begin_checkout_intent_v1',{
+    p_program_id:programId,p_registration_ids:registrationIds,p_amount_cents:body.amount_cents,
+    p_currency:currency,p_location_id:connection.external_location_id,p_fingerprint:fingerprint,
+  });
+  if(intentError || !intent?.id){const conflict=['23514','P0001'].includes(intentError?.code || '');return bad(conflict?409:503,intentError?.code==='P0001'?'payment_review_required':'checkout_intent_unavailable',conflict?(intentError?.message || 'Payment needs review'):'Could not prepare checkout confirmation. Review any earlier payment before retrying.');}
+  idempotencyKey=intent.id;
+  let payment:any=intent.provider_result || null;
+  if(intent.provider_payment_id){
+    try{const current=await squareFetch(`/v2/payments/${encodeURIComponent(intent.provider_payment_id)}`,{accessToken,env:connection.environment,timeoutMs:15000});payment=current.payment;if(!payment?.id)throw new Error('Missing payment');}
+    catch{return bad(409,'payment_confirmation_pending','The existing payment could not be checked right now. No new charge was attempted. Check this same attempt again shortly.');}
+  }
+  if(!payment){
+    try {
+      const result=await squareFetch('/v2/payments',{
+        accessToken,env:connection.environment,method:'POST',timeoutMs:20000,
+        body:{...providerRequest,idempotency_key:idempotencyKey,reference_id:intent.id},
+      });
+      payment=result.payment;
+      if(!payment?.id)throw new Error('No provider payment confirmation');
+    } catch(err){
+      const declinedCodes=new Set(['CARD_DECLINED','GENERIC_DECLINE','INSUFFICIENT_FUNDS','CARD_EXPIRED','CVV_FAILURE','ADDRESS_VERIFICATION_FAILURE']);
+      const definitive=err instanceof SquareRequestError && [400,402].includes(err.status) && err.codes.length>0 && err.codes.every(code=>declinedCodes.has(code));
+      const code=definitive?(err as SquareRequestError).codes[0]:'payment_confirmation_unknown';
+      await supa.rpc('record_checkout_failure_v1',{p_intent_id:intent.id,p_error_code:code,p_definitive:definitive});
+      if(recurringSetup?.schedule?.id)await supa.from('recurring_tuition_schedules').update({status:'payment_pending',last_error:code}).eq('id',recurringSetup.schedule.id);
+      return bad(definitive?402:409,definitive?'card_declined':'payment_confirmation_pending',definitive?'Square declined this card. No payment was completed; try another card.':'The payment result is not confirmed yet. Do not start another payment. Keep this page open or ask the gym to review the attempt.');
     }
-    if (recurringSetup?.schedule?.id) {
-      await supa.from('recurring_tuition_schedules').update({
-        status: 'payment_pending',
-        last_error: msg,
-      }).eq('id', recurringSetup.schedule.id);
-    }
-    return bad(502, 'square_payment_failed', msg);
   }
-
-  if (!payment) {
-    return bad(502, 'square_payment_empty', 'Square accepted the request but returned no payment object');
+  const {error:settleError}=await supa.rpc('settle_checkout_intent_v1',{p_intent_id:intent.id,p_payment:payment});
+  if(settleError){
+    // Preserve provider evidence for reconciliation. Do not report the registration
+    // settled when any member of its group could not be written atomically.
+    await supa.from('checkout_intents').update({status:'unknown',provider_payment_id:payment.id,provider_result:payment,last_error_code:'registration_reconciliation_required',updated_at:new Date().toISOString()}).eq('id',intent.id).not('status','eq','completed');
+    return bad(409,'registration_sync_pending','Square returned a payment result, but registration confirmation needs review. Do not pay again. Contact the gym with this checkout attempt: '+intent.id);
   }
-
-  const paymentStatus = String(payment.status || '').toUpperCase();
-  const paymentSucceeded = paymentStatus === 'COMPLETED';
-
-  // Mirror payment back into the registration
-  if (registrations.length) {
-    const isPaid = paymentSucceeded;
-    const updatedAt = payment.updated_at || payment.created_at || new Date().toISOString();
-    const itemByRegistrationId = new Map(paymentItems.map((item) => [item.registration_id, item]));
-
-    await Promise.all(registrations.map((row) => {
-      const item = itemByRegistrationId.get(row.id);
-      return supa.from('registrations').update({
-        payment_status: isPaid ? 'paid' : 'pending',
-        payment_provider: 'square',
-        external_payment_id: payment.id,
-        amount_paid_cents: isPaid ? Number(item?.price_cents || body.amount_cents) : 0,
-        currency: String(payment.amount_money?.currency ?? currency),
-        paid_at: isPaid ? updatedAt : null,
-        payment_metadata: {
-          idempotency_key: idempotencyKey,
-          receipt_url: payment.receipt_url ?? null,
-          receipt_number: payment.receipt_number ?? null,
-          order_id: payment.order_id ?? null,
-          location_id: payment.location_id ?? connection.external_location_id,
-          square_status: payment.status ?? null,
-          card_brand: payment.card_details?.card?.card_brand ?? null,
-          card_last4: payment.card_details?.card?.last_4 ?? null,
-          captured_at: new Date().toISOString(),
-          group_payment: registrations.length > 1,
-          registration_ids: registrations.map((reg) => reg.id),
-          list_amount_cents: Number(item?.list_amount_cents || item?.price_cents || body.amount_cents),
-          discount_amount_cents: Number(item?.discount_amount_cents || 0),
-          discount_code: item?.discount_code || null,
-        },
-      }).eq('id', row.id);
-    }));
-  }
+  const paymentStatus=String(payment.status || '').toUpperCase();
+  const paymentSucceeded=paymentStatus==='COMPLETED';
 
   let recurringResponse: any = null;
   if (recurringSetup && paymentSucceeded) {
