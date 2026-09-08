@@ -196,7 +196,9 @@ const precacheUrls = [
   bootAsset,
 ];
 let serviceWorker = await readFile(path.join(root, 'sw.js'), 'utf8');
-const releaseHash = digest(Buffer.from(JSON.stringify(precacheUrls)));
+// Lazy screens and inline loader changes must also invalidate the installed shell.
+const releaseHash = digest(Buffer.from(JSON.stringify({ precacheUrls, html, serviceWorker })));
+
 serviceWorker = serviceWorker
   .replace('__HZ_CACHE_VERSION__', `hz-${releaseHash}`)
   .replace('__HZ_PRECACHE_URLS__', JSON.stringify(precacheUrls));
