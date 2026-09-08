@@ -1,4 +1,5 @@
 import test from 'node:test';
+import vm from 'node:vm';
 import assert from 'node:assert/strict';
 import {mkdtemp,cp,symlink,readFile,writeFile,rm,access,mkdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -18,6 +19,13 @@ test('a change confined to a lazy screen changes the installed service-worker re
   await assert.rejects(access(path.join(pwa,'public/.env.fixture')));
   await assert.rejects(access(path.join(pwa,'public/ndelite/.private-fixture/value')));
   const before=JSON.parse(await readFile(path.join(pwa,'public/build-meta.json'),'utf8'));
+  const channels=[];
+  const vendorContext={window:{},TextEncoder,TextDecoder,setTimeout,clearTimeout,MessageChannel:class {constructor(){const channel=new MessageChannel();channels.push(channel);return channel;}}};
+  vm.runInNewContext(await readFile(path.join(pwa,'public',before.assets.vendorAsset),'utf8'),vendorContext);
+  assert.equal(typeof vendorContext.window.ReactDOM.createRoot,'function');
+  assert.equal(typeof vendorContext.window.ReactDOM.createPortal,'function');
+  const portal=vendorContext.window.ReactDOM.createPortal(vendorContext.window.React.createElement('span',null,'fixture'),{nodeType:1});assert.equal(portal.children.props.children,'fixture');
+  channels.forEach(channel=>{channel.port1.close();channel.port2.close();});
   const screen=path.join(pwa,'hit_zero_web/screens/Tier1Tier2Screens.jsx');const source=await readFile(screen,'utf8');
   assert(source.includes('Registration · Admissions desk'));
   await writeFile(screen,source.replace('Registration · Admissions desk','Registration · Update detection fixture'));

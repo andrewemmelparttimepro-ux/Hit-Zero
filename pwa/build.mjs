@@ -104,8 +104,9 @@ const runtimeSource = moduleMatch[1].replace(
 const vendorAsset = await compileVirtual('vendor', `
   import React from 'react';
   import { createRoot } from 'react-dom/client';
+  import { createPortal } from 'react-dom';
   window.React = React;
-  window.ReactDOM = { createRoot };
+  window.ReactDOM = { createRoot, createPortal };
 `);
 const tusAsset = await compileVirtual('tus', `
   import * as tus from 'tus-js-client';
