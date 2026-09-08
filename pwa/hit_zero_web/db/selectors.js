@@ -92,6 +92,7 @@
       family_info_packets, class_enrollments, team_assignment_events,
       score_runs, score_deductions,
     };
+    cache.__financialData = raw.__financialData ? { ...raw.__financialData, failed: [...raw.__financialData.failed] } : null;
     return cache;
   }
 

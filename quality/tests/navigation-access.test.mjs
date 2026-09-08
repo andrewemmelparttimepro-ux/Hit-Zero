@@ -23,3 +23,13 @@ for(const role of ['owner','coach','parent','athlete'])test(`${role} navigation 
  for(const item of nav.filter(x=>x.id&&!tabs.some(t=>t.id===x.id)))assert.ok(more.includes(item.label),item.id);
  if(role==='owner')assert.deepEqual(Array.from(tabs,x=>x.id),['today','registration','roster','billing','__more']);
 });
+test('financial screens never render zero balances while initial records are loading or failed',()=>{
+ const session={mode:'live',profile:{id:'owner',program_id:'gym'}};
+ const render=state=>renderToStaticMarkup(React.createElement(context.FinancialDataBoundary,{session,snap:{__financialData:state}},React.createElement('div',null,'SAVED_TOTAL')));
+ assert.doesNotMatch(render(null),/SAVED_TOTAL/);
+ assert.match(render({status:'error',viewerId:'owner',programId:'gym'}),/Records could not load/);
+ assert.doesNotMatch(render({status:'ready',viewerId:'foreign',programId:'gym',loadedAt:'2026-09-08'}),/SAVED_TOTAL/);
+ assert.match(render({status:'ready',viewerId:'owner',programId:'gym',loadedAt:'2026-09-08'}),/SAVED_TOTAL/);
+ const stale=render({status:'error',viewerId:'owner',programId:'gym',loadedAt:'2026-09-08'});
+ assert.match(stale,/Showing the last loaded records/);assert.match(stale,/SAVED_TOTAL/);
+});

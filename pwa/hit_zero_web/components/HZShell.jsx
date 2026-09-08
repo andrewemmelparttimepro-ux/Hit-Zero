@@ -417,6 +417,24 @@ function routeFromLocation() {
   return 'today';
 }
 
+function FinancialDataBoundary({ snap, session, children }) {
+  const profile = session.actualProfile || session.profile;
+  const state = snap?.__financialData;
+  const current = state?.viewerId === profile?.id && state?.programId === profile?.program_id;
+  const ready = current && state?.loadedAt;
+  const retry = () => window.HZmirror?.refresh?.({force:true})?.catch(() => {});
+  if (session.mode !== 'live') return children;
+  if (!ready) return <div className="hz-card" role={state?.status === 'error' ? 'alert' : 'status'} style={{padding:24}}>
+    <h2>{state?.status === 'error' ? 'Records could not load' : 'Loading your gym records'}</h2>
+    <p style={{color:'var(--hz-dim)'}}>Balances and family counts will appear after the live records are available.</p>
+    <button type="button" className="hz-btn" onClick={retry}>Retry loading</button>
+  </div>;
+  return <>{state.status !== 'ready' && <div className="hz-card" role="status" style={{padding:16,marginBottom:16}}>
+    {state.status === 'error' ? 'Refresh failed. Showing the last loaded records; refresh before acting on balances or contacting families.' : 'Refreshing. Showing the last loaded records.'}
+    {state.status === 'error' && <button type="button" className="hz-btn hz-btn-sm" onClick={retry}>Retry loading</button>}
+  </div>}{children}</>;
+}
+
 // ─── Top-level App ───
 function App() {
   const [session, setSession] = useState(() => window.HZdb.auth._getSession());
@@ -872,6 +890,7 @@ function App() {
           </ScreenErrorBoundary>
         ) : Screen && snap ? (
           <ScreenErrorBoundary screenId={screenId} navigate={navigate}>
+            <FinancialDataBoundary snap={snap} session={['billing','registration'].includes(screenId) ? session : {...session,mode:'unchecked'}}>
             <Screen
               session={session}
               snap={snap}
@@ -880,6 +899,7 @@ function App() {
               openAthlete={openAthleteDrawer}
               navigate={navigate}
             />
+            </FinancialDataBoundary>
           </ScreenErrorBoundary>
         ) : screenAssetError ? (
           <div style={{ padding: 40, color: 'var(--hz-pink)' }} role="alert">
@@ -1069,7 +1089,7 @@ function MobileMoreSheet({ nav, active, tabIds, onNav, onClose, onSignOut }) {
           <div className="mobile-sheet__divider"/>
           <button className="mobile-sheet__item" onClick={onSignOut}>
             <span className="mobile-sheet__item-icon"><HZIcon name="logout" size={18}/></span>
-            <span className="mobile-sheet__item-label">My account</span>
+            <span className="mobile-sheet__item-label">Account &amp; sign out</span>
           </button>
         </div>
       </div>

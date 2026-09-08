@@ -151,6 +151,16 @@
     let activeProgramId = isPlaceholderProgramId(liveProfile?.program_id) ? null : liveProfile?.program_id || null;
     const activeRole = liveSession?.profile?.role || liveProfile?.role || null;
     const isStaff = activeRole === 'coach' || activeRole === 'owner';
+    const priorFinancial = d.__financialData;
+    const sameViewer = priorFinancial?.viewerId === liveProfile?.id && priorFinancial?.programId === liveProfile?.program_id;
+    const financialState = { status: 'loading', viewerId: liveProfile?.id, programId: liveProfile?.program_id, failed: [], loadedAt: sameViewer ? priorFinancial.loadedAt : null };
+    if (isLiveSession) d.__financialData = financialState;
+    const financialError = (table, result) => { if (result?.error) financialState.failed.push(table); };
+    const financialReady = () => {
+      financialState.status = financialState.failed.length ? 'error' : 'ready';
+      if (!financialState.failed.length) financialState.loadedAt = new Date().toISOString();
+    };
+    try {
     // MCA's real program_id is the historical placeholder value (…-1111). A
     // signed-in coach/owner is authoritatively scoped to their assigned
     // program, so honor it even when it equals that sentinel. Without this the
@@ -226,6 +236,7 @@
     }
 
     if (isLiveSession && isStaff && !activeProgramId) {
+      financialState.failed.push('gym_scope'); financialReady();
       if (window.HZsel && window.HZsel._refresh) await window.HZsel._refresh();
       return;
     }
@@ -235,6 +246,7 @@
     else if (isLiveSession && !isStaff) programsQuery.in('slug', ['mca', 'magic-city-athletics', 'magic-city-allstars']);
     const { data: programs, error: programsError } = await programsQuery;
     if (programsError) throw programsError;
+    if (isLiveSession && !programs?.length) throw new Error('Gym scope could not be loaded.');
     if (programs?.length) {
       d.programs = programs;
       const programIds = programs.map(p => p.id);
@@ -260,6 +272,7 @@
       if (!tracks.error) d.program_tracks = tracks.data || [];
       if (!classes.error) d.program_classes = classes.data || [];
       if (!windows.error) d.registration_windows = windows.data || [];
+      financialError('class_enrollments', classEnrollments);
       if (!classEnrollments.error) d.class_enrollments = classEnrollments.data || [];
       if (isLiveSession) {
         // Members-only tables: only meaningful with a real signed-in session.
@@ -291,6 +304,7 @@
           s.from('team_assignment_events').select('*').in('program_id', programIds).order('created_at', { ascending: false }).limit(100),
           s.from('registration_reconciliation').select('*').in('program_id', programIds),
         ]);
+        financialError('registrations', registrations);
         if (!registrations.error) {
           const reviews = new Map((reconciliation.data || []).map(row => [row.id, row]));
           d.registrations = (registrations.data || []).map(row => ({ ...row, reconciliation: reviews.get(row.id) || { disposition: 'unavailable', next_action: 'Payment reconciliation could not load. Refresh before contacting a family.' } }));
@@ -316,8 +330,11 @@
     if (!teams || !teams.length) {
       if (isLiveSession) {
         d.teams = [];
-        d.athletes = [];
+        d.athletes = []; d.billing_accounts = []; d.billing_charges = [];
       }
+      financialReady();
+      if (window.HZsel?._refresh) await window.HZsel._refresh();
+      window.dispatchEvent(new CustomEvent('hz:refresh'));
       return;
     }
     d.teams = teams;
@@ -329,6 +346,7 @@
       s.from('athletes').select('*').in('team_id', ids).is('deleted_at', null),
       profileQuery || Promise.resolve({ data: liveProfile ? [liveProfile] : [] }),
     ]);
+    financialError('athletes', athleteRows);
     if (!athleteRows.error) d.athletes = athleteRows.data || [];
     if (!profileRows?.error && profileRows?.data?.length) d.profiles = profileRows.data;
     const aIds = (d.athletes || []).map(a => a.id);
@@ -389,6 +407,7 @@
       if (!ask.error) d.athlete_skills = ask.data || [];
       if (!pl.error) d.parent_links = pl.data || [];
       if (!attendanceRows.error) d.attendance = attendanceRows.data || [];
+      financialError('billing_accounts', billingRows);
       if (!billingRows.error) d.billing_accounts = billingRows.data || [];
       if (!contactRows.error) d.emergency_contacts = contactRows.data || [];
       if (!medicalRows.error) d.medical_records = medicalRows.data || [];
@@ -406,6 +425,7 @@
       const accountIds = d.billing_accounts.map(row => row.id);
       if (accountIds.length) {
         const charges = await s.from('billing_charges').select('*').in('account_id', accountIds);
+        financialError('billing_charges', charges);
         if (!charges.error) d.billing_charges = charges.data || [];
       } else {
         d.billing_charges = [];
@@ -414,6 +434,7 @@
       d.athlete_skills = []; d.parent_links = []; d.attendance = []; d.billing_accounts = []; d.billing_charges = [];
       d.emergency_contacts = []; d.medical_records = []; d.injuries = []; d.waiver_signatures = []; d.uniform_orders = []; d.form_responses = []; d.form_answers = [];
     }
+    financialReady();
     // The dashboard can become useful before messaging/routine history finish.
     if (window.HZsel && window.HZsel._refresh) await window.HZsel._refresh();
     try { performance.mark('hz-live-core-ready'); } catch {}
@@ -495,6 +516,13 @@
     if (window.HZsel && window.HZsel._refresh) await window.HZsel._refresh();
     try { performance.mark('hz-live-hydrated'); } catch {}
     window.dispatchEvent(new CustomEvent('hz:refresh', { detail: { phase: 'complete' } }));
+    } catch (error) {
+      financialState.status = 'error';
+      if (!financialState.failed.length) financialState.failed.push('live_refresh');
+      if (window.HZsel?._refresh) await window.HZsel._refresh();
+      window.dispatchEvent(new CustomEvent('hz:refresh'));
+      throw error;
+    }
   }
   let rosterRefreshPromise = null;
   let rosterRefreshedAt = 0;
